@@ -18,6 +18,7 @@ import {
   ArrowRight,
   ShieldCheck,
   CheckCircle2,
+  Wand2,
 } from 'lucide-react';
 import { TabType } from './Navbar';
 
@@ -75,6 +76,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </button>
         </div>
       </header>
+
+      {/* AI Exam Generator Feature Spotlight Banner */}
+      <div className="bg-[#5A5A40] text-white p-6 rounded-[2.5rem] shadow-md relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-white/5 to-transparent pointer-events-none" />
+        <div className="space-y-1.5 z-10">
+          <div className="inline-flex items-center space-x-2 px-3 py-1 bg-white/15 rounded-full text-[11px] font-bold text-[#E8E2D9]">
+            <Sparkles className="w-3.5 h-3.5 text-[#E67E22]" />
+            <span>Tính năng mới: AI Exam Generator</span>
+          </div>
+          <h3 className="text-xl sm:text-2xl font-bold tracking-tight">
+            Tạo đề thi tùy chỉnh theo yêu cầu riêng với Gemini AI
+          </h3>
+          <p className="text-xs text-[#DED8CE] max-w-xl">
+            Tự chọn số câu, độ khó, chuyên đề ngữ pháp hoặc tỉnh thành. AI sẽ tạo đề thi chuẩn kèm đáp án và lời giải chi tiết 100%.
+          </p>
+        </div>
+
+        <button
+          onClick={() => setActiveTab('ai_generator')}
+          className="shrink-0 px-5 py-3 bg-[#E67E22] hover:bg-[#D35400] text-white font-bold text-xs rounded-2xl transition shadow-sm flex items-center space-x-2 z-10 cursor-pointer"
+        >
+          <Wand2 className="w-4 h-4" />
+          <span>Tạo đề AI ngay</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      </div>
 
       {/* 2. Four Key Stat Metric Cards (Natural Tones Design) */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">

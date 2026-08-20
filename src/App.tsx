@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AppProvider } from './context/AppContext';
 import { Navbar, TabType } from './components/Navbar';
 import { Dashboard } from './components/Dashboard';
+import { AiExamGeneratorView } from './components/AiExamGeneratorView';
 import { ExamSimulatorView } from './components/ExamSimulatorView';
 import { MistakeNotebookView } from './components/MistakeNotebookView';
 import { LessonsView } from './components/LessonsView';
@@ -48,6 +49,10 @@ const AppContent: React.FC = () => {
               onPracticeTopic={handlePracticeTopic}
               onOpenTargetModal={() => setTargetModalOpen(true)}
             />
+          )}
+
+          {activeTab === 'ai_generator' && (
+            <AiExamGeneratorView onStartExam={handleStartExam} />
           )}
 
           {activeTab === 'mock_exam' && (

@@ -22,10 +22,12 @@ import {
   ChevronDown,
   Menu,
   X,
+  Wand2,
 } from 'lucide-react';
 
 export type TabType =
   | 'dashboard'
+  | 'ai_generator'
   | 'lessons'
   | 'topic_practice'
   | 'quick_blitz'
@@ -57,10 +59,17 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenT
     id: TabType;
     label: string;
     icon: React.ElementType;
-    badge?: number;
+    badge?: number | string;
     badgeColor?: string;
   }[] = [
     { id: 'dashboard', label: 'Tổng quan', icon: BarChart3 },
+    {
+      id: 'ai_generator',
+      label: 'AI Tạo đề theo yêu cầu',
+      icon: Wand2,
+      badge: 'MỚI',
+      badgeColor: 'bg-[#5A5A40] text-white animate-pulse',
+    },
     { id: 'mock_exam', label: 'Thi thử vào 10', icon: GraduationCap },
     {
       id: 'mistakes',
