@@ -67,6 +67,136 @@ export async function testGeminiApiKey(apiKey: string, model: string = 'gemini-2
 }
 
 /**
+ * Phục hồi và phân tích JSON đề thi ngay cả khi chuỗi JSON bị ngắt quãng hoặc thiếu đóng ngoặc do giới hạn token
+ */
+export function tryParseOrRepairExamJson(rawText: string): any {
+  if (!rawText || !rawText.trim()) return null;
+
+  const cleaned = rawText
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  // 1. Thử parse trực tiếp
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    // Tiếp tục xử lý phục hồi
+  }
+
+  // 2. Thử đóng ngoặc tự động cho JSON bị cắt cụt
+  try {
+    let repaired = cleaned;
+    // Nếu kết thúc giữa chừng một chuỗi, đóng dấu nháy kép
+    const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+    if (quoteCount % 2 !== 0) {
+      repaired += '"';
+    }
+
+    // Đếm số ngoặc nhọn và ngoặc vuông chưa đóng
+    const openBraces = (repaired.match(/\{/g) || []).length;
+    const closeBraces = (repaired.match(/\}/g) || []).length;
+    const openBrackets = (repaired.match(/\[/g) || []).length;
+    const closeBrackets = (repaired.match(/\]/g) || []).length;
+
+    for (let i = 0; i < openBraces - closeBraces; i++) {
+      repaired += '}';
+    }
+    for (let i = 0; i < openBrackets - closeBrackets; i++) {
+      repaired += ']';
+    }
+
+    const quickParsed = JSON.parse(repaired);
+    if (quickParsed && Array.isArray(quickParsed.questions) && quickParsed.questions.length > 0) {
+      return quickParsed;
+    }
+  } catch (e) {
+    // Tiếp tục phương pháp trích xuất từng câu hỏi
+  }
+
+  // 3. Trích xuất từng câu hỏi hoàn chỉnh bằng thuật toán quét ngoặc (Balanced Brace Scan)
+  try {
+    const questionsMatch = cleaned.match(/"questions"\s*:\s*\[/);
+    if (!questionsMatch) {
+      throw new Error('Không tìm thấy mảng câu hỏi');
+    }
+
+    const titleMatch = cleaned.match(/"title"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+    const codeMatch = cleaned.match(/"code"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+    const descMatch = cleaned.match(/"description"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+    const targetProvMatch = cleaned.match(/"targetProvince"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+    const diffMatch = cleaned.match(/"difficulty"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+    const timeMatch = cleaned.match(/"timeLimitMinutes"\s*:\s*(\d+)/);
+
+    const questionsStartIndex = cleaned.indexOf('[', questionsMatch.index);
+    const questionsSubstring = cleaned.slice(questionsStartIndex + 1);
+
+    const questions: any[] = [];
+    let depth = 0;
+    let inString = false;
+    let escapeNext = false;
+    let startObjIndex = -1;
+
+    for (let i = 0; i < questionsSubstring.length; i++) {
+      const char = questionsSubstring[i];
+
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+
+      if (char === '\\') {
+        escapeNext = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (!inString) {
+        if (char === '{') {
+          if (depth === 0) startObjIndex = i;
+          depth++;
+        } else if (char === '}') {
+          depth--;
+          if (depth === 0 && startObjIndex !== -1) {
+            const objStr = questionsSubstring.substring(startObjIndex, i + 1);
+            try {
+              const qObj = JSON.parse(objStr);
+              if (qObj && (qObj.content || qObj.options)) {
+                questions.push(qObj);
+              }
+            } catch (err) {
+              // Bỏ qua nếu câu đó bị lỗi cú pháp riêng
+            }
+            startObjIndex = -1;
+          }
+        }
+      }
+    }
+
+    if (questions.length > 0) {
+      return {
+        title: titleMatch ? titleMatch[1] : undefined,
+        code: codeMatch ? codeMatch[1] : undefined,
+        description: descMatch ? descMatch[1] : undefined,
+        targetProvince: targetProvMatch ? targetProvMatch[1] : undefined,
+        difficulty: diffMatch ? diffMatch[1] : undefined,
+        timeLimitMinutes: timeMatch ? parseInt(timeMatch[1], 10) : undefined,
+        questions,
+      };
+    }
+  } catch (err) {
+    // Không thể trích xuất
+  }
+
+  throw new Error('Dữ liệu AI trả về không thể phân tích cú pháp. Vui lòng thử lại.');
+}
+
+/**
  * Tạo đề thi Tiếng Anh vào lớp 10 bằng Gemini API
  */
 export async function generateExamWithAI(
@@ -101,14 +231,14 @@ Cấu trúc JSON bắt buộc:
       "topicId": "grammar | vocabulary | pronunciation | stress | reading | sentence_rewrite | cloze | error_identification",
       "subTopicId": "tenses | passive_voice | reported_speech | conditionals | relative_clauses | comparisons | wish_clauses | gerund_infinitive | tag_questions | modal_verbs | phrasal_verbs | prepositions | pronunciation_s_es | pronunciation_ed | pronunciation_vowels | stress_2_syllables | stress_3_syllables | vocab_environment | vocab_city_life | vocab_teen_stress | vocab_past_life | vocab_wonders | vocab_space | rewrite_conditionals | rewrite_passive | rewrite_reported | rewrite_connectors | rewrite_so_such | rewrite_too_enough | reading_comprehension | cloze_test | find_error",
       "difficulty": "easy | medium | hard | expert",
-      "content": "Nội dung câu hỏi bằng tiếng Anh (hoặc yêu cầu chọn từ có phần gạch chân phát âm khác, chọn câu đồng nghĩa, v.v.)",
-      "passage": "Đoạn văn đọc hiểu hoặc bài đọc điền từ (nếu là câu hỏi thuộc phần reading hoặc cloze, các câu cùng bài đọc thì điền cùng nội dung passage này)",
+      "content": "Nội dung câu hỏi bằng tiếng Anh",
+      "passage": "Đoạn văn đọc hiểu hoặc điền từ (nếu có, nếu không thì null)",
       "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
       "correctOption": 0, // Số nguyên từ 0 đến 3 tương ứng với A, B, C, D
-      "explanation": "Giải thích chi tiết bằng tiếng Việt vì sao chọn đáp án này và vì sao các đáp án khác sai.",
-      "grammarRule": "Quy tắc ngữ pháp hoặc công thức áp dụng (ví dụ: 'Câu điều kiện loại 2: If + S + V-ed/2, S + would + V-inf')",
-      "commonMistakeTip": "Mẹo tránh bẫy câu hỏi hoặc lỗi học sinh hay mắc phải",
-      "translation": "Dịch toàn bộ câu hỏi và đáp án sang tiếng Việt chuẩn xác"
+      "explanation": "Giải thích ngắn gọn 1-2 câu vì sao chọn đáp án này",
+      "grammarRule": "Công thức hoặc quy tắc cốt lõi áp dụng",
+      "commonMistakeTip": "Mẹo tránh bẫy ngắn gọn",
+      "translation": "Dịch câu hỏi và đáp án sang tiếng Việt ngắn gọn"
     }
   ]
 }
@@ -117,7 +247,7 @@ LƯU Ý CỰC KỲ QUAN TRỌNG:
 1. Đảm bảo đúng chính xác ${config.totalQuestions} câu hỏi trong mảng 'questions'.
 2. Các đáp án trong 'options' phải bắt đầu bằng 'A. ', 'B. ', 'C. ', 'D. '.
 3. 'correctOption' phải là số index (0 cho A, 1 cho B, 2 cho C, 3 cho D).
-4. Lời giải 'explanation', 'grammarRule', 'commonMistakeTip', 'translation' phải cực kỳ chi tiết, dễ hiểu, chuẩn văn phong sư phạm Việt Nam.`;
+4. Giữ phần giải thích 'explanation', 'grammarRule', 'translation' súc tích, ngắn gọn (1-2 câu) để đảm bảo toàn bộ đề thi được sinh trọn vẹn và nhanh chóng.`;
 
   const userPrompt = `Hãy tạo một đề thi Tiếng Anh vào lớp 10 với các thông số sau:
 - Tên đề (gợi ý): ${config.title || 'Đề Thi Thử Tiếng Anh Vào 10 - Tạo bởi AI'}
@@ -134,24 +264,34 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(effectiveKey)}`;
 
+  // Cấu hình payload với token limit lớn và tắt thinking budget cho model 2.5 flash
+  const requestBody: any = {
+    contents: [
+      {
+        parts: [
+          { text: systemInstruction },
+          { text: userPrompt },
+        ],
+      },
+    ],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.7,
+      maxOutputTokens: 32768,
+    },
+  };
+
+  // Nếu là model gemini-2.5-flash hoặc 2.0, tắt/giảm thinking budget để tránh ngốn token output
+  if (model.includes('2.5-flash') || model.includes('2.0-flash')) {
+    requestBody.generationConfig.thinkingConfig = {
+      thinkingBudget: 0,
+    };
+  }
+
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: systemInstruction },
-            { text: userPrompt },
-          ],
-        },
-      ],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.7,
-        maxOutputTokens: 8192,
-      },
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
@@ -169,18 +309,8 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
     throw new Error('Không nhận được phản hồi nội dung từ AI. Vui lòng thử lại.');
   }
 
-  // Parse JSON
-  let parsedData: any;
-  try {
-    parsedData = JSON.parse(rawText);
-  } catch (parseError) {
-    // Thử làm sạch markdown nếu có bọc ```json ... ```
-    const cleaned = rawText
-      .replace(/^```json\s*/i, '')
-      .replace(/\s*```$/i, '')
-      .trim();
-    parsedData = JSON.parse(cleaned);
-  }
+  // Parse JSON với bộ phục hồi tự động thông minh
+  const parsedData = tryParseOrRepairExamJson(rawText);
 
   if (!parsedData || !Array.isArray(parsedData.questions) || parsedData.questions.length === 0) {
     throw new Error('Dữ liệu đề thi AI trả về không đúng định dạng. Vui lòng thử lại.');
@@ -245,6 +375,7 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
     questions: formattedQuestions,
   };
 }
+
 
 export interface ExamEvaluationReport {
   overallAssessment: string;
