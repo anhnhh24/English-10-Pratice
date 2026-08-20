@@ -26,11 +26,11 @@ import {
   Award,
   TrendingUp,
   Target,
-  Wand2,
   RefreshCw,
   Lightbulb,
   ShieldAlert,
   ListOrdered,
+  X,
 } from 'lucide-react';
 
 interface ExamSimulatorViewProps {
@@ -57,6 +57,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   const [timeLeft, setTimeLeft] = useState<number>(exam ? exam.timeLimitMinutes * 60 : 3600);
   const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
   const [filterResult, setFilterResult] = useState<'all' | 'wrong' | 'flagged'>('all');
+  const [mobilePaletteOpen, setMobilePaletteOpen] = useState<boolean>(false);
 
   // AI Diagnostic Assessment States
   const [aiAnalyzing, setAiAnalyzing] = useState<boolean>(false);
@@ -168,16 +169,16 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   // 1. INTRO / EXAM LIST SELECTION STAGE
   if (stage === 'intro') {
     return (
-      <div className="max-w-4xl mx-auto space-y-6 pb-12">
+      <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-6">
         <div className="flex items-center space-x-3">
           <button
             onClick={onBackToDashboard}
-            className="p-2.5 bg-white hover:bg-[#FAF9F6] border border-[#EAE7E0] rounded-2xl transition cursor-pointer"
+            className="p-2 sm:p-2.5 bg-white hover:bg-[#FAF9F6] border border-[#EAE7E0] rounded-2xl transition cursor-pointer shrink-0"
           >
-            <ArrowLeft className="w-5 h-5 text-[#5A5A40]" />
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 text-[#5A5A40]" />
           </button>
           <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-[#3D3D2D]">
+            <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-[#3D3D2D]">
               Phòng Thi Thử Tuyển Sinh Vào Lớp 10
             </h2>
             <p className="text-xs sm:text-sm text-[#8A8A70]">
@@ -187,22 +188,22 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
         </div>
 
         {/* Exam Cards list */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {exams.map((ex) => {
             const isSelected = ex.id === selectedExamId;
             return (
               <div
                 key={ex.id}
                 onClick={() => setSelectedExamId(ex.id)}
-                className={`p-6 rounded-[2.5rem] border transition-all cursor-pointer flex flex-col justify-between ${
+                className={`p-4 sm:p-6 rounded-2xl sm:rounded-[2.5rem] border transition-all cursor-pointer flex flex-col justify-between ${
                   isSelected
                     ? 'bg-white border-[#5A5A40] shadow-md ring-2 ring-[#5A5A40]/20'
                     : 'bg-white border-[#EAE7E0] hover:border-[#D9D2C5] hover:shadow-xs'
                 }`}
               >
-                <div className="space-y-3">
+                <div className="space-y-2.5 sm:space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="px-3 py-1 text-xs font-bold bg-[#F5F2ED] text-[#5A5A40] rounded-xl border border-[#D9D2C5]">
+                    <span className="px-2.5 py-0.5 sm:px-3 sm:py-1 text-xs font-bold bg-[#F5F2ED] text-[#5A5A40] rounded-xl border border-[#D9D2C5]">
                       {ex.code}
                     </span>
                     <span className="text-xs font-bold text-[#8A8A70] flex items-center space-x-1">
@@ -211,13 +212,13 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                     </span>
                   </div>
 
-                  <h3 className="font-bold text-[#3D3D2D] text-base leading-snug">{ex.title}</h3>
+                  <h3 className="font-bold text-[#3D3D2D] text-sm sm:text-base leading-snug">{ex.title}</h3>
                   <p className="text-xs text-[#8A8A70] line-clamp-3 leading-relaxed">
                     {ex.description}
                   </p>
                 </div>
 
-                <div className="pt-4 mt-4 border-t border-[#F5F2ED] flex items-center justify-between">
+                <div className="pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-[#F5F2ED] flex items-center justify-between gap-2">
                   <div className="text-xs text-[#8A8A70]">
                     <strong>{ex.questionIds.length}</strong> câu hỏi trắc nghiệm
                   </div>
@@ -226,7 +227,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                       e.stopPropagation();
                       handleStartExam(ex.id);
                     }}
-                    className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-full text-xs font-bold shadow-xs transition flex items-center space-x-1 cursor-pointer"
+                    className="px-4 sm:px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-full text-xs font-bold shadow-xs transition flex items-center space-x-1 cursor-pointer shrink-0"
                   >
                     <span>Bắt đầu thi</span>
                     <ChevronRight className="w-4 h-4" />
@@ -238,7 +239,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
         </div>
 
         {/* Rules Card */}
-        <div className="bg-[#FAF9F6] border border-[#D9D2C5] rounded-[2rem] p-5 text-[#3D3D2D] text-xs sm:text-sm space-y-2">
+        <div className="bg-[#FAF9F6] border border-[#D9D2C5] rounded-2xl sm:rounded-[2rem] p-4 sm:p-5 text-[#3D3D2D] text-xs sm:text-sm space-y-2">
           <h4 className="font-bold text-[#5A5A40] flex items-center space-x-1.5">
             <AlertCircle className="w-4 h-4 text-[#E67E22]" />
             <span>Quy chế và Lưu ý phòng thi:</span>
@@ -260,14 +261,14 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
     const isCurrentBookmarked = isBookmarked(currentQ.id);
 
     return (
-      <div className="max-w-6xl mx-auto space-y-4 pb-12">
+      <div className="max-w-6xl mx-auto space-y-3 sm:space-y-4 pb-6">
         {/* Top Control Bar */}
-        <div className="bg-white rounded-[2rem] border border-[#EAE7E0] shadow-xs p-4 flex items-center justify-between gap-4 sticky top-4 z-30">
-          <div>
-            <h3 className="font-bold text-[#3D3D2D] text-sm sm:text-base line-clamp-1">
+        <div className="bg-white rounded-2xl sm:rounded-[2rem] border border-[#EAE7E0] shadow-xs p-3 sm:p-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 sm:gap-4 sticky top-0 sm:top-2 z-20">
+          <div className="min-w-0 flex-1">
+            <h3 className="font-bold text-[#3D3D2D] text-xs sm:text-base truncate">
               {exam.title}
             </h3>
-            <p className="text-xs text-[#8A8A70]">
+            <p className="text-[11px] sm:text-xs text-[#8A8A70]">
               Đã làm:{' '}
               <strong className="text-[#5A5A40]">
                 {answeredCount}/{examQuestions.length}
@@ -276,22 +277,31 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+            {/* Mobile quick palette button */}
+            <button
+              onClick={() => setMobilePaletteOpen(true)}
+              className="lg:hidden px-2.5 py-1.5 bg-[#F5F2ED] border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#5A5A40] flex items-center space-x-1 cursor-pointer"
+            >
+              <ListOrdered className="w-3.5 h-3.5" />
+              <span>{currentIdx + 1}/{examQuestions.length}</span>
+            </button>
+
             <div
-              className={`flex items-center space-x-1.5 px-4 py-1.5 rounded-2xl font-mono text-sm sm:text-base font-bold border ${
+              className={`flex items-center space-x-1.5 px-3 sm:px-4 py-1.5 rounded-xl sm:rounded-2xl font-mono text-xs sm:text-base font-bold border ${
                 timeLeft < 300
                   ? 'bg-rose-50 border-rose-300 text-rose-600 animate-pulse'
                   : 'bg-[#F5F2ED] border-[#D9D2C5] text-[#5A5A40]'
               }`}
             >
-              <Clock className="w-4 h-4" />
+              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>{formatTime(timeLeft)}</span>
             </div>
 
             <button
               onClick={() => setShowSubmitModal(true)}
               id="btn-submit-exam"
-              className="px-5 py-2 bg-[#8BA888] hover:bg-[#789675] text-white rounded-full text-xs sm:text-sm font-bold shadow-xs transition cursor-pointer"
+              className="px-3.5 sm:px-5 py-1.5 sm:py-2 bg-[#8BA888] hover:bg-[#789675] text-white rounded-full text-xs sm:text-sm font-bold shadow-xs transition cursor-pointer"
             >
               Nộp Bài
             </button>
@@ -299,31 +309,31 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
         </div>
 
         {/* Main 2-Column Interface: Question View (Left) & Question Palette (Right) */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
           {/* Question Box (2 cols) */}
-          <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-sm p-6 sm:p-8 flex flex-col justify-between min-h-[460px]">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED]">
+          <div className="lg:col-span-2 bg-white rounded-2xl sm:rounded-[2.5rem] border border-[#EAE7E0] shadow-sm p-4 sm:p-6 lg:p-8 flex flex-col justify-between min-h-[380px] sm:min-h-[460px]">
+            <div className="space-y-3 sm:space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED] gap-2">
                 <div className="flex items-center space-x-2">
-                  <span className="px-3 py-1 bg-[#5A5A40] text-white font-bold text-xs rounded-xl">
+                  <span className="px-2.5 py-0.5 sm:px-3 sm:py-1 bg-[#5A5A40] text-white font-bold text-xs rounded-xl">
                     Câu {currentIdx + 1}/{examQuestions.length}
                   </span>
-                  <span className="text-xs font-semibold text-[#8A8A70] capitalize">
+                  <span className="text-xs font-semibold text-[#8A8A70] capitalize truncate max-w-[120px] sm:max-w-none">
                     {currentQ.topicId.replace('_', ' ')}
                   </span>
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-1.5 sm:space-x-2">
                   <button
                     onClick={() => toggleFlag(currentQ.id)}
-                    className={`flex items-center space-x-1 px-3 py-1 rounded-xl text-xs font-semibold border transition cursor-pointer ${
+                    className={`flex items-center space-x-1 px-2.5 sm:px-3 py-1 rounded-xl text-xs font-semibold border transition cursor-pointer ${
                       isCurrentFlagged
                         ? 'bg-[#FDF2E9] border-[#E67E22] text-[#E67E22]'
                         : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#6B6B54] hover:bg-[#E8E2D9]'
                     }`}
                   >
                     <Flag className={`w-3.5 h-3.5 ${isCurrentFlagged ? 'fill-[#E67E22]' : ''}`} />
-                    <span>{isCurrentFlagged ? 'Đã gắn cờ' : 'Gắn cờ'}</span>
+                    <span className="hidden sm:inline">{isCurrentFlagged ? 'Đã cờ' : 'Gắn cờ'}</span>
                   </button>
 
                   <button
@@ -342,7 +352,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
               </div>
 
               {currentQ.passage && (
-                <div className="p-4 bg-[#FAF9F6] border border-[#EAE7E0] rounded-2xl text-xs sm:text-sm text-[#4A4A4A] leading-relaxed max-h-56 overflow-y-auto whitespace-pre-line">
+                <div className="p-3 sm:p-4 bg-[#FAF9F6] border border-[#EAE7E0] rounded-2xl text-xs sm:text-sm text-[#4A4A4A] leading-relaxed max-h-48 sm:max-h-56 overflow-y-auto whitespace-pre-line">
                   {currentQ.passage}
                 </div>
               )}
@@ -352,22 +362,22 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
               </div>
 
               {/* Options */}
-              <div className="space-y-2.5 pt-2">
+              <div className="space-y-2 sm:space-y-2.5 pt-1 sm:pt-2">
                 {currentQ.options.map((option, idx) => {
                   const isSelected = userAnswers[currentQ.id] === idx;
                   return (
                     <button
                       key={idx}
                       onClick={() => handleSelectOption(idx)}
-                      className={`w-full text-left p-4 rounded-2xl border text-xs sm:text-sm font-medium transition flex items-center justify-between cursor-pointer ${
+                      className={`w-full text-left p-3.5 sm:p-4 rounded-2xl border text-xs sm:text-sm font-medium transition flex items-center justify-between cursor-pointer ${
                         isSelected
                           ? 'bg-[#F5F2ED] border-[#5A5A40] text-[#3D3D2D] ring-2 ring-[#5A5A40]/20 font-bold'
                           : 'bg-white border-[#EAE7E0] text-[#4A4A4A] hover:bg-[#FAF9F6]'
                       }`}
                     >
-                      <span>{option}</span>
+                      <span className="pr-2 leading-relaxed">{option}</span>
                       <div
-                        className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                        className={`w-5 h-5 rounded-full border shrink-0 flex items-center justify-center ${
                           isSelected
                             ? 'border-[#5A5A40] bg-[#5A5A40] text-white'
                             : 'border-[#D9D2C5]'
@@ -381,11 +391,11 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
               </div>
             </div>
 
-            <div className="pt-4 mt-6 border-t border-[#F5F2ED] flex items-center justify-between">
+            <div className="pt-4 mt-4 sm:mt-6 border-t border-[#F5F2ED] flex items-center justify-between gap-2">
               <button
                 onClick={() => setCurrentIdx((prev) => Math.max(0, prev - 1))}
                 disabled={currentIdx === 0}
-                className="px-4 py-2 rounded-full border border-[#EAE7E0] text-xs font-bold text-[#6B6B54] hover:bg-[#FAF9F6] disabled:opacity-40 transition flex items-center space-x-1 cursor-pointer"
+                className="flex-1 sm:flex-none px-4 py-2.5 rounded-full border border-[#EAE7E0] text-xs font-bold text-[#6B6B54] hover:bg-[#FAF9F6] disabled:opacity-40 transition flex items-center justify-center space-x-1 cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" />
                 <span>Câu trước</span>
@@ -396,16 +406,16 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                   setCurrentIdx((prev) => Math.min(examQuestions.length - 1, prev + 1))
                 }
                 disabled={currentIdx === examQuestions.length - 1}
-                className="px-5 py-2 rounded-full bg-[#5A5A40] text-white text-xs font-bold hover:bg-[#3D3D2D] disabled:opacity-40 transition flex items-center space-x-1 cursor-pointer"
+                className="flex-1 sm:flex-none px-5 py-2.5 rounded-full bg-[#5A5A40] text-white text-xs font-bold hover:bg-[#3D3D2D] disabled:opacity-40 transition flex items-center justify-center space-x-1 cursor-pointer"
               >
-                <span>Câu tiếp theo</span>
+                <span>Câu tiếp</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Question Palette Sidebar (Right) */}
-          <div className="bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-sm p-6 space-y-4">
+          {/* Question Palette Sidebar (Right on Desktop) */}
+          <div className="hidden lg:block bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-sm p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED]">
               <h4 className="font-bold text-[#3D3D2D] text-sm">Bảng câu hỏi</h4>
               <span className="text-xs text-[#8A8A70]">
@@ -464,10 +474,76 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           </div>
         </div>
 
+        {/* Mobile Question Palette Drawer */}
+        {mobilePaletteOpen && (
+          <div className="lg:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex flex-col justify-end animate-in fade-in">
+            <div className="fixed inset-0" onClick={() => setMobilePaletteOpen(false)} />
+            <div className="relative bg-white rounded-t-[2.5rem] p-5 max-h-[75vh] overflow-y-auto space-y-4 border-t border-[#EAE7E0] shadow-2xl z-10">
+              <div className="flex justify-between items-center pb-2 border-b border-[#F5F2ED]">
+                <div>
+                  <h4 className="font-bold text-[#3D3D2D] text-sm">Bảng câu hỏi</h4>
+                  <p className="text-[11px] text-[#8A8A70]">{answeredCount}/{examQuestions.length} câu đã chọn</p>
+                </div>
+                <button
+                  onClick={() => setMobilePaletteOpen(false)}
+                  className="p-1 text-[#8A8A70] hover:text-[#3D3D2D] rounded-lg cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-5 gap-2">
+                {examQuestions.map((q, index) => {
+                  const isCurrent = index === currentIdx;
+                  const isAnswered = userAnswers[q.id] !== undefined;
+                  const isFlagged = flaggedIds.includes(q.id);
+
+                  return (
+                    <button
+                      key={q.id}
+                      onClick={() => {
+                        setCurrentIdx(index);
+                        setMobilePaletteOpen(false);
+                      }}
+                      className={`relative h-10 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                        isCurrent
+                          ? 'ring-2 ring-[#5A5A40] ring-offset-2 bg-[#5A5A40] text-white shadow-xs'
+                          : isAnswered
+                          ? 'bg-[#EBF2EB] text-[#8BA888]'
+                          : 'bg-[#FAF9F6] text-[#6B6B54]'
+                      }`}
+                    >
+                      <span>{index + 1}</span>
+                      {isFlagged && (
+                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#E67E22] rounded-full border border-white" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="pt-2 border-t border-[#F5F2ED] flex items-center justify-between text-[10px] text-[#8A8A70]">
+                <span className="flex items-center space-x-1">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-[#EBF2EB] border border-[#8BA888]" />
+                  <span>Đã làm</span>
+                </span>
+                <span className="flex items-center space-x-1">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-[#FAF9F6] border border-[#EAE7E0]" />
+                  <span>Chưa làm</span>
+                </span>
+                <span className="flex items-center space-x-1">
+                  <span className="w-2.5 h-2.5 rounded-xs bg-[#FDF2E9] border border-[#E67E22]" />
+                  <span>Gắn cờ</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Submit Confirmation Modal */}
         {showSubmitModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-            <div className="bg-white rounded-[2.5rem] max-w-md w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-4">
+            <div className="bg-white rounded-2xl sm:rounded-[2.5rem] max-w-md w-full p-5 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-4">
               <div className="flex items-center space-x-3 text-[#5A5A40]">
                 <div className="w-10 h-10 rounded-2xl bg-[#F5F2ED] flex items-center justify-center">
                   <CheckCircle2 className="w-6 h-6 text-[#8BA888]" />
@@ -592,52 +668,52 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
     };
 
     return (
-      <div className="max-w-4xl mx-auto space-y-6 pb-12">
+      <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6 pb-6">
         {/* Main Score & Summary Card */}
-        <div className="bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-sm overflow-hidden">
-          <div className="p-6 sm:p-8 bg-[#5A5A40] text-white flex flex-col sm:flex-row items-center justify-between gap-6">
+        <div className="bg-white rounded-2xl sm:rounded-[2.5rem] border border-[#EAE7E0] shadow-sm overflow-hidden">
+          <div className="p-4 sm:p-6 lg:p-8 bg-[#5A5A40] text-white flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6">
             <div className="space-y-1 text-center sm:text-left">
               <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
                 Kết quả Thi Thử Vào Lớp 10
               </span>
-              <h2 className="text-2xl sm:text-3xl font-bold">{completedAttempt.examTitle}</h2>
+              <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold">{completedAttempt.examTitle}</h2>
               <p className="text-xs sm:text-sm text-[#D9D2C5]">
                 Thời gian làm bài: {Math.round(completedAttempt.timeSpentSeconds / 60)} phút • Ngày{' '}
                 {new Date(completedAttempt.date).toLocaleDateString('vi-VN')}
               </p>
             </div>
 
-            <div className="bg-[#FDFCFB] text-[#3D3D2D] rounded-[2rem] p-5 text-center min-w-[160px] border border-[#D9D2C5]">
-              <div className="text-xs font-bold text-[#8A8A70] uppercase tracking-wider">
+            <div className="bg-[#FDFCFB] text-[#3D3D2D] rounded-2xl sm:rounded-[2rem] p-4 sm:p-5 text-center min-w-[140px] sm:min-w-[160px] border border-[#D9D2C5]">
+              <div className="text-[10px] sm:text-xs font-bold text-[#8A8A70] uppercase tracking-wider">
                 Điểm Số
               </div>
-              <div className="text-4xl sm:text-5xl font-extrabold text-[#5A5A40] mt-1">
+              <div className="text-3xl sm:text-5xl font-extrabold text-[#5A5A40] mt-0.5 sm:mt-1">
                 {completedAttempt.score.toFixed(2)}
               </div>
-              <div className="text-xs text-[#8BA888] font-bold mt-1">
+              <div className="text-[11px] sm:text-xs text-[#8BA888] font-bold mt-0.5 sm:mt-1">
                 {completedAttempt.correctCount}/{completedAttempt.totalQuestions} câu đúng
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 p-4 bg-[#FAF9F6] border-b border-[#EAE7E0] text-center divide-x divide-[#EAE7E0]">
+          <div className="grid grid-cols-3 p-3 sm:p-4 bg-[#FAF9F6] border-b border-[#EAE7E0] text-center divide-x divide-[#EAE7E0]">
             <div>
-              <span className="text-xs text-[#8A8A70]">Số câu đúng</span>
-              <p className="text-base sm:text-lg font-bold text-[#8BA888] flex items-center justify-center space-x-1">
-                <CheckCircle2 className="w-4 h-4" />
+              <span className="text-[10px] sm:text-xs text-[#8A8A70]">Số câu đúng</span>
+              <p className="text-sm sm:text-lg font-bold text-[#8BA888] flex items-center justify-center space-x-1">
+                <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 <span>{completedAttempt.correctCount}</span>
               </p>
             </div>
             <div>
-              <span className="text-xs text-[#8A8A70]">Số câu sai</span>
-              <p className="text-base sm:text-lg font-bold text-[#E67E22] flex items-center justify-center space-x-1">
-                <XCircle className="w-4 h-4" />
+              <span className="text-[10px] sm:text-xs text-[#8A8A70]">Số câu sai</span>
+              <p className="text-sm sm:text-lg font-bold text-[#E67E22] flex items-center justify-center space-x-1">
+                <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 <span>{completedAttempt.incorrectCount}</span>
               </p>
             </div>
             <div>
-              <span className="text-xs text-[#8A8A70]">Chưa làm</span>
-              <p className="text-base sm:text-lg font-bold text-[#6B6B54]">
+              <span className="text-[10px] sm:text-xs text-[#8A8A70]">Chưa làm</span>
+              <p className="text-sm sm:text-lg font-bold text-[#6B6B54]">
                 {completedAttempt.unattemptedCount}
               </p>
             </div>
@@ -645,14 +721,14 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
         </div>
 
         {/* 🌟 DIAGNOSTIC & WEAKNESS EVALUATION SECTION */}
-        <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 border border-[#D9D2C5] shadow-xs space-y-6">
+        <div className="bg-white rounded-2xl sm:rounded-[2.5rem] p-4 sm:p-6 lg:p-8 border border-[#D9D2C5] shadow-xs space-y-4 sm:space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#EAE7E0] pb-4">
             <div className="flex items-center space-x-2.5">
-              <div className="w-9 h-9 rounded-2xl bg-[#8BA888]/20 flex items-center justify-center text-[#5A5A40]">
+              <div className="w-9 h-9 rounded-2xl bg-[#8BA888]/20 flex items-center justify-center text-[#5A5A40] shrink-0">
                 <Award className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-[#3D3D2D]">
+                <h3 className="text-base sm:text-lg font-bold text-[#3D3D2D]">
                   Đánh Giá Năng Lực & Các Điểm Cần Cải Thiện
                 </h3>
                 <p className="text-xs text-[#8A8A70]">
@@ -667,7 +743,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             <button
               onClick={handleRunAiDeepAnalysis}
               disabled={aiAnalyzing}
-              className="px-4 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] text-[#5A5A40] rounded-2xl text-xs font-bold transition flex items-center space-x-2 cursor-pointer disabled:opacity-60"
+              className="w-full sm:w-auto px-4 py-2.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] text-[#5A5A40] rounded-2xl text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-60 shrink-0"
             >
               {aiAnalyzing ? (
                 <>
@@ -691,7 +767,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           )}
 
           {/* Overall & Grade Prediction */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
             <div className="md:col-span-2 bg-[#FAF9F6] p-4 rounded-2xl border border-[#EAE7E0] space-y-1.5">
               <span className="text-[10px] font-bold text-[#8A8A70] uppercase tracking-wider block">
                 Nhận xét tổng quan
@@ -709,7 +785,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                 Dự đoán điểm thi vào 10
               </span>
               <div className="my-1">
-                <p className="text-sm font-bold text-[#2C3E2D]">
+                <p className="text-sm sm:text-base font-bold text-[#2C3E2D]">
                   {currentEvaluation.gradePrediction}
                 </p>
               </div>
@@ -720,20 +796,20 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           </div>
 
           {/* Topic Matrix Breakdown */}
-          <div className="space-y-3 pt-1">
+          <div className="space-y-2.5 pt-1">
             <h4 className="text-xs font-bold text-[#5A5A40] uppercase tracking-wider flex items-center space-x-1.5">
               <TrendingUp className="w-4 h-4 text-[#8BA888]" />
               <span>Tỷ lệ chính xác theo chuyên đề trong đề thi:</span>
             </h4>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
               {Object.entries(topicBreakdown).map(([tId, tData]) => {
                 const acc = tData.total > 0 ? Math.round((tData.correct / tData.total) * 100) : 0;
                 const isGood = acc >= 75;
                 return (
                   <div
                     key={tId}
-                    className="p-3 bg-[#FAF9F6] border border-[#EAE7E0] rounded-2xl space-y-2"
+                    className="p-3 bg-[#FAF9F6] border border-[#EAE7E0] rounded-2xl space-y-1.5"
                   >
                     <div className="flex items-center justify-between text-xs font-bold">
                       <span className="text-[#3D3D2D]">{tData.name}</span>
@@ -756,7 +832,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           </div>
 
           {/* Strengths & Weaknesses (Areas for Improvement) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 pt-1">
             {/* Strengths */}
             <div className="bg-[#FAF9F6] border border-[#8BA888]/40 p-4 rounded-2xl space-y-2">
               <div className="flex items-center space-x-1.5 text-emerald-800 font-bold text-xs">
@@ -784,7 +860,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                   Không phát hiện lỗ hổng lớn nào! Bạn đã làm rất tốt.
                 </p>
               ) : (
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   {currentEvaluation.weaknesses.map((w, idx) => (
                     <div key={idx} className="text-xs space-y-0.5 border-b border-[#EAE7E0] pb-2 last:border-b-0 last:pb-0">
                       <div className="font-bold text-[#E67E22]">⚠️ {w.topicName}:</div>
@@ -800,7 +876,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           </div>
 
           {/* Action Plan & Tactics Tip */}
-          <div className="bg-[#5A5A40]/10 border border-[#5A5A40]/20 p-4 rounded-2xl space-y-3">
+          <div className="bg-[#5A5A40]/10 border border-[#5A5A40]/20 p-4 rounded-2xl space-y-2.5">
             <div className="flex items-center space-x-2">
               <ListOrdered className="w-4 h-4 text-[#5A5A40]" />
               <h4 className="text-xs font-bold text-[#5A5A40] uppercase tracking-wider">
@@ -831,11 +907,11 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
         </div>
 
         {/* Review Actions & Filters Bar */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex space-x-1.5">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
+          <div className="flex space-x-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
             <button
               onClick={() => setFilterResult('all')}
-              className={`px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer ${
+              className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${
                 filterResult === 'all'
                   ? 'bg-[#5A5A40] text-white'
                   : 'bg-white border border-[#EAE7E0] text-[#6B6B54] hover:bg-[#FAF9F6]'
@@ -845,7 +921,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             </button>
             <button
               onClick={() => setFilterResult('wrong')}
-              className={`px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer ${
+              className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${
                 filterResult === 'wrong'
                   ? 'bg-[#E67E22] text-white'
                   : 'bg-white border border-[#EAE7E0] text-[#E67E22] hover:bg-[#FDF2E9]'
@@ -855,7 +931,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             </button>
             <button
               onClick={() => setFilterResult('flagged')}
-              className={`px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer ${
+              className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${
                 filterResult === 'flagged'
                   ? 'bg-[#5A5A40] text-white'
                   : 'bg-white border border-[#EAE7E0] text-[#6B6B54] hover:bg-[#FAF9F6]'
@@ -868,14 +944,14 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           <div className="flex space-x-2">
             <button
               onClick={() => handleStartExam(exam.id)}
-              className="px-4 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EAE7E0] text-[#4A4A4A] rounded-full text-xs font-bold shadow-2xs transition flex items-center space-x-1.5 cursor-pointer"
+              className="flex-1 sm:flex-none px-4 py-2 bg-white hover:bg-[#FAF9F6] border border-[#EAE7E0] text-[#4A4A4A] rounded-full text-xs font-bold shadow-2xs transition flex items-center justify-center space-x-1.5 cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Làm lại đề này</span>
+              <span>Làm lại đề</span>
             </button>
             <button
               onClick={onBackToDashboard}
-              className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-full text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+              className="flex-1 sm:flex-none px-4 sm:px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-full text-xs font-bold shadow-xs transition flex items-center justify-center space-x-1.5 cursor-pointer"
             >
               <span>Về Dashboard</span>
             </button>
@@ -883,7 +959,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
         </div>
 
         {/* Detailed Explanations List */}
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           {questionsToReview.map((q) => {
             const userChoice = userAnswers[q.id];
             const isCorrect = userChoice === q.correctOption;
@@ -892,7 +968,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             return (
               <div
                 key={q.id}
-                className={`p-6 rounded-[2rem] bg-white border transition-all ${
+                className={`p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] bg-white border transition-all ${
                   isCorrect
                     ? 'border-[#8BA888]'
                     : isUnattempted
@@ -926,18 +1002,18 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                   ) : (
                     <span className="inline-flex items-center space-x-1 text-xs font-bold text-[#E67E22]">
                       <XCircle className="w-4 h-4" />
-                      <span>Sai (Đã lưu vào Sổ câu sai)</span>
+                      <span>Sai (Đã lưu)</span>
                     </span>
                   )}
                 </div>
 
                 {q.passage && (
-                  <div className="my-3 p-3 bg-[#FAF9F6] rounded-xl text-xs text-[#8A8A70] border border-[#EAE7E0]">
+                  <div className="my-2.5 p-3 bg-[#FAF9F6] rounded-xl text-xs text-[#8A8A70] border border-[#EAE7E0]">
                     {q.passage}
                   </div>
                 )}
 
-                <div className="mt-3 text-sm font-bold text-[#3D3D2D] leading-relaxed">
+                <div className="mt-2.5 text-xs sm:text-sm font-bold text-[#3D3D2D] leading-relaxed">
                   {q.content}
                 </div>
 
@@ -965,7 +1041,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                   })}
                 </div>
 
-                <div className="mt-4 p-4 rounded-2xl bg-[#FAF9F6] border border-[#EAE7E0] text-xs text-[#3D3D2D] space-y-2">
+                <div className="mt-3.5 p-3.5 sm:p-4 rounded-2xl bg-[#FAF9F6] border border-[#EAE7E0] text-xs text-[#3D3D2D] space-y-2">
                   <div className="font-bold flex items-center space-x-1.5 text-[#5A5A40]">
                     <BookOpen className="w-4 h-4" />
                     <span>Giải thích chi tiết & Quy tắc:</span>

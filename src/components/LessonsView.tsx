@@ -3,10 +3,8 @@ import { LESSONS_DATA } from '../data/lessonsData';
 import { TOPICS_META } from '../data/topicsMeta';
 import {
   BookOpen,
-  Sparkles,
   Zap,
   Lightbulb,
-  CheckCircle2,
   ChevronRight,
   Search,
 } from 'lucide-react';
@@ -28,14 +26,14 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
   );
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+    <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6 pb-6">
       {/* Header */}
-      <div className="bg-[#5A5A40] text-white p-6 sm:p-8 rounded-[2rem] shadow-sm">
-        <div className="max-w-2xl space-y-2">
+      <div className="bg-[#5A5A40] text-white p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-[2rem] shadow-sm">
+        <div className="max-w-2xl space-y-1.5 sm:space-y-2">
           <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
             Hệ thống Kiến thức Trọng tâm Vào 10
           </span>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-white">
             Sổ Tay Lý Thuyết & Mẹo Thi Đột Phá
           </h1>
           <p className="text-xs sm:text-sm text-[#D9D2C5] leading-relaxed">
@@ -45,10 +43,36 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
         </div>
       </div>
 
-      {/* Main 2-Column: Sidebar of Lessons (Left) & Detailed Theory Sheet (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Lesson Navigation (4 cols) */}
-        <div className="lg:col-span-4 space-y-3">
+      {/* MOBILE LESSON SELECTOR (Horizontal scrolling chips) */}
+      <div className="lg:hidden space-y-2">
+        <div className="flex items-center justify-between text-xs font-bold text-[#5A5A40]">
+          <span>Chọn chuyên đề lý thuyết:</span>
+          <span className="text-[11px] text-[#8A8A70]">{filteredLessons.length} bài</span>
+        </div>
+        <div className="flex space-x-2 overflow-x-auto pb-1.5 no-scrollbar">
+          {filteredLessons.map((lesson, idx) => {
+            const isSelected = lesson.id === selectedLessonId;
+            return (
+              <button
+                key={lesson.id}
+                onClick={() => setSelectedLessonId(lesson.id)}
+                className={`px-3.5 py-2 rounded-2xl text-xs font-semibold whitespace-nowrap transition cursor-pointer shrink-0 border ${
+                  isSelected
+                    ? 'bg-[#5A5A40] text-white border-[#5A5A40] shadow-xs'
+                    : 'bg-white border-[#EAE7E0] text-[#6B6B54] hover:bg-[#FAF9F6]'
+                }`}
+              >
+                <span>Bài {idx + 1}: {lesson.title}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Main 2-Column: Sidebar of Lessons (Left on Desktop) & Detailed Theory Sheet (Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
+        {/* Left Lesson Navigation (4 cols on Desktop, hidden on Mobile in favor of horizontal bar above) */}
+        <div className="hidden lg:block lg:col-span-4 space-y-3">
           {/* Search box */}
           <div className="relative">
             <Search className="w-4 h-4 text-[#8A8A70] absolute left-3 top-3" />
@@ -61,7 +85,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto no-scrollbar pr-1">
             {filteredLessons.map((lesson) => {
               const isSelected = lesson.id === selectedLessonId;
               const topicMeta = TOPICS_META.find((t) => t.id === lesson.topicId);
@@ -70,7 +94,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
                 <button
                   key={lesson.id}
                   onClick={() => setSelectedLessonId(lesson.id)}
-                  className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
+                  className={`w-full text-left p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
                     isSelected
                       ? 'bg-[#5A5A40] text-white border-[#5A5A40] shadow-sm'
                       : 'bg-white border-[#EAE7E0] text-[#4A4A4A] hover:bg-[#FAF9F6]'
@@ -99,14 +123,14 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
           </div>
         </div>
 
-        {/* Right Detailed Lesson Content (8 cols) */}
-        <div className="lg:col-span-8 bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-sm p-6 sm:p-8 space-y-6">
+        {/* Right Detailed Lesson Content (8 cols on Desktop, full width on Mobile) */}
+        <div className="lg:col-span-8 bg-white rounded-2xl sm:rounded-[2.5rem] border border-[#EAE7E0] shadow-sm p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-6">
           {/* Lesson Header */}
-          <div className="pb-4 border-b border-[#F5F2ED] space-y-2">
-            <span className="px-2.5 py-0.5 bg-[#F5F2ED] text-[#5A5A40] font-bold text-xs rounded-lg uppercase">
+          <div className="pb-4 border-b border-[#F5F2ED] space-y-1.5 sm:space-y-2">
+            <span className="px-2.5 py-0.5 bg-[#F5F2ED] text-[#5A5A40] font-bold text-[10px] sm:text-xs rounded-lg uppercase">
               Chuyên đề ôn thi số {LESSONS_DATA.findIndex((l) => l.id === currentLesson.id) + 1}
             </span>
-            <h2 className="text-xl sm:text-2xl font-bold text-[#3D3D2D]">{currentLesson.title}</h2>
+            <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-[#3D3D2D]">{currentLesson.title}</h2>
             <p className="text-xs sm:text-sm text-[#8A8A70] leading-relaxed">
               {currentLesson.summary}
             </p>
@@ -114,7 +138,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
 
           {/* Key Formulas Section */}
           <div className="space-y-3">
-            <h3 className="text-sm font-bold text-[#3D3D2D] flex items-center space-x-2">
+            <h3 className="text-xs sm:text-sm font-bold text-[#3D3D2D] flex items-center space-x-2">
               <Zap className="w-4 h-4 text-[#E67E22] fill-[#E67E22]" />
               <span>Công thức & Cấu trúc cốt lõi</span>
             </h3>
@@ -123,12 +147,12 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
               {currentLesson.formulas.map((item, idx) => (
                 <div
                   key={idx}
-                  className="p-4 rounded-2xl bg-[#FAF9F6] border border-[#EAE7E0] text-xs sm:text-sm space-y-2"
+                  className="p-3.5 sm:p-4 rounded-2xl bg-[#FAF9F6] border border-[#EAE7E0] text-xs sm:text-sm space-y-2"
                 >
                   <div className="font-bold text-[#5A5A40] text-xs sm:text-sm">
                     {item.name}
                   </div>
-                  <div className="p-3 bg-white rounded-xl border border-[#D9D2C5] font-mono text-xs font-bold text-[#3D3D2D] whitespace-pre-line leading-relaxed shadow-2xs">
+                  <div className="p-2.5 sm:p-3 bg-white rounded-xl border border-[#D9D2C5] font-mono text-xs font-bold text-[#3D3D2D] whitespace-pre-line leading-relaxed shadow-2xs overflow-x-auto">
                     {item.formula}
                   </div>
                   <p className="text-[#4A4A4A] text-xs">
@@ -147,7 +171,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
           {/* Rules & In-depth Details */}
           {currentLesson.rules && currentLesson.rules.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-sm font-bold text-[#3D3D2D] flex items-center space-x-2">
+              <h3 className="text-xs sm:text-sm font-bold text-[#3D3D2D] flex items-center space-x-2">
                 <BookOpen className="w-4 h-4 text-[#5A5A40]" />
                 <span>Quy tắc chuyển đổi & Lưu ý quan trọng</span>
               </h3>
@@ -156,7 +180,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
                 {currentLesson.rules.map((r, rIdx) => (
                   <div
                     key={rIdx}
-                    className="p-4 rounded-2xl bg-[#FAF9F6] border border-[#EAE7E0] text-xs sm:text-sm space-y-2"
+                    className="p-3.5 sm:p-4 rounded-2xl bg-[#FAF9F6] border border-[#EAE7E0] text-xs sm:text-sm space-y-2"
                   >
                     <h5 className="font-bold text-[#3D3D2D]">{r.title}</h5>
                     <p className="text-[#6B6B54] leading-relaxed text-xs">{r.detail}</p>
@@ -176,7 +200,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
 
           {/* Exam Tips Box */}
           {currentLesson.examTips && currentLesson.examTips.length > 0 && (
-            <div className="p-5 rounded-2xl bg-[#FDF2E9] border border-[#E8C07D] text-[#3D3D2D] space-y-2">
+            <div className="p-4 sm:p-5 rounded-2xl bg-[#FDF2E9] border border-[#E8C07D] text-[#3D3D2D] space-y-2">
               <h4 className="font-bold text-xs sm:text-sm text-[#E67E22] flex items-center space-x-1.5">
                 <Lightbulb className="w-4 h-4 text-[#E67E22] fill-[#E67E22]" />
                 <span>Bí kíp & Mẹo tránh bẫy Đề thi Vào 10:</span>
@@ -193,13 +217,13 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
           )}
 
           {/* Bottom Action: Practice this topic */}
-          <div className="pt-4 border-t border-[#F5F2ED] flex items-center justify-between">
+          <div className="pt-4 border-t border-[#F5F2ED] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs text-[#8A8A70]">
               Đã hiểu lý thuyết? Hãy làm bài tập củng cố ngay!
             </div>
             <button
               onClick={() => onPracticeTopic(currentLesson.topicId)}
-              className="px-5 py-2.5 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-full text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+              className="w-full sm:w-auto px-5 py-2.5 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-full text-xs font-bold shadow-xs transition flex items-center justify-center space-x-1.5 cursor-pointer"
             >
               <Zap className="w-4 h-4" />
               <span>Luyện bài tập chủ đề này</span>

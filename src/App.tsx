@@ -31,8 +31,8 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-full bg-[#F5F2ED] text-[#4A4A4A] font-sans overflow-hidden">
-      {/* Sidebar Navigation */}
+    <div className="flex flex-col lg:flex-row h-screen w-full bg-[#F5F2ED] text-[#4A4A4A] font-sans overflow-hidden">
+      {/* Sidebar Navigation (Desktop) & Top Header + Bottom Bar (Mobile) */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -40,7 +40,7 @@ const AppContent: React.FC = () => {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 p-4 sm:p-8 flex flex-col overflow-y-auto">
+      <main className="flex-1 p-3.5 sm:p-6 lg:p-8 pb-20 lg:pb-8 flex flex-col overflow-y-auto w-full">
         <div className="max-w-6xl w-full mx-auto">
           {activeTab === 'dashboard' && (
             <Dashboard
