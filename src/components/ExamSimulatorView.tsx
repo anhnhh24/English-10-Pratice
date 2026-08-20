@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Exam, Question } from '../types';
+import { Exam, Question, TopicId } from '../types';
+import { TOPICS_META } from '../data/topicsMeta';
+import {
+  getLocalExamEvaluation,
+  generateExamEvaluationWithAI,
+  getStoredApiKey,
+  ExamEvaluationReport,
+} from '../services/aiExamService';
 import confetti from 'canvas-confetti';
 import {
   Clock,
@@ -15,6 +22,15 @@ import {
   Bookmark,
   ArrowLeft,
   Check,
+  Sparkles,
+  Award,
+  TrendingUp,
+  Target,
+  Wand2,
+  RefreshCw,
+  Lightbulb,
+  ShieldAlert,
+  ListOrdered,
 } from 'lucide-react';
 
 interface ExamSimulatorViewProps {
@@ -28,7 +44,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   onBackToDashboard,
   onOpenAiTutor,
 }) => {
-  const { exams, getQuestionById, saveExamAttempt, isBookmarked, toggleBookmark } = useApp();
+  const { currentUser, exams, getQuestionById, saveExamAttempt, isBookmarked, toggleBookmark } = useApp();
 
   const [selectedExamId, setSelectedExamId] = useState<string>(examId);
   const exam = exams.find((e) => e.id === selectedExamId) || exams[0];
@@ -41,6 +57,11 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   const [timeLeft, setTimeLeft] = useState<number>(exam ? exam.timeLimitMinutes * 60 : 3600);
   const [showSubmitModal, setShowSubmitModal] = useState<boolean>(false);
   const [filterResult, setFilterResult] = useState<'all' | 'wrong' | 'flagged'>('all');
+
+  // AI Diagnostic Assessment States
+  const [aiAnalyzing, setAiAnalyzing] = useState<boolean>(false);
+  const [aiEvaluation, setAiEvaluation] = useState<ExamEvaluationReport | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // Completed Attempt State
   const [completedAttempt, setCompletedAttempt] = useState<any>(null);
@@ -501,8 +522,78 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
       return true;
     });
 
+    // 1. Compute Topic Matrix Breakdown
+    const topicBreakdown: Record<string, { total: number; correct: number; wrong: number; name: string }> = {};
+    examQuestions.forEach((q) => {
+      const tMeta = TOPICS_META.find((t) => t.id === q.topicId);
+      const tName = tMeta ? tMeta.nameVi : q.topicId;
+      if (!topicBreakdown[q.topicId]) {
+        topicBreakdown[q.topicId] = { total: 0, correct: 0, wrong: 0, name: tName };
+      }
+      topicBreakdown[q.topicId].total += 1;
+      const userChoice = userAnswers[q.id];
+      if (userChoice === q.correctOption) {
+        topicBreakdown[q.topicId].correct += 1;
+      } else {
+        topicBreakdown[q.topicId].wrong += 1;
+      }
+    });
+
+    // 2. Active Evaluation (either AI or Local rule-based)
+    const currentEvaluation =
+      aiEvaluation ||
+      getLocalExamEvaluation(
+        completedAttempt.score,
+        completedAttempt.totalQuestions,
+        completedAttempt.timeSpentSeconds,
+        exam.timeLimitMinutes,
+        topicBreakdown,
+        currentUser.targetScore
+      );
+
+    // AI Trigger handler
+    const handleRunAiDeepAnalysis = async () => {
+      const key = getStoredApiKey();
+      if (!key) {
+        setAiError(
+          'Vui lòng vào tab "AI Tạo đề theo yêu cầu" để nhập Gemini API Key trước khi sử dụng tính năng phân tích chuyên sâu.'
+        );
+        return;
+      }
+      setAiAnalyzing(true);
+      setAiError(null);
+      try {
+        const wrongList = examQuestions
+          .filter((q) => userAnswers[q.id] !== q.correctOption)
+          .map((q) => ({
+            content: q.content,
+            userChoice: userAnswers[q.id] !== undefined ? q.options[userAnswers[q.id]] : 'Chưa làm',
+            correctChoice: q.options[q.correctOption],
+            topic: q.topicId,
+            explanation: q.explanation,
+          }));
+
+        const result = await generateExamEvaluationWithAI(
+          key,
+          completedAttempt.examTitle,
+          completedAttempt.score,
+          completedAttempt.totalQuestions,
+          completedAttempt.timeSpentSeconds,
+          topicBreakdown,
+          wrongList,
+          currentUser.targetScore
+        );
+        setAiEvaluation(result);
+      } catch (err: any) {
+        setAiError(err.message || 'Không thể kết nối AI. Vui lòng thử lại.');
+      } finally {
+        setAiAnalyzing(false);
+      }
+    };
+
     return (
       <div className="max-w-4xl mx-auto space-y-6 pb-12">
+        {/* Main Score & Summary Card */}
         <div className="bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-sm overflow-hidden">
           <div className="p-6 sm:p-8 bg-[#5A5A40] text-white flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="space-y-1 text-center sm:text-left">
@@ -550,6 +641,192 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                 {completedAttempt.unattemptedCount}
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* 🌟 DIAGNOSTIC & WEAKNESS EVALUATION SECTION */}
+        <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 border border-[#D9D2C5] shadow-xs space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#EAE7E0] pb-4">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-9 h-9 rounded-2xl bg-[#8BA888]/20 flex items-center justify-center text-[#5A5A40]">
+                <Award className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-[#3D3D2D]">
+                  Đánh Giá Năng Lực & Các Điểm Cần Cải Thiện
+                </h3>
+                <p className="text-xs text-[#8A8A70]">
+                  {aiEvaluation
+                    ? '✨ Báo cáo phân tích chuyên sâu cá nhân hóa bởi Gemini AI'
+                    : 'Phân tích ma trận kết quả tự động'}
+                </p>
+              </div>
+            </div>
+
+            {/* AI Deep Analysis Button */}
+            <button
+              onClick={handleRunAiDeepAnalysis}
+              disabled={aiAnalyzing}
+              className="px-4 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] text-[#5A5A40] rounded-2xl text-xs font-bold transition flex items-center space-x-2 cursor-pointer disabled:opacity-60"
+            >
+              {aiAnalyzing ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#E67E22]" />
+                  <span>AI đang phân tích bài thi...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5 text-[#E67E22]" />
+                  <span>{aiEvaluation ? 'Phân tích lại bằng AI' : '🤖 AI Phân tích chuyên sâu'}</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {aiError && (
+            <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-2xl flex items-center space-x-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+              <span>{aiError}</span>
+            </div>
+          )}
+
+          {/* Overall & Grade Prediction */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2 bg-[#FAF9F6] p-4 rounded-2xl border border-[#EAE7E0] space-y-1.5">
+              <span className="text-[10px] font-bold text-[#8A8A70] uppercase tracking-wider block">
+                Nhận xét tổng quan
+              </span>
+              <p className="text-xs text-[#3D3D2D] leading-relaxed">
+                {currentEvaluation.overallAssessment}
+              </p>
+              <p className="text-[11px] text-[#6B6B54] italic pt-1">
+                ⏱ {currentEvaluation.timeManagementComment}
+              </p>
+            </div>
+
+            <div className="bg-[#8BA888]/15 border border-[#8BA888]/30 p-4 rounded-2xl flex flex-col justify-between">
+              <span className="text-[10px] font-bold text-[#5A5A40] uppercase tracking-wider">
+                Dự đoán điểm thi vào 10
+              </span>
+              <div className="my-1">
+                <p className="text-sm font-bold text-[#2C3E2D]">
+                  {currentEvaluation.gradePrediction}
+                </p>
+              </div>
+              <span className="text-[10px] text-[#5A5A40] font-medium">
+                🎯 Mục tiêu của bạn: {currentUser.targetScore}đ ({currentUser.targetSchool})
+              </span>
+            </div>
+          </div>
+
+          {/* Topic Matrix Breakdown */}
+          <div className="space-y-3 pt-1">
+            <h4 className="text-xs font-bold text-[#5A5A40] uppercase tracking-wider flex items-center space-x-1.5">
+              <TrendingUp className="w-4 h-4 text-[#8BA888]" />
+              <span>Tỷ lệ chính xác theo chuyên đề trong đề thi:</span>
+            </h4>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {Object.entries(topicBreakdown).map(([tId, tData]) => {
+                const acc = tData.total > 0 ? Math.round((tData.correct / tData.total) * 100) : 0;
+                const isGood = acc >= 75;
+                return (
+                  <div
+                    key={tId}
+                    className="p-3 bg-[#FAF9F6] border border-[#EAE7E0] rounded-2xl space-y-2"
+                  >
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span className="text-[#3D3D2D]">{tData.name}</span>
+                      <span className={isGood ? 'text-emerald-700' : 'text-[#E67E22]'}>
+                        {tData.correct}/{tData.total} câu ({acc}%)
+                      </span>
+                    </div>
+                    <div className="w-full bg-[#E8E2D9] h-2 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          isGood ? 'bg-[#8BA888]' : 'bg-[#E67E22]'
+                        }`}
+                        style={{ width: `${acc}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Strengths & Weaknesses (Areas for Improvement) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+            {/* Strengths */}
+            <div className="bg-[#FAF9F6] border border-[#8BA888]/40 p-4 rounded-2xl space-y-2">
+              <div className="flex items-center space-x-1.5 text-emerald-800 font-bold text-xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>Điểm mạnh đã phát huy:</span>
+              </div>
+              <ul className="space-y-1.5 text-xs text-[#3D3D2D]">
+                {currentEvaluation.strengths.map((str, idx) => (
+                  <li key={idx} className="flex items-start space-x-2">
+                    <span className="text-emerald-600 font-bold">•</span>
+                    <span>{str}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Areas for Improvement / Weaknesses */}
+            <div className="bg-[#FAF9F6] border border-[#E67E22]/40 p-4 rounded-2xl space-y-2">
+              <div className="flex items-center space-x-1.5 text-[#D35400] font-bold text-xs">
+                <ShieldAlert className="w-4 h-4 text-[#E67E22]" />
+                <span>Các điểm cần cải thiện ngay:</span>
+              </div>
+              {currentEvaluation.weaknesses.length === 0 ? (
+                <p className="text-xs text-[#8A8A70]">
+                  Không phát hiện lỗ hổng lớn nào! Bạn đã làm rất tốt.
+                </p>
+              ) : (
+                <div className="space-y-2.5">
+                  {currentEvaluation.weaknesses.map((w, idx) => (
+                    <div key={idx} className="text-xs space-y-0.5 border-b border-[#EAE7E0] pb-2 last:border-b-0 last:pb-0">
+                      <div className="font-bold text-[#E67E22]">⚠️ {w.topicName}:</div>
+                      <p className="text-[#3D3D2D]">{w.issue}</p>
+                      <p className="text-[11px] text-[#5A5A40] font-medium bg-[#E8E2D9]/40 p-1.5 rounded-lg mt-1">
+                        👉 <strong>Giải pháp:</strong> {w.solution}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Action Plan & Tactics Tip */}
+          <div className="bg-[#5A5A40]/10 border border-[#5A5A40]/20 p-4 rounded-2xl space-y-3">
+            <div className="flex items-center space-x-2">
+              <ListOrdered className="w-4 h-4 text-[#5A5A40]" />
+              <h4 className="text-xs font-bold text-[#5A5A40] uppercase tracking-wider">
+                Lộ trình hành động đề xuất:
+              </h4>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {currentEvaluation.actionPlan.map((act, idx) => (
+                <div
+                  key={idx}
+                  className="bg-white p-3 rounded-xl border border-[#D9D2C5] text-xs text-[#3D3D2D] space-y-1 shadow-2xs"
+                >
+                  <span className="w-5 h-5 rounded-full bg-[#5A5A40] text-white text-[10px] font-bold flex items-center justify-center">
+                    {idx + 1}
+                  </span>
+                  <p className="leading-snug">{act}</p>
+                </div>
+              ))}
+            </div>
+
+            {currentEvaluation.examTacticsTip && (
+              <div className="pt-2 border-t border-[#D9D2C5] flex items-start space-x-2 text-xs text-[#5A5A40]">
+                <Lightbulb className="w-4 h-4 text-[#E67E22] shrink-0 mt-0.5" />
+                <span className="font-medium">{currentEvaluation.examTacticsTip}</span>
+              </div>
+            )}
           </div>
         </div>
 

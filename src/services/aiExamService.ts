@@ -245,3 +245,205 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
     questions: formattedQuestions,
   };
 }
+
+export interface ExamEvaluationReport {
+  overallAssessment: string;
+  gradePrediction: string;
+  strengths: string[];
+  weaknesses: {
+    topicName: string;
+    issue: string;
+    solution: string;
+  }[];
+  actionPlan: string[];
+  timeManagementComment: string;
+  examTacticsTip: string;
+}
+
+/**
+ * Đánh giá kết quả bài thi tức thì bằng thuật toán phân tích ma trận kiến thức
+ */
+export function getLocalExamEvaluation(
+  score: number,
+  totalQuestions: number,
+  timeSpentSeconds: number,
+  timeLimitMinutes: number,
+  topicBreakdown: Record<string, { total: number; correct: number; wrong: number; name: string }>,
+  targetScore: number = 8.5
+): ExamEvaluationReport {
+  const percentage = Math.round((score / 10) * 100);
+  const timeSpentMinutes = Math.round(timeSpentSeconds / 60);
+
+  // Điểm mạnh: những phần làm đúng >= 80%
+  const strengths: string[] = [];
+  // Điểm yếu: những phần làm sai > 30%
+  const weaknesses: { topicName: string; issue: string; solution: string }[] = [];
+
+  Object.values(topicBreakdown).forEach((tb) => {
+    if (tb.total > 0) {
+      const acc = (tb.correct / tb.total) * 100;
+      if (acc >= 75) {
+        strengths.push(`${tb.name} (Đúng ${tb.correct}/${tb.total} câu - ${Math.round(acc)}%)`);
+      } else {
+        weaknesses.push({
+          topicName: tb.name,
+          issue: `Tỷ lệ làm đúng chỉ đạt ${Math.round(acc)}% (${tb.wrong} câu sai trong phần này).`,
+          solution: `Xem lại lý thuyết trọng tâm về ${tb.name} và luyện tập thêm 15-20 câu chuyên đề tương tự.`,
+        });
+      }
+    }
+  });
+
+  if (strengths.length === 0) {
+    strengths.push('Tinh thần nỗ lực hoàn thành trọn vẹn bài thi đúng thời gian quy định.');
+  }
+
+  let overall = '';
+  let gradePrediction = '';
+  if (score >= 9.0) {
+    overall = `Xuất sắc! Bạn đã đạt ${score} điểm, hoàn toàn làm chủ kiến thức và đạt phong độ sẵn sàng thi vào các trường THPT Chuyên hoặc Top 1.`;
+    gradePrediction = `Dự đoán điểm thi vào 10 thực tế: 9.0 - 9.75 (Tỷ lệ đỗ NV1: >95%)`;
+  } else if (score >= 8.0) {
+    overall = `Rất tốt! Điểm số ${score} cho thấy nền tảng ngữ pháp và từ vựng của bạn rất vững vàng, đang tiệm cận mức điểm thi vào các trường THPT chất lượng cao.`;
+    gradePrediction = `Dự đoán điểm thi vào 10 thực tế: 8.0 - 8.75 (Tỷ lệ đỗ NV1: ~88%)`;
+  } else if (score >= 6.5) {
+    overall = `Khá ổn! Bạn đạt ${score} điểm. Bạn đã nắm chắc các câu cơ bản nhưng còn vấp phải một số bẫy câu phân loại và mệnh đề nâng cao.`;
+    gradePrediction = `Dự đoán điểm thi vào 10 thực tế: 6.5 - 7.5 (Cần bứt phá thêm để chắc suất NV1)`;
+  } else {
+    overall = `Bạn đạt ${score} điểm. Cần tập trung ôn luyện lại các mảng ngữ pháp nền tảng (các thì cơ bản, câu điều kiện, phát âm) trước khi giải thêm đề tổng hợp.`;
+    gradePrediction = `Dự đoán điểm thi vào 10 thực tế: 5.5 - 6.5 (Cần kế hoạch ôn luyện tập trung)`;
+  }
+
+  let timeComment = '';
+  if (timeSpentMinutes <= timeLimitMinutes * 0.6) {
+    timeComment = `Bạn làm bài rất nhanh (${timeSpentMinutes}/${timeLimitMinutes} phút). Hãy chú ý đọc kỹ từng câu và rà soát lại các câu bẫy trước khi nộp để tránh mất điểm đáng tiếc.`;
+  } else if (timeSpentMinutes >= timeLimitMinutes * 0.95) {
+    timeComment = `Bạn dùng gần hết thời gian (${timeSpentMinutes}/${timeLimitMinutes} phút). Nên rèn thêm phản xạ làm nhanh các câu ngữ âm và ngữ pháp đơn giản để dành nhiều thời gian cho phần Đọc hiểu.`;
+  } else {
+    timeComment = `Tốc độ phân bổ thời gian hợp lý (${timeSpentMinutes}/${timeLimitMinutes} phút).`;
+  }
+
+  const actionPlan = [
+    'Mở Sổ câu sai để đọc kỹ phần giải thích chi tiết và ghi nhớ công thức của các câu vừa làm sai.',
+    weaknesses.length > 0
+      ? `Tập trung luyện chuyên đề "${weaknesses[0].topicName}" để vá lỗ hổng kiến thức ngay trong tuần này.`
+      : 'Tiếp tục luyện thêm 1 đề thi thử mới để duy trì cảm giác phòng thi.',
+    'Áp dụng quy tắc "loại trừ đáp án sai rõ ràng" trước khi chọn đáp án cuối cùng đối với câu phân vân.',
+  ];
+
+  return {
+    overallAssessment: overall,
+    gradePrediction,
+    strengths,
+    weaknesses,
+    actionPlan,
+    timeManagementComment: timeComment,
+    examTacticsTip: 'Chiến thuật phòng thi: Làm phần Ngữ âm & Trọng âm trước (5 phút) -> Câu ngắn từ vựng/ngữ pháp (15 phút) -> Bài đọc & Viết lại câu (25 phút) -> 10 phút cuối soát lại toàn bộ phiếu trả lời.',
+  };
+}
+
+/**
+ * Đánh giá chuyên sâu và cá nhân hóa bằng Gemini AI
+ */
+export async function generateExamEvaluationWithAI(
+  apiKey: string,
+  examTitle: string,
+  score: number,
+  totalQuestions: number,
+  timeSpentSeconds: number,
+  topicBreakdown: Record<string, { total: number; correct: number; wrong: number; name: string }>,
+  wrongQuestionsList: { content: string; userChoice: string; correctChoice: string; topic: string; explanation: string }[],
+  targetScore: number = 8.5,
+  modelName: string = 'gemini-2.5-flash'
+): Promise<ExamEvaluationReport> {
+  const effectiveKey = apiKey.trim() || getStoredApiKey();
+  if (!effectiveKey) {
+    throw new Error('Chưa cung cấp Gemini API Key.');
+  }
+
+  const prompt = `Bạn là một chuyên gia khảo thí và cố vấn học tập luyện thi Tiếng Anh vào lớp 10 THPT.
+Hãy phân tích kết quả bài làm sau của một học sinh và đưa ra báo cáo đánh giá năng lực chi tiết, chỉ ra chính xác các lỗ hổng kiến thức và lộ trình khắc phục điểm yếu.
+
+THÔNG TIN BÀI THI:
+- Đề thi: ${examTitle}
+- Điểm số đạt được: ${score}/10 (Số câu đúng: ${totalQuestions - wrongQuestionsList.length}/${totalQuestions})
+- Thời gian làm bài: ${Math.round(timeSpentSeconds / 60)} phút
+- Mục tiêu điểm của học sinh: ${targetScore}/10
+
+THỐNG KÊ KẾT QUẢ THEO TỪNG CHUYÊN ĐỀ:
+${Object.entries(topicBreakdown)
+  .map(([_, v]) => `- ${v.name}: Đúng ${v.correct}/${v.total} câu (${Math.round((v.correct / (v.total || 1)) * 100)}%)`)
+  .join('\n')}
+
+DANH SÁCH CÁC CÂU LÀM SAI VÀ LÝ DO:
+${wrongQuestionsList
+  .slice(0, 10)
+  .map(
+    (q, i) =>
+      `${i + 1}. [Chủ đề: ${q.topic}] Câu: "${q.content}" | Học sinh chọn sai: "${q.userChoice}" | Đáp án đúng: "${q.correctChoice}" | Lời giải: "${q.explanation}"`
+  )
+  .join('\n')}
+
+YÊU CẦU ĐẦU RA (JSON FORMAT):
+Bạn PHẢI trả về DUY NHẤT một chuỗi JSON hợp lệ không bọc thêm văn bản giải thích:
+{
+  "overallAssessment": "Nhận xét tổng quan toàn diện về năng lực, mức độ nắm vững kiến thức so với mục tiêu ${targetScore}đ",
+  "gradePrediction": "Dự đoán dải điểm thi vào lớp 10 thực tế và khả năng đỗ NV1",
+  "strengths": [
+    "Điểm mạnh 1 (các dạng câu hoặc kỹ năng học sinh xử lý tốt)",
+    "Điểm mạnh 2"
+  ],
+  "weaknesses": [
+    {
+      "topicName": "Tên phần kiến thức bị hổng (ví dụ: Mệnh đề quan hệ / Câu điều kiện loại 3)",
+      "issue": "Mô tả cụ thể lỗi sai hay mắc phải và bẫy bị lừa",
+      "solution": "Cách khắc phục và mẹo ghi nhớ ngắn gọn"
+    }
+  ],
+  "actionPlan": [
+    "Bước 1 trong lộ trình cải thiện điểm số tuần này",
+    "Bước 2",
+    "Bước 3"
+  ],
+  "timeManagementComment": "Nhận xét về tốc độ làm bài và phân bổ thời gian",
+  "examTacticsTip": "Mẹo chiến thuật làm bài thi thực tế để không bị mất điểm oan"
+}`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(effectiveKey)}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.6,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const errorMsg = errorData?.error?.message || response.statusText;
+    throw new Error(`Lỗi từ Gemini API (${response.status}): ${errorMsg}`);
+  }
+
+  const responseData = await response.json();
+  const rawText = responseData?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!rawText) {
+    throw new Error('Không nhận được phản hồi đánh giá từ AI.');
+  }
+
+  let parsed: ExamEvaluationReport;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    const cleaned = rawText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+    parsed = JSON.parse(cleaned);
+  }
+
+  return parsed;
+}
+
