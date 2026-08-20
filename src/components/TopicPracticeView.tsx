@@ -4,6 +4,10 @@ import { TOPICS_META } from '../data/topicsMeta';
 import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
 import { Question, TopicId } from '../types';
 import {
+  generateExamWithAI,
+  getStoredApiKey,
+} from '../services/aiExamService';
+import {
   CheckCircle2,
   XCircle,
   BookOpen,
@@ -12,6 +16,12 @@ import {
   ChevronRight,
   Award,
   ArrowLeft,
+  Wand2,
+  Sparkles,
+  RefreshCw,
+  Zap,
+  Lightbulb,
+  AlertTriangle,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -24,8 +34,15 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
   initialTopicId,
   onBackToDashboard,
 }) => {
-  const { currentSubject, questions, recordAnswerResult, savePracticeSession, toggleBookmark, isBookmarked } =
-    useApp();
+  const {
+    currentSubject,
+    questions,
+    recordAnswerResult,
+    savePracticeSession,
+    toggleBookmark,
+    isBookmarked,
+    bulkImportQuestions,
+  } = useApp();
 
   const currentTopicsMeta = currentSubject === 'math' ? MATH_TOPICS_META : TOPICS_META;
   const defaultTopic: TopicId = currentSubject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar';
@@ -54,6 +71,24 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
   const [isFinished, setIsFinished] = useState<boolean>(false);
   const [startTime, setStartTime] = useState<number>(Date.now());
 
+  // AI Topic Generator States
+  const [showAiModal, setShowAiModal] = useState<boolean>(false);
+  const [aiCustomPrompt, setAiCustomPrompt] = useState<string>('');
+  const [aiCount, setAiCount] = useState<number>(10);
+  const [aiDifficulty, setAiDifficulty] = useState<'standard' | 'advanced' | 'challenge'>('standard');
+  const [aiLoading, setAiLoading] = useState<boolean>(false);
+  const [aiStatusMsg, setAiStatusMsg] = useState<string>('');
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const isMath = currentSubject === 'math';
+  const theme = {
+    primaryBg: isMath ? 'bg-[#1E3A8A]' : 'bg-[#5A5A40]',
+    primaryText: isMath ? 'text-[#1E3A8A]' : 'text-[#5A5A40]',
+    accentBg: isMath ? 'bg-[#2563EB]' : 'bg-[#8BA888]',
+    accentColor: isMath ? 'text-[#2563EB]' : 'text-[#8BA888]',
+    selectedBorder: isMath ? 'border-[#1E3A8A]' : 'border-[#5A5A40]',
+  };
+
   // Filter pool by topic, subject & difficulty
   const topicQuestionsPool = questions.filter((q) => {
     if ((q.subject || 'english') !== currentSubject) return false;
@@ -80,6 +115,50 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
     setIsFinished(false);
     setIsPracticing(true);
     setStartTime(Date.now());
+  };
+
+  const handleGenerateWithAI = async () => {
+    setAiLoading(true);
+    setAiError(null);
+    setAiStatusMsg('Đang gửi yêu cầu đến Gemini AI...');
+    try {
+      const currentMeta = currentTopicsMeta.find((t) => t.id === selectedTopic);
+      const apiKey = getStoredApiKey();
+      const res = await generateExamWithAI(
+        apiKey,
+        {
+          subject: currentSubject,
+          title: `Luyện Chuyên Đề: ${currentMeta?.nameVi || selectedTopic} (Tạo bởi AI)`,
+          difficulty: aiDifficulty,
+          totalQuestions: aiCount,
+          timeLimitMinutes: 30,
+          focusTopics: [selectedTopic],
+          customPrompt: aiCustomPrompt
+            ? `Chỉ tạo các câu hỏi thuộc chuyên đề ${currentMeta?.nameVi}. Yêu cầu trọng tâm: ${aiCustomPrompt}`
+            : `Chỉ tạo các câu hỏi thuộc chuyên đề ${currentMeta?.nameVi} chuẩn cấu trúc đề tuyển sinh vào lớp 10.`,
+        },
+        (msg) => setAiStatusMsg(msg)
+      );
+
+      // Save generated questions
+      bulkImportQuestions(res.questions);
+
+      // Start session immediately
+      setPracticeQuestions(res.questions);
+      setCurrentIdx(0);
+      setUserAnswers({});
+      setCheckedQuestions({});
+      setIsFinished(false);
+      setIsPracticing(true);
+      setShowAiModal(false);
+      setStartTime(Date.now());
+      confetti({ particleCount: 50, spread: 60 });
+    } catch (err: any) {
+      console.error(err);
+      setAiError(err.message || 'Lỗi khi tạo câu hỏi với AI. Vui lòng kiểm tra lại kết nối API.');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const currentQ = practiceQuestions[currentIdx];
@@ -258,21 +337,202 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
               ))}
             </div>
 
-            <div className="mt-4 p-3.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-2xl text-xs text-[#5A5A40]">
-              Có <strong>{topicQuestionsPool.length}</strong> câu hỏi sẵn sàng trong ngân hàng đề.
+            <div className={`mt-4 p-3.5 rounded-2xl text-xs flex items-center justify-between ${isMath ? 'bg-blue-50 text-blue-900 border border-blue-200' : 'bg-[#FAF9F6] text-[#5A5A40] border border-[#D9D2C5]'}`}>
+              <span>Có <strong>{topicQuestionsPool.length}</strong> câu hỏi có sẵn trong kho đề.</span>
             </div>
           </div>
+        </div>
+
+        {/* AI Generator Feature Card */}
+        <div className={`p-5 rounded-[2.5rem] text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm ${isMath ? 'bg-gradient-to-r from-[#1E3A8A] to-[#2563EB]' : 'bg-gradient-to-r from-[#5A5A40] to-[#789675]'}`}>
+          <div className="space-y-1">
+            <div className="flex items-center space-x-2">
+              <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-200">
+                AI Exam Generator Cho Chuyên Đề
+              </span>
+            </div>
+            <h4 className="text-base font-bold text-white">
+              Cần thêm câu hỏi mới về "{currentTopicsMeta.find((t) => t.id === selectedTopic)?.nameVi}"?
+            </h4>
+            <p className="text-xs text-white/80 max-w-lg">
+              Yêu cầu Gemini AI tự động biên soạn 5 - 15 câu hỏi mới toanh kèm lời giải chi tiết và bẫy thi cử cho riêng chuyên đề này!
+            </p>
+          </div>
+
+          <button
+            onClick={() => setShowAiModal(true)}
+            className="px-5 py-3 bg-white text-[#1E293B] hover:bg-white/90 rounded-2xl text-xs font-bold shadow-sm transition flex items-center space-x-2 shrink-0 cursor-pointer"
+          >
+            <Wand2 className="w-4 h-4 text-amber-500" />
+            <span>AI Tạo Đề Chuyên Đề</span>
+          </button>
         </div>
 
         {/* Start Button */}
         <button
           onClick={handleStartPractice}
           id="btn-start-topic-practice"
-          className="w-full py-4 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-[2rem] text-sm font-bold shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer"
+          className={`w-full py-4 ${theme.primaryBg} hover:opacity-90 text-white rounded-[2rem] text-sm font-bold shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer`}
         >
-          <span>Bắt đầu Luyện tập ngay</span>
+          <span>Bắt đầu Luyện tập ({topicQuestionsPool.length} câu có sẵn)</span>
           <ChevronRight className="w-5 h-5" />
         </button>
+
+        {/* AI Generation Modal */}
+        {showAiModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-white rounded-[2.5rem] max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-[#E2E8F0] space-y-5 max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
+                <div className="flex items-center space-x-2.5">
+                  <div className={`w-10 h-10 rounded-2xl ${theme.primaryBg} text-white flex items-center justify-center font-bold shadow-xs`}>
+                    <Wand2 className="w-5 h-5 text-amber-300" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-[#1E293B] text-base">AI Sinh Đề Luyện Chuyên Đề</h3>
+                    <p className="text-[11px] text-[#64748B]">
+                      Chuyên đề: {currentTopicsMeta.find((t) => t.id === selectedTopic)?.nameVi}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowAiModal(false)}
+                  disabled={aiLoading}
+                  className="p-1.5 text-[#64748B] hover:text-[#1E293B] rounded-xl transition"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div>
+                  <label className="block font-bold text-[#1E293B] mb-1.5">1. Số lượng câu hỏi muốn tạo:</label>
+                  <div className="flex gap-2">
+                    {[5, 10, 15].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setAiCount(num)}
+                        className={`flex-1 py-2.5 rounded-xl font-bold border transition ${
+                          aiCount === num
+                            ? `${theme.primaryBg} text-white shadow-xs`
+                            : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#64748B] hover:bg-[#F1F5F9]'
+                        }`}
+                      >
+                        {num} câu
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-[#1E293B] mb-1.5">2. Độ khó:</label>
+                  <div className="flex gap-2">
+                    {[
+                      { id: 'standard', label: 'Cơ bản (7 - 8đ)' },
+                      { id: 'advanced', label: 'Khá - Giỏi (8 - 9đ)' },
+                      { id: 'challenge', label: 'Phân loại (9.5 - 10đ)' },
+                    ].map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => setAiDifficulty(d.id as any)}
+                        className={`flex-1 py-2.5 rounded-xl font-bold border text-[11px] transition ${
+                          aiDifficulty === d.id
+                            ? `${theme.primaryBg} text-white shadow-xs`
+                            : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#64748B] hover:bg-[#F1F5F9]'
+                        }`}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-[#1E293B] mb-1.5">
+                    3. Yêu cầu trọng tâm riêng cho AI (Tùy chọn):
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={aiCustomPrompt}
+                    onChange={(e) => setAiCustomPrompt(e.target.value)}
+                    placeholder={
+                      isMath
+                        ? 'Ví dụ: Tập trung vào dạng tìm tham số m để phương trình có 2 nghiệm thỏa mãn x1 = 2*x2, có nhiều bẫy điều kiện...'
+                        : 'Ví dụ: Tập trung vào dạng câu điều kiện loại 2, câu ước wish và câu bị động đặc biệt...'
+                    }
+                    className="w-full p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl outline-hidden text-[#1E293B]"
+                  />
+                </div>
+
+                {/* Quick suggestions */}
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold text-[#64748B] uppercase">Gợi ý nhanh:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(isMath
+                      ? ['Có bẫy điều kiện xác định', 'Dạng tìm tham số m', 'Kỹ thuật chọn điểm rơi', 'Bài toán thực tế']
+                      : ['Câu bị động nâng cao', 'Mệnh đề quan hệ', 'Cụm động từ khó', 'Từ vựng chủ đề môi trường']
+                    ).map((sug) => (
+                      <button
+                        key={sug}
+                        type="button"
+                        onClick={() => setAiCustomPrompt(sug)}
+                        className="px-2.5 py-1 bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] rounded-lg text-[10px] font-medium"
+                      >
+                        + {sug}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {aiStatusMsg && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-[11px] flex items-center space-x-2">
+                    <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-blue-600" />
+                    <span>{aiStatusMsg}</span>
+                  </div>
+                )}
+
+                {aiError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-[11px] flex items-start space-x-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <span>{aiError}</span>
+                  </div>
+                )}
+
+                <div className="flex space-x-2 pt-2 border-t border-[#F1F5F9]">
+                  <button
+                    type="button"
+                    onClick={() => setShowAiModal(false)}
+                    disabled={aiLoading}
+                    className="flex-1 py-2.5 bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] rounded-xl font-bold transition cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleGenerateWithAI}
+                    disabled={aiLoading}
+                    className={`flex-1 py-2.5 ${theme.primaryBg} hover:opacity-90 text-white rounded-xl font-bold shadow-xs transition flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50`}
+                  >
+                    {aiLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Đang tạo đề...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-amber-300" />
+                        <span>Tạo Đề & Luyện Ngay</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
