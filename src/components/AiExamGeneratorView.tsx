@@ -256,12 +256,13 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
 
     // 2. Add exam to exams list
     addExam({
+      id: generatedResult.exam.id,
       code: generatedResult.exam.code,
       title: generatedResult.exam.title,
       description: generatedResult.exam.description,
       targetProvince: generatedResult.exam.targetProvince,
       timeLimitMinutes: generatedResult.exam.timeLimitMinutes,
-      totalQuestions: generatedResult.exam.totalQuestions,
+      totalQuestions: generatedResult.questions.length,
       difficulty: generatedResult.exam.difficulty,
       questionIds: generatedResult.questions.map((q) => q.id),
       isOfficialFormat: false,
@@ -279,12 +280,13 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
 
     // 2. Add exam
     const createdExam = addExam({
+      id: generatedResult.exam.id,
       code: generatedResult.exam.code,
       title: generatedResult.exam.title,
       description: generatedResult.exam.description,
       targetProvince: generatedResult.exam.targetProvince,
       timeLimitMinutes: generatedResult.exam.timeLimitMinutes,
-      totalQuestions: generatedResult.exam.totalQuestions,
+      totalQuestions: generatedResult.questions.length,
       difficulty: generatedResult.exam.difficulty,
       questionIds: generatedResult.questions.map((q) => q.id),
       isOfficialFormat: false,

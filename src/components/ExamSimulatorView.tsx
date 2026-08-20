@@ -49,6 +49,13 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   const [selectedExamId, setSelectedExamId] = useState<string>(examId);
   const exam = exams.find((e) => e.id === selectedExamId) || exams[0];
 
+  // Sync selectedExamId when examId prop changes
+  useEffect(() => {
+    if (examId) {
+      setSelectedExamId(examId);
+    }
+  }, [examId]);
+
   // Exam States
   const [stage, setStage] = useState<'intro' | 'active' | 'result'>('intro');
   const [currentIdx, setCurrentIdx] = useState<number>(0);
@@ -92,8 +99,20 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   const currentQ = examQuestions[currentIdx];
 
   const handleStartExam = (selectedId?: string) => {
+    const idToUse = selectedId || selectedExamId;
     if (selectedId) setSelectedExamId(selectedId);
-    const targetExam = exams.find((e) => e.id === (selectedId || selectedExamId)) || exams[0];
+    const targetExam = exams.find((e) => e.id === idToUse) || exams[0];
+    if (!targetExam) return;
+
+    const targetQuestions = targetExam.questionIds
+      .map((id) => getQuestionById(id))
+      .filter(Boolean) as Question[];
+
+    if (targetQuestions.length === 0) {
+      alert('Đề thi này chưa có dữ liệu câu hỏi hợp lệ trong hệ thống.');
+      return;
+    }
+
     setUserAnswers({});
     setFlaggedIds([]);
     setTimeLeft(targetExam.timeLimitMinutes * 60);
@@ -255,7 +274,23 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   }
 
   // 2. ACTIVE EXAM SIMULATION STAGE
-  if (stage === 'active' && currentQ) {
+  if (stage === 'active') {
+    if (!currentQ || examQuestions.length === 0) {
+      return (
+        <div className="max-w-md mx-auto p-8 text-center bg-white rounded-3xl border border-[#EAE7E0] space-y-4 my-12 shadow-sm">
+          <AlertCircle className="w-12 h-12 text-[#E67E22] mx-auto" />
+          <h3 className="text-lg font-bold text-[#3D3D2D]">Không tìm thấy câu hỏi của đề thi</h3>
+          <p className="text-xs text-[#8A8A70]">Dữ liệu câu hỏi của đề thi này chưa được tìm thấy trong hệ thống.</p>
+          <button
+            onClick={() => setStage('intro')}
+            className="px-6 py-2.5 bg-[#5A5A40] text-white font-bold text-xs rounded-full cursor-pointer hover:bg-[#3D3D2D]"
+          >
+            Quay lại danh sách đề thi
+          </button>
+        </div>
+      );
+    }
+
     const answeredCount = Object.keys(userAnswers).length;
     const isCurrentFlagged = flaggedIds.includes(currentQ.id);
     const isCurrentBookmarked = isBookmarked(currentQ.id);

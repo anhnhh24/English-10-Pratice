@@ -302,7 +302,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Question CRUD
-  const getQuestionById = (id: string) => questions.find((q) => q.id === id);
+  const getQuestionById = (id: string) => questions.find((q) => q.id === id) || QUESTIONS_DATA.find((q) => q.id === id);
 
   const addQuestion = (q: Omit<Question, 'id'>): Question => {
     const newQ: Question = {
@@ -324,25 +324,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBookmarks((prev) => prev.filter((bId) => bId !== id));
   };
 
-  const bulkImportQuestions = (newQuestions: Omit<Question, 'id'>[]): number => {
-    const formatted: Question[] = newQuestions.map((q, idx) => ({
+  const bulkImportQuestions = (newQuestions: (Question | Omit<Question, 'id'>)[]): number => {
+    const formatted: Question[] = newQuestions.map((q: any, idx) => ({
       ...q,
-      id: `q_import_${Date.now()}_${idx}`,
+      id: q.id || `q_import_${Date.now()}_${idx}`,
     }));
-    setQuestions((prev) => [...formatted, ...prev]);
+    setQuestions((prev) => {
+      const existingIds = new Set(prev.map((p) => p.id));
+      const toAdd = formatted.filter((f) => !existingIds.has(f.id));
+      return [...toAdd, ...prev];
+    });
     return formatted.length;
   };
 
   // Exam CRUD
   const getExamById = (id: string) => exams.find((e) => e.id === id);
 
-  const addExam = (e: Omit<Exam, 'id' | 'createdAt'>): Exam => {
+  const addExam = (e: Omit<Exam, 'id' | 'createdAt'> & { id?: string }): Exam => {
     const newExam: Exam = {
       ...e,
-      id: `exam_${Date.now()}`,
+      id: e.id || `exam_${Date.now()}`,
       createdAt: new Date().toISOString().split('T')[0],
     };
-    setExams((prev) => [newExam, ...prev]);
+    setExams((prev) => {
+      const filtered = prev.filter((item) => item.id !== newExam.id);
+      return [newExam, ...filtered];
+    });
     return newExam;
   };
 
