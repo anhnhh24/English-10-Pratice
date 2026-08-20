@@ -94,6 +94,11 @@ interface AppContextType {
     recentAttempts: ExamAttempt[];
   };
 
+  // Teacher / Admin Helpers
+  getUserScopedData: (userId: string) => UserScopedData;
+  saveTeacherNote: (userId: string, note: string) => void;
+  getTeacherNote: (userId: string) => string;
+
   // Reset or seed sample demo data
   seedDemoProgress: () => void;
   resetAllProgress: () => void;
@@ -109,7 +114,7 @@ const DEFAULT_USERS: UserAccount[] = [
     targetScore: 8.5,
     targetScoreEnglish: 8.5,
     targetScoreMath: 8.5,
-    targetSchool: 'THPT Chu Văn An / THPT Kim Liên',
+    targetSchool: 'THPT Chu Văn An (Hà Nội)',
     streakDays: 7,
     lastActiveDate: new Date().toISOString(),
     avatarColor: 'bg-indigo-600',
@@ -131,8 +136,53 @@ const DEFAULT_USERS: UserAccount[] = [
     createdAt: '2026-08-05',
   },
   {
+    id: 'user_student_3',
+    name: 'Trần Quang Huy',
+    email: 'quanghuy.kimlien@gmail.com',
+    password: '123',
+    role: 'student',
+    targetScore: 8.0,
+    targetScoreEnglish: 8.0,
+    targetScoreMath: 8.5,
+    targetSchool: 'THPT Kim Liên',
+    streakDays: 5,
+    lastActiveDate: new Date(Date.now() - 86400000).toISOString(),
+    avatarColor: 'bg-amber-600',
+    createdAt: '2026-08-08',
+  },
+  {
+    id: 'user_student_4',
+    name: 'Vũ Thu Trang',
+    email: 'thutrang.vietduc@gmail.com',
+    password: '123',
+    role: 'student',
+    targetScore: 7.75,
+    targetScoreEnglish: 7.5,
+    targetScoreMath: 8.0,
+    targetSchool: 'THPT Việt Đức',
+    streakDays: 3,
+    lastActiveDate: new Date(Date.now() - 2 * 86400000).toISOString(),
+    avatarColor: 'bg-teal-600',
+    createdAt: '2026-08-10',
+  },
+  {
+    id: 'user_student_5',
+    name: 'Đặng Gia Bảo',
+    email: 'giabao.thanglong@gmail.com',
+    password: '123',
+    role: 'student',
+    targetScore: 8.75,
+    targetScoreEnglish: 8.5,
+    targetScoreMath: 9.0,
+    targetSchool: 'THPT Thăng Long',
+    streakDays: 9,
+    lastActiveDate: new Date().toISOString(),
+    avatarColor: 'bg-purple-600',
+    createdAt: '2026-08-12',
+  },
+  {
     id: 'user_admin_1',
-    name: 'Thầy Tuấn (Quản trị viên)',
+    name: 'Thầy Tuấn (Quản trị viên / GVCN)',
     email: 'admin.edulop10@edu.vn',
     password: 'admin',
     role: 'admin',
@@ -213,8 +263,8 @@ const INITIAL_DEMO_DATA: Record<string, UserScopedData> = {
           q_math_lap_pt_01: 0,
           q_math_he_thuc_01: 0,
           q_math_tron_01: 0,
-          q_math_kg_01: 1, // wrong
-          q_math_bdt_01: 1, // wrong
+          q_math_kg_01: 1,
+          q_math_bdt_01: 1,
         },
         flaggedQuestions: ['q_math_bdt_01'],
       },
@@ -298,6 +348,201 @@ const INITIAL_DEMO_DATA: Record<string, UserScopedData> = {
       },
     },
     bookmarks: ['q_rel_02', 'q_math_viet_02', 'q_math_bdt_01'],
+    customExams: [],
+  },
+  user_student_2: {
+    examAttempts: [
+      {
+        id: 'attempt_linh_1',
+        userId: 'user_student_2',
+        subject: 'english',
+        examId: 'exam_official_01',
+        examTitle: 'Đề Thi Thử Tuyển Sinh Vào Lớp 10 - Đề Chuẩn Số 01',
+        date: new Date(Date.now() - 86400000).toISOString(),
+        score: 9.5,
+        score100: 95,
+        correctCount: 19,
+        incorrectCount: 1,
+        unattemptedCount: 0,
+        totalQuestions: 20,
+        timeSpentSeconds: 2100,
+        userAnswers: {},
+        flaggedQuestions: [],
+      },
+      {
+        id: 'attempt_linh_math_1',
+        userId: 'user_student_2',
+        subject: 'math',
+        examId: 'math_exam_official_01',
+        examTitle: 'Đề Thi Thử Tuyển Sinh Vào Lớp 10 Môn Toán - Đề Chuẩn Số 01 (Sở GD&ĐT)',
+        date: new Date().toISOString(),
+        score: 9.25,
+        score100: 92.5,
+        correctCount: 11,
+        incorrectCount: 1,
+        unattemptedCount: 0,
+        totalQuestions: 12,
+        timeSpentSeconds: 2700,
+        userAnswers: {},
+        flaggedQuestions: [],
+      },
+    ],
+    practiceSessions: [],
+    mistakes: {
+      q_math_bdt_01: {
+        questionId: 'q_math_bdt_01',
+        subject: 'math',
+        wrongCount: 1,
+        lastAttemptDate: new Date().toISOString(),
+        consecutiveCorrect: 0,
+        mastered: false,
+      },
+    },
+    bookmarks: ['q_math_bdt_01'],
+    customExams: [],
+  },
+  user_student_3: {
+    examAttempts: [
+      {
+        id: 'attempt_huy_1',
+        userId: 'user_student_3',
+        subject: 'math',
+        examId: 'math_exam_official_01',
+        examTitle: 'Đề Thi Thử Tuyển Sinh Vào Lớp 10 Môn Toán - Đề Chuẩn Số 01 (Sở GD&ĐT)',
+        date: new Date(Date.now() - 2 * 86400000).toISOString(),
+        score: 8.25,
+        score100: 82.5,
+        correctCount: 10,
+        incorrectCount: 2,
+        unattemptedCount: 0,
+        totalQuestions: 12,
+        timeSpentSeconds: 3100,
+        userAnswers: {},
+        flaggedQuestions: [],
+      },
+      {
+        id: 'attempt_huy_eng_1',
+        userId: 'user_student_3',
+        subject: 'english',
+        examId: 'exam_official_01',
+        examTitle: 'Đề Thi Thử Tuyển Sinh Vào Lớp 10 - Đề Chuẩn Số 01',
+        date: new Date(Date.now() - 86400000).toISOString(),
+        score: 7.5,
+        score100: 75,
+        correctCount: 15,
+        incorrectCount: 5,
+        unattemptedCount: 0,
+        totalQuestions: 20,
+        timeSpentSeconds: 2600,
+        userAnswers: {},
+        flaggedQuestions: [],
+      },
+    ],
+    practiceSessions: [],
+    mistakes: {
+      q_rew_01: {
+        questionId: 'q_rew_01',
+        subject: 'english',
+        wrongCount: 2,
+        lastAttemptDate: new Date(Date.now() - 86400000).toISOString(),
+        consecutiveCorrect: 0,
+        mastered: false,
+      },
+    },
+    bookmarks: [],
+    customExams: [],
+  },
+  user_student_4: {
+    examAttempts: [
+      {
+        id: 'attempt_trang_1',
+        userId: 'user_student_4',
+        subject: 'english',
+        examId: 'exam_official_01',
+        examTitle: 'Đề Thi Thử Tuyển Sinh Vào Lớp 10 - Đề Chuẩn Số 01',
+        date: new Date(Date.now() - 3 * 86400000).toISOString(),
+        score: 7.25,
+        score100: 72.5,
+        correctCount: 14,
+        incorrectCount: 6,
+        unattemptedCount: 0,
+        totalQuestions: 20,
+        timeSpentSeconds: 2750,
+        userAnswers: {},
+        flaggedQuestions: [],
+      },
+      {
+        id: 'attempt_trang_math_1',
+        userId: 'user_student_4',
+        subject: 'math',
+        examId: 'math_exam_speed_sprint_02',
+        examTitle: 'Đề Luyện Tốc Độ 30 Phút - Đại Số & Hình Học Cơ Bản',
+        date: new Date(Date.now() - 2 * 86400000).toISOString(),
+        score: 7.75,
+        score100: 77.5,
+        correctCount: 6,
+        incorrectCount: 2,
+        unattemptedCount: 0,
+        totalQuestions: 8,
+        timeSpentSeconds: 1650,
+        userAnswers: {},
+        flaggedQuestions: [],
+      },
+    ],
+    practiceSessions: [],
+    mistakes: {
+      q_cond_02: {
+        questionId: 'q_cond_02',
+        subject: 'english',
+        wrongCount: 2,
+        lastAttemptDate: new Date(Date.now() - 3 * 86400000).toISOString(),
+        consecutiveCorrect: 0,
+        mastered: false,
+      },
+    },
+    bookmarks: [],
+    customExams: [],
+  },
+  user_student_5: {
+    examAttempts: [
+      {
+        id: 'attempt_bao_1',
+        userId: 'user_student_5',
+        subject: 'math',
+        examId: 'math_exam_official_01',
+        examTitle: 'Đề Thi Thử Tuyển Sinh Vào Lớp 10 Môn Toán - Đề Chuẩn Số 01 (Sở GD&ĐT)',
+        date: new Date(Date.now() - 86400000).toISOString(),
+        score: 9.0,
+        score100: 90,
+        correctCount: 11,
+        incorrectCount: 1,
+        unattemptedCount: 0,
+        totalQuestions: 12,
+        timeSpentSeconds: 2850,
+        userAnswers: {},
+        flaggedQuestions: [],
+      },
+      {
+        id: 'attempt_bao_eng_1',
+        userId: 'user_student_5',
+        subject: 'english',
+        examId: 'exam_official_01',
+        examTitle: 'Đề Thi Thử Tuyển Sinh Vào Lớp 10 - Đề Chuẩn Số 01',
+        date: new Date().toISOString(),
+        score: 8.5,
+        score100: 85,
+        correctCount: 17,
+        incorrectCount: 3,
+        unattemptedCount: 0,
+        totalQuestions: 20,
+        timeSpentSeconds: 2350,
+        userAnswers: {},
+        flaggedQuestions: [],
+      },
+    ],
+    practiceSessions: [],
+    mistakes: {},
+    bookmarks: [],
     customExams: [],
   },
 };
@@ -789,6 +1034,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
+  const getUserScopedData = (userId: string): UserScopedData => {
+    try {
+      const stored = localStorage.getItem(`edu10_userdata_${userId}`);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    if (INITIAL_DEMO_DATA[userId]) {
+      return INITIAL_DEMO_DATA[userId];
+    }
+    return {
+      examAttempts: [],
+      practiceSessions: [],
+      mistakes: {},
+      bookmarks: [],
+      customExams: [],
+    };
+  };
+
+  const saveTeacherNote = (userId: string, note: string) => {
+    try {
+      localStorage.setItem(`edu10_teachernote_${userId}`, note);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const getTeacherNote = (userId: string): string => {
+    try {
+      return localStorage.getItem(`edu10_teachernote_${userId}`) || '';
+    } catch (e) {
+      return '';
+    }
+  };
+
   const seedDemoProgress = () => {
     localStorage.clear();
     window.location.reload();
@@ -817,6 +1099,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUserTarget,
         updateUserProfile,
         toggleUserLock,
+        getUserScopedData,
+        saveTeacherNote,
+        getTeacherNote,
         questions: allQuestions,
         getQuestionById,
         addQuestion,

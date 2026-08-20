@@ -206,19 +206,27 @@ export const Navbar: React.FC<NavbarProps> = ({
             );
           })}
 
-          {currentUser.role === 'admin' && (
-            <button
-              onClick={() => setActiveTab('admin')}
-              className={`w-full flex items-center space-x-3 p-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
-                activeTab === 'admin'
-                  ? 'bg-[#5A5A40] text-white shadow-sm'
-                  : 'text-[#5A5A40] bg-[#FAF9F6] border border-[#D9D2C5] hover:bg-[#DED8CE]'
+          <button
+            onClick={() => setActiveTab('admin')}
+            id="sidebar-nav-admin"
+            className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
+              activeTab === 'admin'
+                ? 'bg-[#5A5A40] text-white shadow-sm'
+                : 'text-[#5A5A40] bg-[#FAF9F6] border border-[#D9D2C5] hover:bg-[#DED8CE]'
+            }`}
+          >
+            <div className="flex items-center space-x-3">
+              <ShieldCheck className="w-4 h-4 text-[#8BA888]" />
+              <span>Dashboard Giáo viên</span>
+            </div>
+            <span
+              className={`px-2 py-0.5 text-[9px] font-extrabold rounded-full ${
+                currentUser.role === 'admin' ? 'bg-[#8BA888] text-white' : 'bg-[#E8E2D9] text-[#5A5A40]'
               }`}
             >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Quản trị Admin</span>
-            </button>
-          )}
+              {currentUser.role === 'admin' ? 'GVCN' : 'Admin'}
+            </span>
+          </button>
         </nav>
 
         {/* User Account & Goal Card (Bottom) */}
@@ -473,25 +481,23 @@ export const Navbar: React.FC<NavbarProps> = ({
               })}
             </div>
 
-            {currentUser.role === 'admin' && (
-              <button
-                onClick={() => {
-                  setActiveTab('admin');
-                  setMobileMenuOpen(false);
-                }}
-                className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
-                  activeTab === 'admin'
-                    ? 'bg-[#5A5A40] text-white shadow-xs'
-                    : 'text-[#5A5A40] bg-[#FAF9F6] border border-[#D9D2C5]'
-                }`}
-              >
-                <div className="flex items-center space-x-2">
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Khu vực Quản trị Admin</span>
-                </div>
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            )}
+            <button
+              onClick={() => {
+                setActiveTab('admin');
+                setMobileMenuOpen(false);
+              }}
+              className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
+                activeTab === 'admin'
+                  ? 'bg-[#5A5A40] text-white shadow-xs'
+                  : 'text-[#5A5A40] bg-[#FAF9F6] border border-[#D9D2C5]'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <ShieldCheck className="w-4 h-4 text-[#8BA888]" />
+                <span>Dashboard Giáo viên / Admin</span>
+              </div>
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}

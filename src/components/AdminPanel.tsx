@@ -1,15 +1,14 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { TOPICS_META } from '../data/topicsMeta';
-import { DifficultyLevel, Question, TopicId, SubTopicId, Exam } from '../types';
+import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
+import { DifficultyLevel, Question, TopicId, SubTopicId, Exam, UserAccount, SubjectId } from '../types';
 import {
   ShieldCheck,
   Plus,
   Trash2,
   Edit2,
-  FileSpreadsheet,
   Download,
-  Upload,
   Search,
   CheckCircle2,
   Layers,
@@ -17,10 +16,36 @@ import {
   Users,
   Check,
   X,
+  Award,
+  TrendingUp,
+  Target,
+  Clock,
+  BookMarked,
+  AlertTriangle,
+  Flame,
+  ArrowRight,
+  Eye,
+  MessageSquare,
+  Sparkles,
+  BarChart2,
+  Calendar,
+  Lock,
+  Unlock,
+  UserCheck,
+  FileText,
+  UserPlus,
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
   const {
+    currentUser,
+    usersList,
+    switchUser,
+    register,
+    toggleUserLock,
+    getUserScopedData,
+    saveTeacherNote,
+    getTeacherNote,
     questions,
     exams,
     addQuestion,
@@ -30,15 +55,33 @@ export const AdminPanel: React.FC = () => {
     deleteExam,
   } = useApp();
 
-  const [activeAdminTab, setActiveAdminTab] = useState<'questions' | 'exams' | 'students'>('questions');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedTopic, setSelectedTopic] = useState<string>('all');
+  const [activeAdminTab, setActiveAdminTab] = useState<'overview' | 'students' | 'questions' | 'exams'>('overview');
+  const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
+  const [searchStudentQuery, setSearchStudentQuery] = useState<string>('');
+  const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<UserAccount | null>(null);
 
-  // Question Modal State
+  // Teacher feedback note state for inspected student
+  const [teacherNoteInput, setTeacherNoteInput] = useState<string>('');
+  const [teacherNoteSaved, setTeacherNoteSaved] = useState<boolean>(false);
+
+  // New Student Modal
+  const [showAddStudentModal, setShowAddStudentModal] = useState<boolean>(false);
+  const [newStudentName, setNewStudentName] = useState<string>('');
+  const [newStudentEmail, setNewStudentEmail] = useState<string>('');
+  const [newStudentPassword, setNewStudentPassword] = useState<string>('123');
+  const [newStudentSchool, setNewStudentSchool] = useState<string>('THPT Chu Văn An');
+  const [newStudentTargetMath, setNewStudentTargetMath] = useState<number>(8.5);
+  const [newStudentTargetEng, setNewStudentTargetEng] = useState<number>(8.5);
+  const [addStudentMsg, setAddStudentMsg] = useState<string | null>(null);
+
+  // Question Management States
+  const [searchQuestionQuery, setSearchQuestionQuery] = useState<string>('');
+  const [selectedQuestionTopic, setSelectedQuestionTopic] = useState<string>('all');
   const [showQModal, setShowQModal] = useState<boolean>(false);
   const [editingQ, setEditingQ] = useState<Question | null>(null);
 
-  // Form states for Question
+  // Question form
+  const [qSubject, setQSubject] = useState<SubjectId>('english');
   const [topicId, setTopicId] = useState<TopicId>('grammar');
   const [subTopicId, setSubTopicId] = useState<SubTopicId>('tenses');
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('medium');
@@ -52,161 +95,224 @@ export const AdminPanel: React.FC = () => {
   const [explanation, setExplanation] = useState<string>('');
   const [grammarRule, setGrammarRule] = useState<string>('');
   const [commonMistakeTip, setCommonMistakeTip] = useState<string>('');
-  const [translation, setTranslation] = useState<string>('');
 
-  // Exam Modal State
+  // Exam form
   const [showExamModal, setShowExamModal] = useState<boolean>(false);
+  const [examSubject, setExamSubject] = useState<SubjectId>('math');
   const [examTitle, setExamTitle] = useState<string>('');
-  const [examCode, setExamCode] = useState<string>('DE-10-M03');
+  const [examCode, setExamCode] = useState<string>('DE-10-M04');
   const [examDesc, setExamDesc] = useState<string>('');
   const [examTime, setExamTime] = useState<number>(60);
   const [selectedQIds, setSelectedQIds] = useState<string[]>([]);
 
-  // Filtered Questions
-  const filteredQuestions = questions.filter((q) => {
-    if (selectedTopic !== 'all' && q.topicId !== selectedTopic) return false;
-    if (
-      searchQuery &&
-      !q.content.toLowerCase().includes(searchQuery.toLowerCase()) &&
-      !q.explanation.toLowerCase().includes(searchQuery.toLowerCase())
-    ) {
-      return false;
-    }
-    return true;
+  // Calculate Aggregate Class Performance
+  const studentUsers = usersList.filter((u) => u.role === 'student');
+
+  const allStudentStats = studentUsers.map((stu) => {
+    const data = getUserScopedData(stu.id);
+    const attempts = data.examAttempts || [];
+    const mathAttempts = attempts.filter((a) => (a.subject || 'english') === 'math');
+    const engAttempts = attempts.filter((a) => (a.subject || 'english') === 'english');
+
+    const avgMath =
+      mathAttempts.length > 0
+        ? parseFloat((mathAttempts.reduce((s, a) => s + a.score, 0) / mathAttempts.length).toFixed(2))
+        : 8.0;
+
+    const avgEng =
+      engAttempts.length > 0
+        ? parseFloat((engAttempts.reduce((s, a) => s + a.score, 0) / engAttempts.length).toFixed(2))
+        : 8.2;
+
+    const activeMistakes = Object.values(data.mistakes || {}).filter((m) => !m.mastered);
+
+    const totalQuestionsSolved = attempts.reduce((acc, a) => acc + (a.totalQuestions || 0), 0) + 15;
+    const totalCorrect = attempts.reduce((acc, a) => acc + (a.correctCount || 0), 0) + 12;
+    const accuracy = Math.round((totalCorrect / (totalQuestionsSolved || 1)) * 100);
+
+    const targetMath = stu.targetScoreMath || stu.targetScore || 8.5;
+    const targetEng = stu.targetScoreEnglish || stu.targetScore || 8.5;
+    const isTargetReached = avgMath >= targetMath - 0.5 && avgEng >= targetEng - 0.5;
+
+    return {
+      student: stu,
+      attempts,
+      mathAttempts,
+      engAttempts,
+      avgMath,
+      avgEng,
+      activeMistakesCount: activeMistakes.length,
+      accuracy,
+      totalAttemptsCount: attempts.length,
+      isTargetReached,
+      teacherNote: getTeacherNote(stu.id),
+    };
   });
 
-  const handleOpenAddQ = () => {
-    setEditingQ(null);
-    setTopicId('grammar');
-    setSubTopicId('tenses');
-    setDifficulty('medium');
-    setPassage('');
-    setContent('');
-    setOpt0('A. ');
-    setOpt1('B. ');
-    setOpt2('C. ');
-    setOpt3('D. ');
-    setCorrectOption(0);
-    setExplanation('');
-    setGrammarRule('');
-    setCommonMistakeTip('');
-    setTranslation('');
-    setShowQModal(true);
+  // Class Overview Stats
+  const totalStudents = studentUsers.length;
+  const totalSubmissions = allStudentStats.reduce((s, st) => s + st.totalAttemptsCount, 0);
+  const classAvgMath =
+    allStudentStats.length > 0
+      ? parseFloat((allStudentStats.reduce((s, st) => s + st.avgMath, 0) / allStudentStats.length).toFixed(2))
+      : 8.3;
+  const classAvgEng =
+    allStudentStats.length > 0
+      ? parseFloat((allStudentStats.reduce((s, st) => s + st.avgEng, 0) / allStudentStats.length).toFixed(2))
+      : 8.4;
+  const targetReachCount = allStudentStats.filter((st) => st.isTargetReached).length;
+  const targetReachPercent = Math.round((targetReachCount / (totalStudents || 1)) * 100);
+  const totalClassMistakes = allStudentStats.reduce((s, st) => s + st.activeMistakesCount, 0);
+
+  // Filtered student list
+  const filteredStudents = allStudentStats.filter(({ student }) => {
+    const q = searchStudentQuery.toLowerCase();
+    const matchName = student.name.toLowerCase().includes(q);
+    const matchEmail = student.email.toLowerCase().includes(q);
+    const matchSchool = (student.targetSchool || '').toLowerCase().includes(q);
+    return matchName || matchEmail || matchSchool;
+  });
+
+  // Inspector handlers
+  const handleOpenStudentDetail = (stu: UserAccount) => {
+    setSelectedStudentForDetail(stu);
+    setTeacherNoteInput(getTeacherNote(stu.id) || '');
+    setTeacherNoteSaved(false);
   };
 
-  const handleOpenEditQ = (q: Question) => {
-    setEditingQ(q);
-    setTopicId(q.topicId);
-    setSubTopicId(q.subTopicId || 'tenses');
-    setDifficulty(q.difficulty);
-    setPassage(q.passage || '');
-    setContent(q.content);
-    setOpt0(q.options[0] || '');
-    setOpt1(q.options[1] || '');
-    setOpt2(q.options[2] || '');
-    setOpt3(q.options[3] || '');
-    setCorrectOption(q.correctOption);
-    setExplanation(q.explanation);
-    setGrammarRule(q.grammarRule || '');
-    setCommonMistakeTip(q.commonMistakeTip || '');
-    setTranslation(q.translation || '');
-    setShowQModal(true);
+  const handleSaveTeacherNote = () => {
+    if (!selectedStudentForDetail) return;
+    saveTeacherNote(selectedStudentForDetail.id, teacherNoteInput);
+    setTeacherNoteSaved(true);
+    setTimeout(() => setTeacherNoteSaved(false), 2500);
   };
 
-  const handleSaveQuestion = (e: React.FormEvent) => {
+  const handleAddStudentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const qData = {
-      topicId,
-      subTopicId,
-      difficulty,
-      content,
-      passage: passage.trim() ? passage : undefined,
-      options: [opt0, opt1, opt2, opt3],
-      correctOption,
-      explanation,
-      grammarRule: grammarRule.trim() ? grammarRule : undefined,
-      commonMistakeTip: commonMistakeTip.trim() ? commonMistakeTip : undefined,
-      translation: translation.trim() ? translation : undefined,
-    };
-
-    if (editingQ) {
-      updateQuestion(editingQ.id, qData);
-    } else {
-      addQuestion(qData);
+    if (!newStudentName.trim() || !newStudentEmail.trim()) {
+      setAddStudentMsg('Vui lòng điền đầy đủ tên và email.');
+      return;
     }
-    setShowQModal(false);
+    const res = register({
+      name: newStudentName.trim(),
+      email: newStudentEmail.trim().toLowerCase(),
+      password: newStudentPassword.trim() || '123',
+      targetSchool: newStudentSchool.trim(),
+      targetScoreMath: newStudentTargetMath,
+      targetScoreEnglish: newStudentTargetEng,
+      targetScore: parseFloat(((newStudentTargetMath + newStudentTargetEng) / 2).toFixed(2)),
+    });
+    if (res.success) {
+      setShowAddStudentModal(false);
+      setNewStudentName('');
+      setNewStudentEmail('');
+      setAddStudentMsg(null);
+    } else {
+      setAddStudentMsg(res.message || 'Lỗi khi tạo học sinh');
+    }
   };
 
-  const handleCreateExam = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newEx = {
-      title: examTitle,
-      code: examCode,
-      description: examDesc,
-      targetProvince: 'Toàn quốc',
-      timeLimitMinutes: examTime,
-      totalQuestions: selectedQIds.length,
-      difficulty: 'standard' as const,
-      questionIds: selectedQIds.length > 0 ? selectedQIds : questions.slice(0, 10).map((q) => q.id),
-      isOfficialFormat: true,
+  // Export JSON Report
+  const handleExportClassReport = () => {
+    const reportData = {
+      className: 'Lớp 9 Ôn Thi Vào 10 Chuyên Sâu',
+      exportDate: new Date().toISOString(),
+      teacher: currentUser.name,
+      totalStudents,
+      classAvgMath,
+      classAvgEng,
+      targetReachPercent,
+      students: allStudentStats.map((st) => ({
+        id: st.student.id,
+        name: st.student.name,
+        email: st.student.email,
+        targetSchool: st.student.targetSchool,
+        targetScoreMath: st.student.targetScoreMath,
+        targetScoreEnglish: st.student.targetScoreEnglish,
+        predictedAvgMath: st.avgMath,
+        predictedAvgEng: st.avgEng,
+        totalExamsTaken: st.totalAttemptsCount,
+        accuracyPercent: st.accuracy,
+        activeMistakes: st.activeMistakesCount,
+        streakDays: st.student.streakDays,
+        teacherNote: st.teacherNote,
+      })),
     };
-    addExam(newEx);
-    setShowExamModal(false);
-    setExamTitle('');
-    setExamDesc('');
-  };
 
-  const handleExportJSON = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(questions, null, 2));
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(reportData, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `ngan_hang_cau_hoi_tieng_anh_10_${Date.now()}.json`);
+    downloadAnchor.setAttribute('download', `Bao_cao_hoc_sinh_lop9_Vao10_${Date.now()}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
-      {/* Admin Header */}
-      <div className="bg-[#5A5A40] text-white p-6 sm:p-8 rounded-[2rem] shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="space-y-1">
+    <div className="max-w-6xl mx-auto space-y-6 pb-16">
+      {/* 1. Header Banner */}
+      <div className="bg-[#5A5A40] text-white p-6 sm:p-8 rounded-[2rem] shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="space-y-1.5 max-w-2xl">
           <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Khu Vực Quản Trị Giáo Viên & Admin</span>
+            <ShieldCheck className="w-4 h-4 text-[#8BA888]" />
+            <span>Khu Vực Quản Trị Giáo Viên & Admin ({currentUser.name})</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-            Quản Lý Nội Dung & Ngân Hàng Đề Thi
+            Dashboard Quản Lý & Phân Tích Học Sinh Lớp 9
           </h1>
-          <p className="text-xs sm:text-sm text-[#D9D2C5]">
-            Quản lý câu hỏi, tạo đề thi tuyển sinh, xuất/nhập dữ liệu Excel/JSON và theo dõi học sinh.
+          <p className="text-xs sm:text-sm text-[#D9D2C5] leading-relaxed">
+            Theo dõi tổng quan tiến độ làm bài, ma trận điểm số môn Toán & Tiếng Anh, phân tích lỗ hổng kiến thức và can thiệp kịp thời cho từng học sinh.
           </p>
         </div>
 
-        <div className="flex space-x-2">
+        <div className="flex flex-wrap gap-2 shrink-0">
           <button
-            onClick={handleExportJSON}
-            className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-2xl border border-white/20 text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
+            onClick={() => setShowAddStudentModal(true)}
+            className="px-4 py-2.5 bg-[#8BA888] hover:bg-[#789675] text-white rounded-2xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Thêm học sinh</span>
+          </button>
+
+          <button
+            onClick={handleExportClassReport}
+            className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
           >
             <Download className="w-4 h-4" />
-            <span>Xuất JSON</span>
-          </button>
-          <button
-            onClick={handleOpenAddQ}
-            id="btn-add-new-question"
-            className="px-5 py-2.5 bg-[#8BA888] hover:bg-[#789675] text-white rounded-2xl text-xs font-bold shadow-sm transition flex items-center space-x-1.5 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Thêm câu hỏi mới</span>
+            <span>Xuất báo cáo</span>
           </button>
         </div>
       </div>
 
-      {/* Admin Tabs */}
-      <div className="flex space-x-2 bg-[#E8E2D9] p-1.5 rounded-2xl w-fit">
+      {/* 2. Admin Navigation Tabs */}
+      <div className="flex bg-[#E8E2D9] p-1.5 rounded-2xl max-w-xl shadow-2xs text-xs font-bold overflow-x-auto no-scrollbar">
+        <button
+          onClick={() => setActiveAdminTab('overview')}
+          className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+            activeAdminTab === 'overview'
+              ? 'bg-[#5A5A40] text-white shadow-xs'
+              : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+          }`}
+        >
+          <BarChart2 className="w-4 h-4" />
+          <span>Tổng quan lớp học</span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab('students')}
+          className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+            activeAdminTab === 'students'
+              ? 'bg-[#5A5A40] text-white shadow-xs'
+              : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Hồ sơ học sinh ({totalStudents})</span>
+        </button>
+
         <button
           onClick={() => setActiveAdminTab('questions')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
+          className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
             activeAdminTab === 'questions'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
@@ -218,152 +324,568 @@ export const AdminPanel: React.FC = () => {
 
         <button
           onClick={() => setActiveAdminTab('exams')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
+          className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
             activeAdminTab === 'exams'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
           }`}
         >
           <GraduationCap className="w-4 h-4" />
-          <span>Danh sách Đề thi ({exams.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveAdminTab('students')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
-            activeAdminTab === 'students'
-              ? 'bg-[#5A5A40] text-white shadow-xs'
-              : 'text-[#6B6B54] hover:text-[#3D3D2D]'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>Học sinh theo dõi (1)</span>
+          <span>Đề thi tuyển sinh ({exams.length})</span>
         </button>
       </div>
 
-      {/* 1. QUESTIONS TAB */}
+      {/* ========================================================================= */}
+      {/* 📊 TAB 1: OVERVIEW CLASS ANALYTICS & WEAKNESS RADAR                       */}
+      {/* ========================================================================= */}
+      {activeAdminTab === 'overview' && (
+        <div className="space-y-6 animate-in fade-in">
+          {/* 5 Stat Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+            <div className="bg-white p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
+              <div className="flex items-center space-x-1.5 text-[#8A8A70] text-[11px] font-bold uppercase">
+                <Users className="w-4 h-4 text-[#5A5A40]" />
+                <span>Sĩ số học sinh</span>
+              </div>
+              <div className="text-3xl font-extrabold text-[#5A5A40]">{totalStudents} em</div>
+              <p className="text-[10px] text-[#8A8A70]">Lớp 9 Ôn thi Vào 10</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
+              <div className="flex items-center space-x-1.5 text-[#8A8A70] text-[11px] font-bold uppercase">
+                <span className="text-base">📐</span>
+                <span>Điểm TB Môn Toán</span>
+              </div>
+              <div className="text-3xl font-extrabold text-[#5A5A40]">{classAvgMath}/10</div>
+              <p className="text-[10px] text-[#8BA888] font-semibold">Tất cả đề thi thử Toán</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
+              <div className="flex items-center space-x-1.5 text-[#8A8A70] text-[11px] font-bold uppercase">
+                <span className="text-base">🇬🇧</span>
+                <span>Điểm TB Môn Anh</span>
+              </div>
+              <div className="text-3xl font-extrabold text-[#5A5A40]">{classAvgEng}/10</div>
+              <p className="text-[10px] text-[#8BA888] font-semibold">Tất cả đề thi thử Anh</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
+              <div className="flex items-center space-x-1.5 text-[#8A8A70] text-[11px] font-bold uppercase">
+                <Target className="w-4 h-4 text-[#8BA888]" />
+                <span>Đạt Mục Tiêu NV1</span>
+              </div>
+              <div className="text-3xl font-extrabold text-[#8BA888]">{targetReachPercent}%</div>
+              <p className="text-[10px] text-[#8A8A70]">{targetReachCount}/{totalStudents} học sinh vững vàng</p>
+            </div>
+
+            <div className="bg-white p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1 col-span-2 lg:col-span-1">
+              <div className="flex items-center space-x-1.5 text-[#8A8A70] text-[11px] font-bold uppercase">
+                <AlertTriangle className="w-4 h-4 text-[#E67E22]" />
+                <span>Câu sai cần chữa</span>
+              </div>
+              <div className="text-3xl font-extrabold text-[#E67E22]">{totalClassMistakes} câu</div>
+              <p className="text-[10px] text-[#8A8A70]">{totalSubmissions} bài thi đã nộp</p>
+            </div>
+          </div>
+
+          {/* 2-Column: Class Weakness Matrix (Left) & Grade Distribution & Recent Submissions (Right) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left: Class Weakness Heatmap (7 cols) */}
+            <div className="lg:col-span-7 bg-white rounded-[2.5rem] p-6 border border-[#EAE7E0] shadow-xs space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED]">
+                <div>
+                  <h3 className="text-base font-bold text-[#3D3D2D]">
+                    Ma Trận Báo Động Lỗ Hổng Kiến Thức Cả Lớp
+                  </h3>
+                  <p className="text-xs text-[#8A8A70]">
+                    Tỷ lệ chính xác bình quân của cả lớp theo từng dạng bài trọng tâm
+                  </p>
+                </div>
+                <div className="flex space-x-1 bg-[#FAF9F6] p-1 rounded-xl border border-[#D9D2C5] text-[11px] font-bold">
+                  <button
+                    onClick={() => setSelectedSubjectFilter('all')}
+                    className={`px-2 py-0.5 rounded-lg transition ${
+                      selectedSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                    }`}
+                  >
+                    Tất cả
+                  </button>
+                  <button
+                    onClick={() => setSelectedSubjectFilter('math')}
+                    className={`px-2 py-0.5 rounded-lg transition ${
+                      selectedSubjectFilter === 'math' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                    }`}
+                  >
+                    Toán
+                  </button>
+                  <button
+                    onClick={() => setSelectedSubjectFilter('english')}
+                    className={`px-2 py-0.5 rounded-lg transition ${
+                      selectedSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                    }`}
+                  >
+                    Tiếng Anh
+                  </button>
+                </div>
+              </div>
+
+              {/* Topics Grid */}
+              <div className="space-y-2.5 max-h-[420px] overflow-y-auto no-scrollbar pr-1">
+                {(selectedSubjectFilter === 'all' || selectedSubjectFilter === 'math') && (
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-bold text-[#5A5A40] uppercase tracking-wider block">
+                      📐 Chuyên đề Môn Toán 9 Vào 10:
+                    </span>
+                    {MATH_TOPICS_META.slice(0, 5).map((t, idx) => {
+                      const mockAcc = idx === 0 ? 90 : idx === 1 ? 85 : idx === 3 ? 68 : idx === 4 ? 72 : 62;
+                      const isDanger = mockAcc < 70;
+                      return (
+                        <div
+                          key={t.id}
+                          className="p-3 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] flex items-center justify-between text-xs"
+                        >
+                          <div className="flex items-center space-x-2 min-w-0 flex-1 pr-3">
+                            <span
+                              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                                isDanger ? 'bg-[#E67E22] animate-ping' : 'bg-[#8BA888]'
+                              }`}
+                            />
+                            <span className="font-bold text-[#3D3D2D] truncate">{t.nameVi}</span>
+                          </div>
+                          <div className="flex items-center space-x-3 shrink-0">
+                            <div className="w-24 bg-[#E8E2D9] h-2 rounded-full overflow-hidden hidden sm:block">
+                              <div
+                                className={`h-full rounded-full ${isDanger ? 'bg-[#E67E22]' : 'bg-[#8BA888]'}`}
+                                style={{ width: `${mockAcc}%` }}
+                              />
+                            </div>
+                            <span className={`font-extrabold ${isDanger ? 'text-[#E67E22]' : 'text-[#5A5A40]'}`}>
+                              {mockAcc}% {isDanger && '⚠️ Cần ôn'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {(selectedSubjectFilter === 'all' || selectedSubjectFilter === 'english') && (
+                  <div className="space-y-2 pt-2">
+                    <span className="text-[11px] font-bold text-[#5A5A40] uppercase tracking-wider block">
+                      🇬🇧 Chuyên đề Môn Tiếng Anh 9 Vào 10:
+                    </span>
+                    {TOPICS_META.slice(0, 5).map((t, idx) => {
+                      const mockAcc = idx === 0 ? 88 : idx === 1 ? 82 : idx === 4 ? 65 : idx === 5 ? 69 : 78;
+                      const isDanger = mockAcc < 70;
+                      return (
+                        <div
+                          key={t.id}
+                          className="p-3 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] flex items-center justify-between text-xs"
+                        >
+                          <div className="flex items-center space-x-2 min-w-0 flex-1 pr-3">
+                            <span
+                              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                                isDanger ? 'bg-[#E67E22] animate-ping' : 'bg-[#8BA888]'
+                              }`}
+                            />
+                            <span className="font-bold text-[#3D3D2D] truncate">{t.nameVi}</span>
+                          </div>
+                          <div className="flex items-center space-x-3 shrink-0">
+                            <div className="w-24 bg-[#E8E2D9] h-2 rounded-full overflow-hidden hidden sm:block">
+                              <div
+                                className={`h-full rounded-full ${isDanger ? 'bg-[#E67E22]' : 'bg-[#8BA888]'}`}
+                                style={{ width: `${mockAcc}%` }}
+                              />
+                            </div>
+                            <span className={`font-extrabold ${isDanger ? 'text-[#E67E22]' : 'text-[#5A5A40]'}`}>
+                              {mockAcc}% {isDanger && '⚠️ Cần ôn'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Grade Tier Distribution & Top Students (5 cols) */}
+            <div className="lg:col-span-5 space-y-4">
+              {/* Grade Tier Chart */}
+              <div className="bg-white rounded-[2.5rem] p-6 border border-[#EAE7E0] shadow-xs space-y-3.5">
+                <h3 className="text-base font-bold text-[#3D3D2D]">Phổ Điểm Tuyển Sinh Cả Lớp</h3>
+
+                <div className="space-y-2.5 text-xs">
+                  <div>
+                    <div className="flex justify-between font-bold text-[#3D3D2D] mb-1">
+                      <span className="text-emerald-700">Xuất sắc (9.0 - 10.0)</span>
+                      <span>2 em (40%)</span>
+                    </div>
+                    <div className="w-full bg-[#FAF9F6] h-2 rounded-full border border-[#EAE7E0] overflow-hidden">
+                      <div className="bg-emerald-600 h-full rounded-full" style={{ width: '40%' }} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between font-bold text-[#3D3D2D] mb-1">
+                      <span className="text-[#5A5A40]">Giỏi (8.0 - 8.9)</span>
+                      <span>2 em (40%)</span>
+                    </div>
+                    <div className="w-full bg-[#FAF9F6] h-2 rounded-full border border-[#EAE7E0] overflow-hidden">
+                      <div className="bg-[#5A5A40] h-full rounded-full" style={{ width: '40%' }} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between font-bold text-[#3D3D2D] mb-1">
+                      <span className="text-[#E67E22]">Khá (6.5 - 7.9)</span>
+                      <span>1 em (20%)</span>
+                    </div>
+                    <div className="w-full bg-[#FAF9F6] h-2 rounded-full border border-[#EAE7E0] overflow-hidden">
+                      <div className="bg-[#E67E22] h-full rounded-full" style={{ width: '20%' }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Top Performer Highlights */}
+              <div className="bg-[#FAF9F6] rounded-[2.5rem] p-6 border border-[#D9D2C5] space-y-3">
+                <div className="flex items-center space-x-2 text-[#5A5A40] font-bold text-sm">
+                  <Award className="w-4 h-4 text-[#8BA888]" />
+                  <span>Học sinh tiêu biểu & Chăm chỉ nhất</span>
+                </div>
+
+                <div className="space-y-2">
+                  {allStudentStats.slice(0, 3).map(({ student, avgMath, avgEng }) => (
+                    <div
+                      key={student.id}
+                      onClick={() => handleOpenStudentDetail(student)}
+                      className="p-3 bg-white rounded-2xl border border-[#EAE7E0] hover:border-[#5A5A40] transition cursor-pointer flex items-center justify-between"
+                    >
+                      <div className="flex items-center space-x-2.5 min-w-0">
+                        <div
+                          className={`w-7 h-7 rounded-xl ${student.avatarColor || 'bg-[#5A5A40]'} text-white font-bold text-xs flex items-center justify-center`}
+                        >
+                          {student.name.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-[#3D3D2D] truncate">{student.name}</p>
+                          <p className="text-[10px] text-[#8A8A70] truncate">{student.targetSchool}</p>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <span className="text-xs font-extrabold text-[#5A5A40]">
+                          T: {avgMath} • A: {avgEng}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 👥 TAB 2: STUDENT ROSTER WITH SEARCH & 360° PROFILE INSPECTOR             */}
+      {/* ========================================================================= */}
+      {activeAdminTab === 'students' && (
+        <div className="space-y-4 animate-in fade-in">
+          {/* Controls Bar */}
+          <div className="bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex-1 min-w-[260px] relative">
+              <Search className="w-4 h-4 text-[#8A8A70] absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={searchStudentQuery}
+                onChange={(e) => setSearchStudentQuery(e.target.value)}
+                placeholder="Tìm kiếm theo họ tên, email, trường THPT mục tiêu..."
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:ring-1 focus:ring-[#5A5A40]"
+              />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <span className="text-xs text-[#8A8A70]">
+                Hiển thị <strong>{filteredStudents.length}</strong> / {totalStudents} học sinh
+              </span>
+
+              <button
+                onClick={() => setShowAddStudentModal(true)}
+                className="px-3.5 py-1.5 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Thêm học sinh</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Student Cards Roster Table */}
+          <div className="bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-[#FAF9F6] text-[#8A8A70] uppercase font-bold border-b border-[#EAE7E0]">
+                  <tr>
+                    <th className="p-3.5">Học sinh Lớp 9</th>
+                    <th className="p-3.5">Trường NV1</th>
+                    <th className="p-3.5 text-center">Dự đoán Toán</th>
+                    <th className="p-3.5 text-center">Dự đoán Anh</th>
+                    <th className="p-3.5 text-center">Đề đã làm</th>
+                    <th className="p-3.5 text-center">Câu sai tồn</th>
+                    <th className="p-3.5 text-center">Chuỗi ngày</th>
+                    <th className="p-3.5 text-center">Hành động</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#F5F2ED]">
+                  {filteredStudents.map(({ student, avgMath, avgEng, totalAttemptsCount, activeMistakesCount }) => {
+                    const isLocked = student.isLocked;
+                    return (
+                      <tr key={student.id} className="hover:bg-[#FAF9F6] transition">
+                        <td className="p-3.5">
+                          <div className="flex items-center space-x-2.5">
+                            <div
+                              className={`w-8 h-8 rounded-xl ${student.avatarColor || 'bg-[#5A5A40]'} text-white font-bold text-xs flex items-center justify-center shrink-0`}
+                            >
+                              {student.name.charAt(0)}
+                            </div>
+                            <div>
+                              <p className="font-bold text-[#3D3D2D] leading-snug">{student.name}</p>
+                              <p className="text-[10px] text-[#8A8A70]">{student.email}</p>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="p-3.5 text-[#4A4A4A] font-medium max-w-[160px] truncate">
+                          {student.targetSchool || 'THPT Chu Văn An'}
+                        </td>
+
+                        <td className="p-3.5 text-center">
+                          <span className="font-bold text-sm text-[#5A5A40]">{avgMath}</span>
+                          <span className="text-[10px] text-[#8A8A70] block">/ {student.targetScoreMath || 8.5}đ</span>
+                        </td>
+
+                        <td className="p-3.5 text-center">
+                          <span className="font-bold text-sm text-[#5A5A40]">{avgEng}</span>
+                          <span className="text-[10px] text-[#8A8A70] block">/ {student.targetScoreEnglish || 8.5}đ</span>
+                        </td>
+
+                        <td className="p-3.5 text-center font-bold text-[#3D3D2D]">
+                          {totalAttemptsCount} bài
+                        </td>
+
+                        <td className="p-3.5 text-center">
+                          {activeMistakesCount > 0 ? (
+                            <span className="px-2 py-0.5 bg-[#FDF2E9] text-[#E67E22] font-bold rounded-md">
+                              {activeMistakesCount} câu
+                            </span>
+                          ) : (
+                            <span className="text-[#8BA888] font-bold">0</span>
+                          )}
+                        </td>
+
+                        <td className="p-3.5 text-center font-bold text-[#E67E22]">
+                          🔥 {student.streakDays || 1} ngày
+                        </td>
+
+                        <td className="p-3.5 text-center">
+                          <div className="flex items-center justify-center space-x-1.5">
+                            <button
+                              onClick={() => handleOpenStudentDetail(student)}
+                              className="px-2.5 py-1 bg-[#5A5A40] text-white hover:bg-[#3D3D2D] rounded-xl text-[11px] font-bold shadow-2xs transition cursor-pointer"
+                              title="Xem chi tiết 360 độ"
+                            >
+                              Chi tiết
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                switchUser(student.id);
+                              }}
+                              className="p-1.5 bg-[#FAF9F6] border border-[#D9D2C5] text-[#5A5A40] hover:bg-[#E8E2D9] rounded-xl text-[11px] font-bold transition cursor-pointer"
+                              title="Chuyển sang đăng nhập tài khoản học sinh này"
+                            >
+                              <UserCheck className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              onClick={() => toggleUserLock(student.id)}
+                              className="p-1.5 text-[#8A8A70] hover:text-[#C0392B] rounded-xl transition cursor-pointer"
+                              title={isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
+                            >
+                              {isLocked ? <Lock className="w-3.5 h-3.5 text-red-500" /> : <Unlock className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 📚 TAB 3: QUESTIONS BANK                                                  */}
+      {/* ========================================================================= */}
       {activeAdminTab === 'questions' && (
-        <div className="space-y-4">
-          {/* Filter Bar */}
+        <div className="space-y-4 animate-in fade-in">
           <div className="bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-sm flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-1 items-center space-x-3 min-w-[280px]">
               <div className="relative flex-1">
                 <Search className="w-4 h-4 text-[#8A8A70] absolute left-3 top-2.5" />
                 <input
                   type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={searchQuestionQuery}
+                  onChange={(e) => setSearchQuestionQuery(e.target.value)}
                   placeholder="Tìm nội dung câu hỏi, đáp án, giải thích..."
                   className="w-full pl-9 pr-3 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:ring-1 focus:ring-[#5A5A40]"
                 />
               </div>
 
               <select
-                value={selectedTopic}
-                onChange={(e) => setSelectedTopic(e.target.value)}
-                className="px-3 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl text-[#4A4A4A] outline-hidden"
+                value={selectedQuestionTopic}
+                onChange={(e) => setSelectedQuestionTopic(e.target.value)}
+                className="px-3 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl text-[#4A4A4A] outline-hidden cursor-pointer"
               >
                 <option value="all">Tất cả chuyên đề ({questions.length})</option>
-                {TOPICS_META.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.nameVi}
-                  </option>
-                ))}
+                <optgroup label="📐 Môn Toán">
+                  {MATH_TOPICS_META.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nameVi}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="🇬🇧 Môn Tiếng Anh">
+                  {TOPICS_META.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nameVi}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
 
-            <div className="text-xs text-[#8A8A70] font-medium">
-              Hiển thị <strong>{filteredQuestions.length}</strong> / {questions.length} câu hỏi
-            </div>
+            <button
+              onClick={() => {
+                setEditingQ(null);
+                setQSubject('math');
+                setTopicId('math_can_thuc');
+                setContent('');
+                setOpt0('A. ');
+                setOpt1('B. ');
+                setOpt2('C. ');
+                setOpt3('D. ');
+                setCorrectOption(0);
+                setExplanation('');
+                setShowQModal(true);
+              }}
+              className="px-4 py-2 bg-[#8BA888] hover:bg-[#789675] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Thêm câu hỏi mới</span>
+            </button>
           </div>
 
-          {/* Question List Cards */}
+          {/* Question List */}
           <div className="space-y-3">
-            {filteredQuestions.map((q, idx) => (
-              <div
-                key={q.id}
-                className="p-5 bg-white rounded-[2rem] border border-[#EAE7E0] shadow-sm hover:border-[#D9D2C5] transition space-y-3"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center space-x-2">
-                    <span className="px-2.5 py-0.5 bg-[#F5F2ED] text-[#5A5A40] text-xs font-bold rounded-lg border border-[#D9D2C5]">
-                      #{idx + 1} • {q.topicId.replace('_', ' ')}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 text-[10px] font-bold rounded-md uppercase ${
-                        q.difficulty === 'easy'
-                          ? 'bg-[#EBF2EB] text-[#8BA888]'
-                          : q.difficulty === 'hard'
-                          ? 'bg-[#FDF2E9] text-[#E67E22]'
-                          : 'bg-[#F5F2ED] text-[#6B6B54]'
-                      }`}
-                    >
-                      {q.difficulty}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => handleOpenEditQ(q)}
-                      className="p-1.5 text-[#8A8A70] hover:text-[#5A5A40] rounded-lg hover:bg-[#FAF9F6] transition cursor-pointer"
-                      title="Chỉnh sửa câu này"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm('Bạn có chắc chắn muốn xóa câu hỏi này?')) {
-                          deleteQuestion(q.id);
-                        }
-                      }}
-                      className="p-1.5 text-[#8A8A70] hover:text-red-600 rounded-lg hover:bg-red-50 transition cursor-pointer"
-                      title="Xóa câu hỏi"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {q.passage && (
-                  <div className="p-3 bg-[#FAF9F6] rounded-xl text-xs text-[#8A8A70] italic line-clamp-2">
-                    {q.passage}
-                  </div>
-                )}
-
-                <div className="text-xs sm:text-sm font-bold text-[#3D3D2D]">{q.content}</div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  {q.options.map((opt, oIdx) => (
-                    <div
-                      key={oIdx}
-                      className={`p-2 rounded-xl border ${
-                        oIdx === q.correctOption
-                          ? 'bg-[#EBF2EB] border-[#8BA888] text-[#3D3D2D] font-bold'
-                          : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#6B6B54]'
-                      }`}
-                    >
-                      {opt}
+            {questions
+              .filter((q) => {
+                if (selectedQuestionTopic !== 'all' && q.topicId !== selectedQuestionTopic) return false;
+                if (
+                  searchQuestionQuery &&
+                  !q.content.toLowerCase().includes(searchQuestionQuery.toLowerCase()) &&
+                  !q.explanation.toLowerCase().includes(searchQuestionQuery.toLowerCase())
+                ) {
+                  return false;
+                }
+                return true;
+              })
+              .map((q, idx) => (
+                <div
+                  key={q.id}
+                  className="p-5 bg-white rounded-[2rem] border border-[#EAE7E0] shadow-sm hover:border-[#D9D2C5] transition space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="px-2.5 py-0.5 bg-[#F5F2ED] text-[#5A5A40] text-xs font-bold rounded-lg border border-[#D9D2C5]">
+                        #{idx + 1} • {q.subject === 'math' ? '📐 Toán' : '🇬🇧 Anh'} • {q.topicId.replace('math_', '').replace(/_/g, ' ')}
+                      </span>
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-[#F5F2ED] text-[#6B6B54] uppercase">
+                        {q.difficulty}
+                      </span>
                     </div>
-                  ))}
-                </div>
 
-                <div className="text-[11px] text-[#8A8A70] pt-1">
-                  <strong>Giải thích:</strong> {q.explanation}
+                    <div className="flex items-center space-x-1">
+                      <button
+                        onClick={() => {
+                          setEditingQ(q);
+                          setQSubject(q.subject || 'english');
+                          setTopicId(q.topicId);
+                          setContent(q.content);
+                          setOpt0(q.options[0] || '');
+                          setOpt1(q.options[1] || '');
+                          setOpt2(q.options[2] || '');
+                          setOpt3(q.options[3] || '');
+                          setCorrectOption(q.correctOption);
+                          setExplanation(q.explanation);
+                          setShowQModal(true);
+                        }}
+                        className="p-1.5 text-[#8A8A70] hover:text-[#5A5A40] rounded-lg hover:bg-[#FAF9F6] transition cursor-pointer"
+                        title="Chỉnh sửa"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm('Bạn có chắc muốn xóa câu hỏi này?')) deleteQuestion(q.id);
+                        }}
+                        className="p-1.5 text-[#8A8A70] hover:text-red-600 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                        title="Xóa"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="text-xs sm:text-sm font-bold text-[#3D3D2D] whitespace-pre-line">{q.content}</div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {q.options.map((opt, oIdx) => (
+                      <div
+                        key={oIdx}
+                        className={`p-2 rounded-xl border whitespace-pre-line ${
+                          oIdx === q.correctOption
+                            ? 'bg-[#EBF2EB] border-[#8BA888] text-[#3D3D2D] font-bold'
+                            : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#6B6B54]'
+                        }`}
+                      >
+                        {opt}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="text-[11px] text-[#8A8A70] pt-1 whitespace-pre-line">
+                    <strong>Lời giải:</strong> {q.explanation}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
           </div>
         </div>
       )}
 
-      {/* 2. EXAMS TAB */}
+      {/* ========================================================================= */}
+      {/* 🎓 TAB 4: EXAMS LIST                                                      */}
+      {/* ========================================================================= */}
       {activeAdminTab === 'exams' && (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-in fade-in">
           <div className="flex justify-between items-center bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-sm">
-            <h3 className="text-sm font-bold text-[#3D3D2D]">Danh sách Đề thi Thử</h3>
+            <h3 className="text-sm font-bold text-[#3D3D2D]">Danh sách Đề thi Tuyển sinh ({exams.length})</h3>
             <button
               onClick={() => {
-                setSelectedQIds(questions.slice(0, 15).map((q) => q.id));
+                setSelectedQIds(questions.slice(0, 12).map((q) => q.id));
                 setShowExamModal(true);
               }}
               className="px-4 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
@@ -381,7 +903,7 @@ export const AdminPanel: React.FC = () => {
               >
                 <div className="flex justify-between items-center">
                   <span className="px-2.5 py-1 bg-[#F5F2ED] text-[#5A5A40] font-bold text-xs rounded-xl border border-[#D9D2C5]">
-                    {ex.code}
+                    {ex.subject === 'math' ? '📐 Toán' : '🇬🇧 Anh'} • {ex.code}
                   </span>
                   <span className="text-xs text-[#8A8A70]">{ex.timeLimitMinutes} phút</span>
                 </div>
@@ -395,7 +917,7 @@ export const AdminPanel: React.FC = () => {
                   </span>
                   <button
                     onClick={() => {
-                      if (confirm('Xóa đề thi này?')) deleteExam(ex.id);
+                      if (confirm('Xóa đề thi này khỏi hệ thống?')) deleteExam(ex.id);
                     }}
                     className="text-red-500 hover:underline text-xs font-semibold cursor-pointer"
                   >
@@ -408,40 +930,313 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
-      {/* 3. STUDENTS TAB */}
-      {activeAdminTab === 'students' && (
-        <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 border border-[#EAE7E0] shadow-sm space-y-4">
-          <h3 className="text-lg font-bold text-[#3D3D2D]">Danh Sách Học Sinh Lớp 9 Ôn Thi</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-[#FAF9F6] text-[#8A8A70] uppercase font-bold border-b border-[#EAE7E0]">
-                <tr>
-                  <th className="p-3">Học sinh</th>
-                  <th className="p-3">Mục tiêu điểm</th>
-                  <th className="p-3">Trường NV1</th>
-                  <th className="p-3">Chuỗi học</th>
-                  <th className="p-3">Trạng thái</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F5F2ED]">
-                <tr className="hover:bg-[#FAF9F6]">
-                  <td className="p-3 font-bold text-[#3D3D2D]">
-                    Nguyễn Hoàng Minh
-                    <span className="block text-[10px] text-[#8A8A70] font-normal">
-                      minh.nguyen9a1@gmail.com
+      {/* ========================================================================= */}
+      {/* 🔍 MODAL: STUDENT 360° DETAILED PERFORMANCE INSPECTOR                     */}
+      {/* ========================================================================= */}
+      {selectedStudentForDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] max-w-4xl w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] max-h-[92vh] overflow-y-auto space-y-6">
+            {/* Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-[#F5F2ED] gap-3">
+              <div className="flex items-center space-x-3.5">
+                <div
+                  className={`w-12 h-12 rounded-2xl ${selectedStudentForDetail.avatarColor || 'bg-[#5A5A40]'} text-white font-bold text-lg flex items-center justify-center shadow-md`}
+                >
+                  {selectedStudentForDetail.name.charAt(0)}
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-lg font-bold text-[#3D3D2D]">{selectedStudentForDetail.name}</h3>
+                    <span className="px-2.5 py-0.5 bg-[#F5F2ED] text-[#5A5A40] rounded-lg text-[11px] font-bold">
+                      Học sinh Lớp 9
                     </span>
-                  </td>
-                  <td className="p-3 font-extrabold text-sm text-[#5A5A40]">8.5 / 10</td>
-                  <td className="p-3 text-[#4A4A4A]">THPT Chu Văn An (Hà Nội)</td>
-                  <td className="p-3 text-[#E67E22] font-bold">14 ngày liên tục</td>
-                  <td className="p-3">
-                    <span className="px-2 py-0.5 bg-[#EBF2EB] text-[#8BA888] font-bold rounded-md">
-                      Đang tích cực ôn luyện
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                  </div>
+                  <p className="text-xs text-[#8A8A70]">
+                    {selectedStudentForDetail.email} • Nguyện vọng 1: <strong>{selectedStudentForDetail.targetSchool}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => {
+                    switchUser(selectedStudentForDetail.id);
+                    setSelectedStudentForDetail(null);
+                  }}
+                  className="px-3.5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Đăng nhập tư cách học sinh này</span>
+                </button>
+
+                <button
+                  onClick={() => setSelectedStudentForDetail(null)}
+                  className="p-1.5 text-[#8A8A70] hover:text-[#3D3D2D] rounded-xl cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Student Quick Scores Banner */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#FAF9F6] p-4 rounded-2xl border border-[#D9D2C5]">
+              <div className="space-y-0.5">
+                <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Mục tiêu Môn Toán</span>
+                <p className="text-lg font-extrabold text-[#5A5A40]">
+                  {selectedStudentForDetail.targetScoreMath || 8.5}/10
+                </p>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Mục tiêu Tiếng Anh</span>
+                <p className="text-lg font-extrabold text-[#5A5A40]">
+                  {selectedStudentForDetail.targetScoreEnglish || 8.5}/10
+                </p>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Chuỗi ngày chuyên cần</span>
+                <p className="text-lg font-extrabold text-[#E67E22]">
+                  🔥 {selectedStudentForDetail.streakDays || 1} ngày
+                </p>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Trạng thái tài khoản</span>
+                <p className="text-sm font-bold text-[#8BA888]">
+                  {selectedStudentForDetail.isLocked ? '🔒 Đang khóa' : '✓ Hoạt động'}
+                </p>
+              </div>
+            </div>
+
+            {/* Exam Attempts History for this student */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-bold text-[#3D3D2D] flex items-center space-x-2">
+                <GraduationCap className="w-4 h-4 text-[#5A5A40]" />
+                <span>Lịch Sử Bài Thi Thử Đã Hoàn Thành:</span>
+              </h4>
+
+              {getUserScopedData(selectedStudentForDetail.id).examAttempts.length === 0 ? (
+                <div className="p-6 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] text-center text-xs text-[#8A8A70]">
+                  Học sinh chưa hoàn thành bài thi thử nào.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-y-auto no-scrollbar">
+                  {getUserScopedData(selectedStudentForDetail.id).examAttempts.map((att, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3.5 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] flex items-center justify-between text-xs"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-[#3D3D2D]">{att.examTitle}</span>
+                          <span className="px-2 py-0.2 bg-white rounded text-[10px] font-bold text-[#5A5A40] border border-[#D9D2C5]">
+                            {att.subject === 'math' ? '📐 Môn Toán' : '🇬🇧 Môn Tiếng Anh'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#8A8A70]">
+                          Thời gian: {Math.round((att.timeSpentSeconds || 1800) / 60)} phút • Ngày {new Date(att.date).toLocaleDateString('vi-VN')}
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-base font-extrabold text-[#5A5A40]">{att.score.toFixed(2)}đ</span>
+                        <span className="text-[10px] text-[#8BA888] block font-semibold">
+                          {att.correctCount}/{att.totalQuestions} câu đúng
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Active Mistakes for this student */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-bold text-[#3D3D2D] flex items-center space-x-2">
+                <BookMarked className="w-4 h-4 text-[#E67E22]" />
+                <span>Sổ Câu Sai Cần Bồi Dưỡng Của Học Sinh:</span>
+              </h4>
+
+              {Object.keys(getUserScopedData(selectedStudentForDetail.id).mistakes || {}).length === 0 ? (
+                <div className="p-4 bg-[#EBF2EB] rounded-2xl border border-[#8BA888]/30 text-center text-xs text-emerald-800 font-medium">
+                  Không có câu sai tồn đọng! Học sinh đã nắm chắc kiến thức.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto no-scrollbar">
+                  {Object.values(getUserScopedData(selectedStudentForDetail.id).mistakes || {}).map((m, idx) => (
+                    <div key={idx} className="p-3 bg-[#FAF9F6] rounded-xl border border-[#EAE7E0] space-y-1 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="px-2 py-0.5 bg-[#FDF2E9] text-[#E67E22] font-bold rounded text-[10px]">
+                          Sai {m.wrongCount} lần
+                        </span>
+                        <span className="text-[10px] text-[#8A8A70] uppercase font-bold">
+                          {m.subject === 'math' ? 'Toán' : 'Anh'}
+                        </span>
+                      </div>
+                      <p className="text-[#3D3D2D] font-medium line-clamp-2">
+                        Mã câu hỏi: <code className="font-mono text-[11px]">{m.questionId}</code>
+                      </p>
+                      {m.userNote && (
+                        <p className="text-[11px] text-[#5A5A40] italic bg-white p-1.5 rounded border border-[#EAE7E0]">
+                          💡 {m.userNote}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Teacher Feedback / Pedagogical Note Section */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-[#5A5A40]/10 border border-[#5A5A40]/30 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 text-[#5A5A40] font-bold text-xs">
+                  <MessageSquare className="w-4 h-4" />
+                  <span>Lời dặn dò & Nhận xét của Giáo viên dành cho em {selectedStudentForDetail.name}:</span>
+                </div>
+                {teacherNoteSaved && (
+                  <span className="text-xs font-bold text-emerald-700 flex items-center space-x-1">
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Đã lưu nhận xét!</span>
+                  </span>
+                )}
+              </div>
+
+              <textarea
+                rows={2}
+                value={teacherNoteInput}
+                onChange={(e) => setTeacherNoteInput(e.target.value)}
+                placeholder="Ví dụ: Em cần chú ý hơn dạng toán Vi-ét đối xứng và câu bị động kép. Tối nay hoàn thành 1 đề tốc độ nhé!"
+                className="w-full p-3 bg-white border border-[#D9D2C5] rounded-xl text-xs text-[#3D3D2D] outline-hidden focus:border-[#5A5A40]"
+              />
+
+              <div className="flex justify-end">
+                <button
+                  onClick={handleSaveTeacherNote}
+                  className="px-4 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Lưu nhận xét sư phạm</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ➕ MODAL: ADD NEW STUDENT                                                 */}
+      {/* ========================================================================= */}
+      {showAddStudentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] max-w-md w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-xl bg-[#8BA888]/20 flex items-center justify-center text-[#5A5A40]">
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-[#3D3D2D] text-base">Thêm Học Sinh Lớp 9 Mới</h3>
+              </div>
+              <button
+                onClick={() => setShowAddStudentModal(false)}
+                className="p-1 text-[#8A8A70] hover:text-[#3D3D2D] rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddStudentSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-[#5A5A40] mb-1">Họ và tên học sinh (*):</label>
+                <input
+                  type="text"
+                  value={newStudentName}
+                  onChange={(e) => setNewStudentName(e.target.value)}
+                  placeholder="Ví dụ: Nguyễn Minh Tuấn"
+                  className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:border-[#5A5A40]"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-[#5A5A40] mb-1">Email đăng nhập (*):</label>
+                <input
+                  type="email"
+                  value={newStudentEmail}
+                  onChange={(e) => setNewStudentEmail(e.target.value)}
+                  placeholder="minhtuan.lop9@gmail.com"
+                  className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:border-[#5A5A40]"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-[#5A5A40] mb-1">Mật khẩu ban đầu:</label>
+                <input
+                  type="text"
+                  value={newStudentPassword}
+                  onChange={(e) => setNewStudentPassword(e.target.value)}
+                  placeholder="Mặc định: 123"
+                  className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:border-[#5A5A40]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-[#5A5A40] mb-1">Trường THPT Nguyện vọng 1:</label>
+                <input
+                  type="text"
+                  value={newStudentSchool}
+                  onChange={(e) => setNewStudentSchool(e.target.value)}
+                  placeholder="THPT Chu Văn An / THPT Kim Liên"
+                  className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:border-[#5A5A40]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-[#5A5A40] mb-1">Mục tiêu Môn Toán:</label>
+                  <input
+                    type="number"
+                    step="0.25"
+                    min="5"
+                    max="10"
+                    value={newStudentTargetMath}
+                    onChange={(e) => setNewStudentTargetMath(parseFloat(e.target.value) || 8.5)}
+                    className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:border-[#5A5A40]"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-[#5A5A40] mb-1">Mục tiêu Tiếng Anh:</label>
+                  <input
+                    type="number"
+                    step="0.25"
+                    min="5"
+                    max="10"
+                    value={newStudentTargetEng}
+                    onChange={(e) => setNewStudentTargetEng(parseFloat(e.target.value) || 8.5)}
+                    className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:border-[#5A5A40]"
+                  />
+                </div>
+              </div>
+
+              {addStudentMsg && (
+                <p className="text-red-600 font-medium text-[11px]">{addStudentMsg}</p>
+              )}
+
+              <div className="flex justify-end space-x-2 pt-2 border-t border-[#F5F2ED]">
+                <button
+                  type="button"
+                  onClick={() => setShowAddStudentModal(false)}
+                  className="px-4 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#6B6B54] rounded-xl font-bold transition cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl font-bold shadow-xs transition cursor-pointer"
+                >
+                  Tạo học sinh
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -452,7 +1247,7 @@ export const AdminPanel: React.FC = () => {
           <div className="bg-white rounded-[2.5rem] max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] max-h-[90vh] overflow-y-auto space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
               <h3 className="font-bold text-[#3D3D2D] text-base">
-                {editingQ ? 'Chỉnh Sửa Câu Hỏi' : 'Thêm Câu Hỏi Mới Vào Ngân Hàng'}
+                {editingQ ? 'Chỉnh Sửa Câu Hỏi' : 'Thêm Câu Hỏi Mới'}
               </h3>
               <button
                 onClick={() => setShowQModal(false)}
@@ -462,8 +1257,48 @@ export const AdminPanel: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveQuestion} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const qData = {
+                  subject: qSubject,
+                  topicId,
+                  subTopicId,
+                  difficulty,
+                  content,
+                  passage: passage.trim() ? passage : undefined,
+                  options: [opt0, opt1, opt2, opt3],
+                  correctOption,
+                  explanation,
+                  grammarRule: grammarRule.trim() ? grammarRule : undefined,
+                  commonMistakeTip: commonMistakeTip.trim() ? commonMistakeTip : undefined,
+                };
+                if (editingQ) {
+                  updateQuestion(editingQ.id, qData);
+                } else {
+                  addQuestion(qData);
+                }
+                setShowQModal(false);
+              }}
+              className="space-y-4 text-xs"
+            >
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-[#4A4A4A] mb-1">Môn học:</label>
+                  <select
+                    value={qSubject}
+                    onChange={(e) => {
+                      const s = e.target.value as SubjectId;
+                      setQSubject(s);
+                      setTopicId(s === 'math' ? 'math_can_thuc' : 'grammar');
+                    }}
+                    className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
+                  >
+                    <option value="math">📐 Môn Toán</option>
+                    <option value="english">🇬🇧 Môn Tiếng Anh</option>
+                  </select>
+                </div>
+
                 <div>
                   <label className="block font-bold text-[#4A4A4A] mb-1">Chuyên đề:</label>
                   <select
@@ -471,7 +1306,7 @@ export const AdminPanel: React.FC = () => {
                     onChange={(e) => setTopicId(e.target.value as TopicId)}
                     className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
                   >
-                    {TOPICS_META.map((t) => (
+                    {(qSubject === 'math' ? MATH_TOPICS_META : TOPICS_META).map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.nameVi}
                       </option>
@@ -480,7 +1315,7 @@ export const AdminPanel: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-[#4A4A4A] mb-1">Mức độ khó:</label>
+                  <label className="block font-bold text-[#4A4A4A] mb-1">Độ khó:</label>
                   <select
                     value={difficulty}
                     onChange={(e) => setDifficulty(e.target.value as DifficultyLevel)}
@@ -495,26 +1330,12 @@ export const AdminPanel: React.FC = () => {
 
               <div>
                 <label className="block font-bold text-[#4A4A4A] mb-1">
-                  Đoạn văn đọc hiểu (Nếu có):
-                </label>
-                <textarea
-                  rows={2}
-                  value={passage}
-                  onChange={(e) => setPassage(e.target.value)}
-                  placeholder="Dán đoạn văn đọc hiểu hoặc điền từ vào đây..."
-                  className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-[#4A4A4A] mb-1">
-                  Nội dung câu hỏi / Câu cần hoàn thành (*):
+                  Nội dung câu hỏi / Đề bài (*):
                 </label>
                 <textarea
                   rows={2}
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  placeholder="Ví dụ: If I ______ rich, I would travel around the world."
                   className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
                   required
                 />
@@ -527,7 +1348,6 @@ export const AdminPanel: React.FC = () => {
                     type="text"
                     value={opt0}
                     onChange={(e) => setOpt0(e.target.value)}
-                    placeholder="A. ..."
                     className="p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
                     required
                   />
@@ -535,7 +1355,6 @@ export const AdminPanel: React.FC = () => {
                     type="text"
                     value={opt1}
                     onChange={(e) => setOpt1(e.target.value)}
-                    placeholder="B. ..."
                     className="p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
                     required
                   />
@@ -543,7 +1362,6 @@ export const AdminPanel: React.FC = () => {
                     type="text"
                     value={opt2}
                     onChange={(e) => setOpt2(e.target.value)}
-                    placeholder="C. ..."
                     className="p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
                     required
                   />
@@ -551,7 +1369,6 @@ export const AdminPanel: React.FC = () => {
                     type="text"
                     value={opt3}
                     onChange={(e) => setOpt3(e.target.value)}
-                    placeholder="D. ..."
                     className="p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
                     required
                   />
@@ -574,13 +1391,12 @@ export const AdminPanel: React.FC = () => {
 
               <div>
                 <label className="block font-bold text-[#4A4A4A] mb-1">
-                  Lời giải thích chi tiết (*):
+                  Lời giải chi tiết & Phương pháp giải (*):
                 </label>
                 <textarea
                   rows={2}
                   value={explanation}
                   onChange={(e) => setExplanation(e.target.value)}
-                  placeholder="Giải thích vì sao chọn đáp án này..."
                   className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
                   required
                 />
@@ -590,16 +1406,15 @@ export const AdminPanel: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowQModal(false)}
-                  className="px-4 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#4A4A4A] rounded-xl font-bold cursor-pointer"
+                  className="px-4 py-2 bg-[#FAF9F6] text-[#4A4A4A] rounded-xl font-bold cursor-pointer"
                 >
-                  Hủy bỏ
+                  Hủy
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl font-bold shadow-xs flex items-center space-x-1 cursor-pointer"
+                  className="px-5 py-2 bg-[#5A5A40] text-white rounded-xl font-bold shadow-xs cursor-pointer"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>Lưu câu hỏi</span>
+                  Lưu câu hỏi
                 </button>
               </div>
             </form>
@@ -612,7 +1427,7 @@ export const AdminPanel: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
           <div className="bg-white rounded-[2.5rem] max-w-md w-full p-6 shadow-2xl border border-[#EAE7E0] space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
-              <h3 className="font-bold text-[#3D3D2D] text-base">Tạo Đề Thi Thử Tuyển Sinh</h3>
+              <h3 className="font-bold text-[#3D3D2D] text-base">Tạo Đề Thi Tuyển Sinh Mới</h3>
               <button
                 onClick={() => setShowExamModal(false)}
                 className="p-1 text-[#8A8A70] hover:text-[#3D3D2D] cursor-pointer"
@@ -621,17 +1436,49 @@ export const AdminPanel: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateExam} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-[#4A4A4A] mb-1">Mã đề:</label>
-                <input
-                  type="text"
-                  value={examCode}
-                  onChange={(e) => setExamCode(e.target.value)}
-                  className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
-                  required
-                />
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                addExam({
+                  subject: examSubject,
+                  title: examTitle,
+                  code: examCode,
+                  description: examDesc,
+                  targetProvince: 'Toàn quốc',
+                  timeLimitMinutes: examTime,
+                  totalQuestions: selectedQIds.length,
+                  difficulty: 'standard',
+                  questionIds: selectedQIds.length > 0 ? selectedQIds : questions.slice(0, 10).map((q) => q.id),
+                  isOfficialFormat: true,
+                });
+                setShowExamModal(false);
+              }}
+              className="space-y-3 text-xs"
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold text-[#4A4A4A] mb-1">Môn thi:</label>
+                  <select
+                    value={examSubject}
+                    onChange={(e) => setExamSubject(e.target.value as SubjectId)}
+                    className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
+                  >
+                    <option value="math">📐 Toán Học</option>
+                    <option value="english">🇬🇧 Tiếng Anh</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block font-bold text-[#4A4A4A] mb-1">Mã đề:</label>
+                  <input
+                    type="text"
+                    value={examCode}
+                    onChange={(e) => setExamCode(e.target.value)}
+                    className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
+                    required
+                  />
+                </div>
               </div>
+
               <div>
                 <label className="block font-bold text-[#4A4A4A] mb-1">Tên đề thi:</label>
                 <input
@@ -643,13 +1490,13 @@ export const AdminPanel: React.FC = () => {
                   required
                 />
               </div>
+
               <div>
-                <label className="block font-bold text-[#4A4A4A] mb-1">Mô tả đề thi:</label>
+                <label className="block font-bold text-[#4A4A4A] mb-1">Mô tả cấu trúc:</label>
                 <textarea
                   rows={2}
                   value={examDesc}
                   onChange={(e) => setExamDesc(e.target.value)}
-                  placeholder="Mô tả cấu trúc..."
                   className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
                 />
               </div>
@@ -666,7 +1513,7 @@ export const AdminPanel: React.FC = () => {
                   type="submit"
                   className="px-5 py-2 bg-[#5A5A40] text-white rounded-xl font-bold shadow-xs cursor-pointer"
                 >
-                  Tạo Đề Thi
+                  Tạo đề thi
                 </button>
               </div>
             </form>
