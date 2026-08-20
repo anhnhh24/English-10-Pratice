@@ -48,24 +48,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
       ? currentUser.targetScoreMath || currentUser.targetScore
       : currentUser.targetScoreEnglish || currentUser.targetScore;
 
+  const isMath = currentSubject === 'math';
+  const theme = {
+    primaryBg: isMath ? 'bg-[#1E3A8A]' : 'bg-[#5A5A40]',
+    primaryText: isMath ? 'text-[#1E3A8A]' : 'text-[#5A5A40]',
+    accentColor: isMath ? 'text-[#2563EB]' : 'text-[#8BA888]',
+    accentBg: isMath ? 'bg-[#2563EB]' : 'bg-[#8BA888]',
+    cardBorder: isMath ? 'border-blue-100' : 'border-[#D9D2C5]',
+    bannerGradient: isMath
+      ? 'bg-gradient-to-r from-[#1E3A8A] via-[#1E40AF] to-[#2563EB]'
+      : 'bg-[#5A5A40]',
+  };
+
   return (
     <div className="space-y-4 sm:space-y-6 pb-6">
       {/* 1. Header Greeting */}
       <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
           <div className="flex items-center space-x-2">
-            <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-[#3D3D2D]">
+            <h2 className={`text-xl sm:text-2xl lg:text-3xl font-bold ${isMath ? 'text-[#0F172A]' : 'text-[#3D3D2D]'}`}>
               Chào {currentUser.name}! 👋
             </h2>
-            <span className="px-2.5 py-0.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-full text-xs font-bold text-[#5A5A40]">
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${isMath ? 'bg-blue-50 border border-blue-200 text-[#1E3A8A]' : 'bg-[#FAF9F6] border border-[#D9D2C5] text-[#5A5A40]'}`}>
               {currentSubject === 'math' ? '📐 Môn Toán 10' : '🇬🇧 Môn Tiếng Anh 10'}
             </span>
           </div>
-          <p className="text-[#8A8A70] text-xs sm:text-sm mt-1">
+          <p className="text-[#64748B] text-xs sm:text-sm mt-1">
             {currentSubject === 'math' ? (
               <>
                 Hôm nay chúng ta cần tập trung vào phần{' '}
-                <span className="text-[#5A5A40] font-semibold underline decoration-[#8BA888]">
+                <span className="text-[#1E3A8A] font-semibold underline decoration-blue-400">
                   Phương trình bậc hai & Định lý Vi-ét
                 </span>
                 .
@@ -83,16 +95,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-2xl text-xs font-semibold text-[#5A5A40] shadow-2xs">
+          <button
+            onClick={() => setActiveTab('study_path')}
+            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-2xl text-xs font-bold transition cursor-pointer shadow-2xs ${
+              isMath
+                ? 'bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900'
+                : 'bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900'
+            }`}
+          >
+            <Compass className="w-4 h-4 text-blue-600" />
+            <span>Lộ trình vào 10</span>
+          </button>
+
+          <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-white border border-[#CBD5E1] rounded-2xl text-xs font-semibold text-[#334155] shadow-2xs">
             <Flame className="w-4 h-4 text-[#E67E22] fill-[#E67E22]" />
             <span>{currentUser.streakDays} ngày liên tiếp</span>
           </div>
 
           <button
             onClick={onOpenTargetModal}
-            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] rounded-2xl text-xs font-bold text-[#5A5A40] transition cursor-pointer shadow-2xs"
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-white hover:bg-black/5 border border-[#CBD5E1] rounded-2xl text-xs font-bold text-[#334155] transition cursor-pointer shadow-2xs"
           >
-            <Target className="w-4 h-4 text-[#8BA888]" />
+            <Target className={`w-4 h-4 ${theme.accentColor}`} />
             <span>
               Mục tiêu {currentSubject === 'math' ? 'Toán' : 'Anh'}: {currentSubjectTarget}đ
             </span>
@@ -101,11 +125,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </header>
 
       {/* AI Exam Generator Feature Spotlight Banner */}
-      <div className="bg-[#5A5A40] text-white p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-[2.5rem] shadow-md relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-white/5 to-transparent pointer-events-none" />
+      <div className={`${theme.bannerGradient} text-white p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-[2.5rem] shadow-md relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all duration-300`}>
+        <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-white/10 to-transparent pointer-events-none" />
         <div className="space-y-1.5 z-10">
-          <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 bg-white/15 rounded-full text-[10px] sm:text-[11px] font-bold text-[#E8E2D9]">
-            <Sparkles className="w-3.5 h-3.5 text-[#E67E22]" />
+          <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 bg-white/20 rounded-full text-[10px] sm:text-[11px] font-bold text-white">
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
             <span>
               AI Exam Generator: {currentSubject === 'math' ? 'Môn Toán Học 10' : 'Môn Tiếng Anh 10'}
             </span>
@@ -115,19 +139,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
               ? 'Tạo đề thi thử môn Toán vào 10 tùy chỉnh theo yêu cầu riêng'
               : 'Tạo đề thi tùy chỉnh theo yêu cầu riêng với Gemini AI'}
           </h3>
-          <p className="text-xs text-[#DED8CE] max-w-xl leading-relaxed">
+          <p className="text-xs text-white/80 max-w-xl leading-relaxed">
             {currentSubject === 'math'
               ? 'Tự chọn số câu, độ khó, chuyên đề Đại số, Hình học hoặc Bất đẳng thức. AI biên soạn đề chuẩn ma trận kèm lời giải chi tiết từng bước.'
-              : 'Tự chọn số câu, độ khó, chuyên đề ngữ pháp hoặc tỉnh thành. AI sẽ tạo đề thi chuẩn kèm đáp án và lời giải chi tiết 100%.'}
+              : 'Tự chọn chủ đề ngữ pháp, từ vựng hoặc đọc hiểu. AI sẽ biên soạn bộ câu hỏi mới hoàn toàn kèm giải thích chi tiết từng câu.'}
           </p>
         </div>
 
         <button
           onClick={() => setActiveTab('ai_generator')}
-          className="w-full sm:w-auto shrink-0 px-5 py-3 bg-[#E67E22] hover:bg-[#D35400] text-white font-bold text-xs rounded-2xl transition shadow-sm flex items-center justify-center space-x-2 z-10 cursor-pointer"
+          id="dashboard-btn-create-exam"
+          className="z-10 px-5 sm:px-6 py-2.5 sm:py-3 bg-white text-[#1E293B] hover:bg-white/90 rounded-2xl text-xs sm:text-sm font-bold shadow-sm transition flex items-center space-x-2 shrink-0 cursor-pointer"
         >
-          <Wand2 className="w-4 h-4" />
-          <span>Tạo đề AI ngay</span>
+          <span>Khám phá ngay</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

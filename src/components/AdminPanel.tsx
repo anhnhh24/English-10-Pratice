@@ -284,8 +284,8 @@ export const AdminPanel: React.FC = () => {
     });
   };
 
-  const [adminEmail, setAdminEmail] = useState<string>('admin.edulop10@edu.vn');
-  const [adminPass, setAdminPass] = useState<string>('admin');
+  const [adminEmail, setAdminEmail] = useState<string>('admin');
+  const [adminPass, setAdminPass] = useState<string>('123');
   const [adminError, setAdminError] = useState<string | null>(null);
 
   // If NOT logged in as Admin, show Dedicated Secure Admin Gateway Portal
@@ -307,22 +307,28 @@ export const AdminPanel: React.FC = () => {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              const adminAcc = usersList.find((u) => u.email.toLowerCase() === adminEmail.toLowerCase() && u.role === 'admin');
+              const trimmed = adminEmail.trim().toLowerCase();
+              const adminAcc = usersList.find(
+                (u) =>
+                  (u.email.toLowerCase() === trimmed || u.id === trimmed || trimmed === 'admin') &&
+                  u.role === 'admin'
+              );
               if (adminAcc && adminAcc.password === adminPass) {
                 switchUser(adminAcc.id);
                 setAdminError(null);
               } else {
-                setAdminError('Email hoặc mật khẩu quản trị không chính xác!');
+                setAdminError('Tài khoản hoặc mật khẩu quản trị không chính xác! (Gợi ý: admin / 123)');
               }
             }}
             className="space-y-3.5 text-left text-xs"
           >
             <div>
-              <label className="block font-bold text-[#5A5A40] mb-1">Email Quản Trị:</label>
+              <label className="block font-bold text-[#5A5A40] mb-1">Tài khoản Quản Trị:</label>
               <input
-                type="email"
+                type="text"
                 value={adminEmail}
                 onChange={(e) => setAdminEmail(e.target.value)}
+                placeholder="admin"
                 className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden font-medium text-[#3D3D2D]"
                 required
               />
@@ -334,6 +340,7 @@ export const AdminPanel: React.FC = () => {
                 type="password"
                 value={adminPass}
                 onChange={(e) => setAdminPass(e.target.value)}
+                placeholder="123"
                 className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden text-[#3D3D2D]"
                 required
               />
@@ -348,13 +355,13 @@ export const AdminPanel: React.FC = () => {
               className="w-full py-3 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white font-bold rounded-2xl shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer"
             >
               <Lock className="w-4 h-4" />
-              <span>Đăng nhập vào Dashboard Quản Trị</span>
+              <span>Đăng nhập vào Dashboard Giám Sát</span>
             </button>
           </form>
 
           {/* 1-Click Fast Admin Switch */}
           <div className="pt-2 border-t border-[#F5F2ED] space-y-2">
-            <p className="text-[11px] text-[#8A8A70]">Hoặc truy cập nhanh với tài khoản quản trị mẫu:</p>
+            <p className="text-[11px] text-[#8A8A70]">Hoặc truy cập nhanh với tài khoản giám sát:</p>
             <button
               onClick={() => {
                 const adminAcc = usersList.find((u) => u.role === 'admin');
@@ -363,7 +370,7 @@ export const AdminPanel: React.FC = () => {
               className="w-full py-2.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] text-[#5A5A40] rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-2xs"
             >
               <Sparkles className="w-4 h-4 text-[#8BA888]" />
-              <span>Đăng nhập 1-Chạm: Thầy Tuấn (Quản trị viên)</span>
+              <span>Đăng nhập 1-Chạm: Admin (Người Giám Sát)</span>
             </button>
           </div>
         </div>

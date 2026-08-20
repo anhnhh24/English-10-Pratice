@@ -1,15 +1,14 @@
 /**
- * Cloud Database Synchronization Service (Online DB Sync Engine)
- * Supports real-time cloud sync across devices using Room Key & REST Cloud Storage (Firebase, Supabase or Cloud KV Relay)
+ * Cloud Database Synchronization Service — Firebase Realtime Database
+ * Real cross-device sync between guardian (admin) and student (Hoàng Hà)
  */
+import { database, ref, set, get, onValue, off } from './firebaseConfig';
+import type { DataSnapshot } from 'firebase/database';
 
 export interface CloudDBSettings {
   enabled: boolean;
-  provider: 'auto_cloud' | 'firebase' | 'supabase';
-  roomCode: string; // Unique shared room code between guardian and student (e.g. EMTOI_VAO10_2026)
-  customEndpoint?: string; // Firebase Database URL or custom API
-  apiKey?: string;
-  autoSyncIntervalSec: number; // e.g. 15s
+  roomCode: string;
+  autoSyncIntervalSec: number;
   lastSyncTimestamp?: string;
 }
 
@@ -18,14 +17,13 @@ const DEFAULT_ROOM_CODE = 'VAO10_GIAMSAT_2026';
 
 export const DEFAULT_CLOUD_SETTINGS: CloudDBSettings = {
   enabled: true,
-  provider: 'auto_cloud',
   roomCode: DEFAULT_ROOM_CODE,
   autoSyncIntervalSec: 15,
   lastSyncTimestamp: new Date().toISOString(),
 };
 
 /**
- * Load saved Cloud DB settings
+ * Load saved Cloud DB settings from localStorage
  */
 export function getCloudDBSettings(): CloudDBSettings {
   try {
@@ -38,7 +36,7 @@ export function getCloudDBSettings(): CloudDBSettings {
 }
 
 /**
- * Save Cloud DB settings
+ * Save Cloud DB settings to localStorage
  */
 export function saveCloudDBSettings(settings: Partial<CloudDBSettings>): CloudDBSettings {
   const current = getCloudDBSettings();
@@ -52,7 +50,7 @@ export function saveCloudDBSettings(settings: Partial<CloudDBSettings>): CloudDB
 }
 
 /**
- * Push student data to Online Cloud Database
+ * Push student data to Firebase Realtime Database
  */
 export async function pushUserDataToOnlineDB(
   userId: string,
@@ -65,47 +63,30 @@ export async function pushUserDataToOnlineDB(
   }
 
   const payload = {
-    roomCode: settings.roomCode,
     userId,
-    userProfile,
+    userProfile: userProfile || null,
     userData,
     updatedAt: new Date().toISOString(),
-    deviceInfo: navigator.userAgent.slice(0, 50),
+    deviceInfo: navigator.userAgent.slice(0, 80),
   };
 
   try {
-    // 1. If custom Firebase Realtime Database is configured
-    if (settings.provider === 'firebase' && settings.customEndpoint) {
-      const fbUrl = `${settings.customEndpoint.replace(/\/$/, '')}/rooms/${settings.roomCode}/students/${userId}.json`;
-      const res = await fetch(fbUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        saveCloudDBSettings({ lastSyncTimestamp: new Date().toISOString() });
-        return { success: true, message: 'Đã lưu lên Firebase Realtime DB' };
-      }
-    }
-
-    // 2. Default Zero-Config Auto Cloud Relay Endpoint (Free high-speed KV cloud store)
-    // Uses KV online endpoint based on roomCode
-    const cloudUrl = `https://api.restful-api.dev/objects`;
-    // We also backup to persistent room storage in localStorage for hybrid sync
-    localStorage.setItem(`edu10_cloud_backup_${settings.roomCode}_${userId}`, JSON.stringify(payload));
-    
-    // Broadcast via global storage pulse
+    const dbRef = ref(database, `rooms/${settings.roomCode}/students/${userId}`);
+    await set(dbRef, payload);
     saveCloudDBSettings({ lastSyncTimestamp: new Date().toISOString() });
-    return { success: true, message: 'Đã đẩy dữ liệu thành công lên Cloud DB' };
+    return { success: true, message: '✅ Đã đồng bộ lên Firebase Realtime DB thành công!' };
   } catch (err: any) {
-    console.warn('Cloud sync offline or fallback active:', err);
-    saveCloudDBSettings({ lastSyncTimestamp: new Date().toISOString() });
-    return { success: true, message: 'Đã đồng bộ vào bộ nhớ Cloud Room' };
+    console.error('Firebase push error:', err);
+    // Fallback: save to localStorage backup
+    try {
+      localStorage.setItem(`edu10_cloud_backup_${settings.roomCode}_${userId}`, JSON.stringify(payload));
+    } catch (_) {}
+    return { success: false, message: `❌ Lỗi đồng bộ: ${err.message || 'Không kết nối được Firebase'}` };
   }
 }
 
 /**
- * Fetch all students' latest data from Online Cloud Database for the Room Code
+ * Fetch all students' latest data from Firebase for the Room Code
  */
 export async function fetchRoomDataFromOnlineDB(): Promise<{
   success: boolean;
@@ -118,34 +99,71 @@ export async function fetchRoomDataFromOnlineDB(): Promise<{
   }
 
   try {
-    // 1. Firebase Provider
-    if (settings.provider === 'firebase' && settings.customEndpoint) {
-      const fbUrl = `${settings.customEndpoint.replace(/\/$/, '')}/rooms/${settings.roomCode}/students.json`;
-      const res = await fetch(fbUrl);
-      if (res.ok) {
-        const json = await res.json();
-        saveCloudDBSettings({ lastSyncTimestamp: new Date().toISOString() });
-        return { success: true, data: json || {}, message: 'Đã tải dữ liệu từ Firebase DB' };
-      }
+    const dbRef = ref(database, `rooms/${settings.roomCode}/students`);
+    const snapshot = await get(dbRef);
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      saveCloudDBSettings({ lastSyncTimestamp: new Date().toISOString() });
+      return { success: true, data, message: '✅ Đã tải dữ liệu từ Firebase thành công!' };
+    } else {
+      return { success: true, data: {}, message: 'Chưa có dữ liệu trên Firebase cho phòng này.' };
     }
-
-    // 2. Hybrid Cloud / Shared Room Sync: Read all students under this room code
-    const results: Record<string, any> = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(`edu10_cloud_backup_${settings.roomCode}_`)) {
-        try {
-          const item = JSON.parse(localStorage.getItem(key) || '{}');
-          if (item.userId) {
-            results[item.userId] = item;
-          }
-        } catch (e) {}
-      }
-    }
-
-    saveCloudDBSettings({ lastSyncTimestamp: new Date().toISOString() });
-    return { success: true, data: results, message: 'Đã đồng bộ từ Cloud Room' };
   } catch (err: any) {
-    return { success: false, data: null, message: err.message || 'Lỗi kết nối DB Online' };
+    console.error('Firebase fetch error:', err);
+    return { success: false, data: null, message: `❌ Lỗi: ${err.message || 'Không kết nối được Firebase'}` };
   }
+}
+
+/**
+ * Subscribe to real-time changes for a specific student on Firebase
+ * Returns unsubscribe function
+ */
+export function subscribeToStudentData(
+  userId: string,
+  callback: (data: any) => void
+): () => void {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return () => {};
+
+  const dbRef = ref(database, `rooms/${settings.roomCode}/students/${userId}`);
+  const handler = (snapshot: DataSnapshot) => {
+    if (snapshot.exists()) {
+      callback(snapshot.val());
+    }
+  };
+
+  onValue(dbRef, handler);
+  return () => off(dbRef, 'value', handler);
+}
+
+/**
+ * Subscribe to real-time changes for ALL students in the room
+ */
+export function subscribeToRoomData(
+  callback: (data: Record<string, any>) => void
+): () => void {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return () => {};
+
+  const dbRef = ref(database, `rooms/${settings.roomCode}/students`);
+  const handler = (snapshot: DataSnapshot) => {
+    if (snapshot.exists()) {
+      callback(snapshot.val());
+    }
+  };
+
+  onValue(dbRef, handler);
+  return () => off(dbRef, 'value', handler);
+}
+
+/**
+ * Check Firebase connection status
+ */
+export function subscribeToConnectionStatus(callback: (connected: boolean) => void): () => void {
+  const connRef = ref(database, '.info/connected');
+  const handler = (snapshot: DataSnapshot) => {
+    callback(snapshot.val() === true);
+  };
+  onValue(connRef, handler);
+  return () => off(connRef, 'value', handler);
 }

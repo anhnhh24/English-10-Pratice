@@ -21,10 +21,12 @@ import {
   Calculator,
   Languages,
   LogOut,
+  Compass,
 } from 'lucide-react';
 
 export type TabType =
   | 'dashboard'
+  | 'study_path'
   | 'ai_generator'
   | 'lessons'
   | 'topic_practice'
@@ -73,11 +75,18 @@ export const Navbar: React.FC<NavbarProps> = ({
   }[] = [
     { id: 'dashboard', label: 'Tổng quan', icon: BarChart3 },
     {
+      id: 'study_path',
+      label: 'Lộ trình vào 10',
+      icon: Compass,
+      badge: 'HOT',
+      badgeColor: 'bg-amber-500 text-white animate-pulse',
+    },
+    {
       id: 'ai_generator',
       label: currentSubject === 'math' ? 'AI Tạo đề Toán' : 'AI Tạo đề Tiếng Anh',
       icon: Wand2,
       badge: 'MỚI',
-      badgeColor: 'bg-[#5A5A40] text-white animate-pulse',
+      badgeColor: 'bg-[#5A5A40] text-white',
     },
     { id: 'mock_exam', label: 'Thi thử vào 10', icon: GraduationCap },
     {
@@ -120,23 +129,34 @@ export const Navbar: React.FC<NavbarProps> = ({
     },
   ];
 
+  const isMath = currentSubject === 'math';
+  const theme = {
+    primaryBg: isMath ? 'bg-[#1E3A8A]' : 'bg-[#5A5A40]',
+    primaryText: isMath ? 'text-[#1E3A8A]' : 'text-[#5A5A40]',
+    sidebarBg: isMath ? 'bg-[#E2E8F0]' : 'bg-[#E8E2D9]',
+    sidebarBorder: isMath ? 'border-[#CBD5E1]' : 'border-[#D9D2C5]',
+    activeNavBg: isMath ? 'bg-[#1E3A8A]' : 'bg-[#5A5A40]',
+    accentColor: isMath ? 'text-[#2563EB]' : 'text-[#8BA888]',
+    progressBg: isMath ? 'bg-[#2563EB]' : 'bg-[#8BA888]',
+  };
+
   return (
     <>
       {/* SIDEBAR FOR DESKTOP */}
-      <aside className="hidden lg:flex w-64 bg-[#E8E2D9] border-r border-[#D9D2C5] flex-col shrink-0 h-screen sticky top-0">
+      <aside className={`hidden lg:flex w-64 ${theme.sidebarBg} border-r ${theme.sidebarBorder} flex-col shrink-0 h-screen sticky top-0 transition-colors duration-300`}>
         {/* Brand Header */}
         <div className="p-5 pb-3 space-y-3">
           <div
             onClick={() => setActiveTab('dashboard')}
             className="cursor-pointer group flex items-center space-x-3"
           >
-            <div className="w-10 h-10 rounded-2xl bg-[#5A5A40] text-white flex items-center justify-center font-bold text-lg shadow-sm">
+            <div className={`w-10 h-10 rounded-2xl ${theme.primaryBg} text-white flex items-center justify-center font-bold text-lg shadow-sm transition-colors duration-300`}>
               {currentSubject === 'math' ? 'M10' : 'E10'}
             </div>
             <div>
-              <h1 className="text-lg font-bold text-[#5A5A40] tracking-tight leading-tight">
+              <h1 className={`text-lg font-bold ${theme.primaryText} tracking-tight leading-tight transition-colors duration-300`}>
                 {currentSubject === 'math' ? 'MathMaster' : 'EngMaster'}
-                <span className="text-[10px] block font-semibold tracking-widest uppercase text-[#8A8A70]">
+                <span className="text-[10px] block font-semibold tracking-widest uppercase text-[#64748B]">
                   Luyện Thi Vào 10
                 </span>
               </h1>
@@ -161,7 +181,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => switchSubject('math')}
               className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
                 currentSubject === 'math'
-                  ? 'bg-[#5A5A40] text-white shadow-xs'
+                  ? 'bg-[#1E3A8A] text-white shadow-xs'
                   : 'text-[#6B6B54] hover:text-[#3D3D2D] hover:bg-[#E8E2D9]'
               }`}
             >
@@ -183,20 +203,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => setActiveTab(item.id)}
                 className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-semibold transition cursor-pointer ${
                   isActive
-                    ? 'bg-[#5A5A40] text-white shadow-sm'
-                    : 'text-[#6B6B54] hover:bg-[#DED8CE] hover:text-[#3D3D2D]'
+                    ? `${theme.activeNavBg} text-white shadow-sm`
+                    : 'text-[#64748B] hover:bg-black/5 hover:text-[#1E293B]'
                 }`}
               >
                 <div className="flex items-center space-x-3">
                   <Icon
-                    className={`w-4 h-4 ${isActive ? 'text-white' : 'text-[#6B6B54]'}`}
+                    className={`w-4 h-4 ${isActive ? 'text-white' : 'text-[#64748B]'}`}
                   />
                   <span>{item.label}</span>
                 </div>
                 {item.badge !== undefined && (typeof item.badge === 'string' || item.badge > 0) && (
                   <span
                     className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                      item.badgeColor || (isActive ? 'bg-white text-[#5A5A40]' : 'bg-[#E67E22] text-white')
+                      item.badgeColor || (isActive ? 'bg-white text-[#1E3A8A]' : 'bg-[#E67E22] text-white')
                     }`}
                   >
                     {item.badge}
@@ -211,20 +231,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             id="sidebar-nav-admin"
             className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
               activeTab === 'admin'
-                ? 'bg-[#5A5A40] text-white shadow-sm'
-                : 'text-[#5A5A40] bg-[#FAF9F6] border border-[#D9D2C5] hover:bg-[#DED8CE]'
+                ? `${theme.activeNavBg} text-white shadow-sm`
+                : 'text-[#1E293B] bg-[#FAF9F6] border border-[#CBD5E1] hover:bg-black/5'
             }`}
           >
             <div className="flex items-center space-x-3">
-              <ShieldCheck className="w-4 h-4 text-[#8BA888]" />
-              <span>Dashboard Giáo viên</span>
+              <ShieldCheck className="w-4 h-4 text-[#2563EB]" />
+              <span>Dashboard Giám Sát</span>
             </div>
             <span
               className={`px-2 py-0.5 text-[9px] font-extrabold rounded-full ${
-                currentUser.role === 'admin' ? 'bg-[#8BA888] text-white' : 'bg-[#E8E2D9] text-[#5A5A40]'
+                currentUser.role === 'admin' ? 'bg-[#2563EB] text-white' : 'bg-black/10 text-[#1E293B]'
               }`}
             >
-              {currentUser.role === 'admin' ? 'GVCN' : 'Admin'}
+              {currentUser.role === 'admin' ? 'ADMIN' : 'Giám Sát'}
             </span>
           </button>
         </nav>

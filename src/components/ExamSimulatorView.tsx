@@ -9,6 +9,7 @@ import {
   getStoredApiKey,
   ExamEvaluationReport,
 } from '../services/aiExamService';
+import { logAndBroadcastActivity } from '../services/realtimeSyncService';
 import confetti from 'canvas-confetti';
 import {
   Clock,
@@ -95,6 +96,44 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
 
   // Completed Attempt State
   const [completedAttempt, setCompletedAttempt] = useState<any>(null);
+
+  // Anti-Cheat: Tab Switch Detection State
+  const [tabSwitchCount, setTabSwitchCount] = useState<number>(0);
+  const [showTabWarning, setShowTabWarning] = useState<boolean>(false);
+
+  // Anti-cheat listener effect
+  useEffect(() => {
+    if (stage !== 'active') return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setTabSwitchCount((prev) => {
+          const nextCount = prev + 1;
+          setShowTabWarning(true);
+
+          // Broadcast alert to guardian / admin in real-time
+          logAndBroadcastActivity({
+            userId: currentUser.id,
+            userName: `${currentUser.name} (Em trai)`,
+            avatarColor: currentUser.avatarColor,
+            subject: exam.subject || currentSubject,
+            type: 'tab_switched',
+            title: `Cảnh báo rời màn hình thi (${nextCount} lần)`,
+            detail: `Học sinh vừa chuyển sang tab/ứng dụng khác khi đang làm bài thi "${exam.title}"!`,
+            examTitle: exam.title,
+            tabSwitchCount: nextCount,
+          });
+
+          return nextCount;
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [stage, exam, currentUser, currentSubject]);
 
   // Timer effect
   useEffect(() => {
@@ -425,6 +464,24 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Anti-Cheat Tab Switch Warning Banner */}
+        {tabSwitchCount > 0 && (
+          <div className="p-3.5 bg-rose-50 border-2 border-rose-300 rounded-2xl flex items-center justify-between gap-3 text-xs text-rose-900 animate-in fade-in">
+            <div className="flex items-center space-x-2">
+              <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0 animate-bounce" />
+              <span>
+                <strong>Cảnh báo Giám Sát:</strong> Bạn đã rời màn hình thi <strong>{tabSwitchCount} lần</strong>. Hệ thống đã ghi nhận và truyền dữ liệu thời gian thực về Dashboard người giám sát!
+              </span>
+            </div>
+            <button
+              onClick={() => setShowTabWarning(false)}
+              className="text-rose-600 hover:text-rose-900 font-bold px-2 py-1 bg-white rounded-lg border border-rose-200 text-[11px]"
+            >
+              Đã hiểu
+            </button>
+          </div>
+        )}
 
         {/* Main 2-Column Interface: Question View (Left) & Question Palette (Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">

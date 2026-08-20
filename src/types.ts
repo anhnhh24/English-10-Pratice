@@ -238,13 +238,14 @@ export interface RealtimeActivityEvent {
   userName: string;
   avatarColor?: string;
   subject?: SubjectId;
-  type: 'exam_submitted' | 'question_wrong' | 'question_correct' | 'study_start' | 'flashcard_mastered' | 'goal_updated';
+  type: 'exam_submitted' | 'question_wrong' | 'question_correct' | 'study_start' | 'flashcard_mastered' | 'goal_updated' | 'tab_switched';
   title: string;
   detail: string;
   timestamp: string;
   score?: number;
   examTitle?: string;
   topicName?: string;
+  tabSwitchCount?: number;
 }
 
 export interface RemoteTaskAssignment {
@@ -259,4 +260,50 @@ export interface RemoteTaskAssignment {
   targetDeadline?: string;
   timestamp: string;
   completed?: boolean;
+}
+
+export interface DailyMission {
+  id: string;
+  title: string;
+  description: string;
+  subject: SubjectId;
+  type: 'exam' | 'topic_practice' | 'mistake_review' | 'flashcard';
+  targetCount: number;
+  currentCount: number;
+  targetId?: string;
+  rewardPoints: number;
+  completed: boolean;
+}
+
+export interface StudyMilestone {
+  id: string;
+  phaseNumber: number;
+  title: string;
+  scoreTarget: string; // e.g. "Mục tiêu 6.5 - 7.5đ"
+  description: string;
+  color: string;
+  subject: SubjectId;
+  topics: {
+    topicId: TopicId;
+    topicName: string;
+    description: string;
+    mustMasterKey: string;
+  }[];
+  completedTopicCount: number;
+}
+
+export interface MathEssayProblem {
+  id: string;
+  title: string;
+  category: 'can_thuc' | 'he_pt' | 'ham_so' | 'viet' | 'lap_pt' | 'hinh_hoc' | 'bdt';
+  examWeight: string; // e.g. "1.5 - 2.0 điểm"
+  problemContent: string;
+  steps: {
+    stepNumber: number;
+    stepTitle: string;
+    pointWeight: string;
+    stepDetail: string;
+    trapsToAvoid: string;
+  }[];
+  finalAnswer: string;
 }

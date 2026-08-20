@@ -12,6 +12,7 @@ import { VocabFlashcardsView } from './components/VocabFlashcardsView';
 import { AnalyticsView } from './components/AnalyticsView';
 import { BookmarksView } from './components/BookmarksView';
 import { AdminPanel } from './components/AdminPanel';
+import { StudyPathView } from './components/StudyPathView';
 import { TargetSettingModal } from './components/TargetSettingModal';
 import { AuthModal } from './components/AuthModal';
 import { UserProfileModal } from './components/UserProfileModal';
@@ -58,6 +59,13 @@ const AppContent: React.FC = () => {
               onStartExam={handleStartExam}
               onPracticeTopic={handlePracticeTopic}
               onOpenTargetModal={() => setTargetModalOpen(true)}
+            />
+          )}
+
+          {activeTab === 'study_path' && (
+            <StudyPathView
+              onStartExam={handleStartExam}
+              onPracticeTopic={handlePracticeTopic}
             />
           )}
 
