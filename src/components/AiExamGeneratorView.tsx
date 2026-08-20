@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { TopicId, Exam, Question } from '../types';
+import { TopicId, SubjectId } from '../types';
 import { TOPICS_META } from '../data/topicsMeta';
+import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
 import {
   testGeminiApiKey,
   generateExamWithAI,
@@ -17,9 +18,6 @@ import {
   Key,
   CheckCircle2,
   AlertCircle,
-  Clock,
-  BookOpen,
-  Zap,
   Play,
   Save,
   Copy,
@@ -28,15 +26,12 @@ import {
   Sliders,
   ChevronDown,
   ChevronUp,
-  FileText,
-  HelpCircle,
   Eye,
   EyeOff,
   Wand2,
-  Send,
-  Layers,
-  Award,
   ArrowRight,
+  Calculator,
+  Languages,
 } from 'lucide-react';
 
 interface AiExamGeneratorViewProps {
@@ -51,13 +46,14 @@ interface PresetOption {
   config: Partial<ExamGenerationConfig>;
 }
 
-const PRESETS: PresetOption[] = [
+const ENGLISH_PRESETS: PresetOption[] = [
   {
     title: 'Đề Thi Thử Chuẩn Sở GD&ĐT (40 câu)',
     badge: 'Chuẩn 100%',
     badgeColor: 'bg-[#5A5A40] text-white',
     desc: 'Đầy đủ ma trận: Phát âm, trọng âm, ngữ pháp tổng hợp, từ vựng, đọc hiểu, cloze test và viết lại câu.',
     config: {
+      subject: 'english',
       title: 'Đề Thi Thử Vào Lớp 10 Chuẩn Sở GD&ĐT - AI Generator',
       targetProvince: 'Sở GD&ĐT Hà Nội / TP.HCM / Toàn quốc',
       totalQuestions: 40,
@@ -73,6 +69,7 @@ const PRESETS: PresetOption[] = [
     badgeColor: 'bg-[#8BA888] text-[#2C3E2D]',
     desc: 'Tập trung sâu vào câu điều kiện, câu bị động, câu tường thuật, mệnh đề quan hệ và các cấu trúc biến đổi câu.',
     config: {
+      subject: 'english',
       title: 'Chuyên Đề Bứt Phá Ngữ Pháp & Viết Lại Câu Điểm 8+',
       targetProvince: 'Chuyên Đề Tăng Tốc Điểm Số',
       totalQuestions: 20,
@@ -88,6 +85,7 @@ const PRESETS: PresetOption[] = [
     badgeColor: 'bg-[#E67E22] text-white',
     desc: 'Rèn phản xạ nhanh ăn trọn 100% điểm phát âm đuôi -s/es, -ed, nguyên âm và trọng âm 2 - 3 âm tiết.',
     config: {
+      subject: 'english',
       title: 'Đề Luyện Phản Xạ Nhanh: Ngữ Âm & Trọng Âm 100% Ăn Điểm',
       targetProvince: 'Phản xạ tốc độ',
       totalQuestions: 15,
@@ -103,6 +101,7 @@ const PRESETS: PresetOption[] = [
     badgeColor: 'bg-[#C0392B] text-white',
     desc: 'Đề bẫy cao, cấu trúc nâng cao, thành ngữ, cụm động từ (phrasal verbs) và từ vựng theo chủ đề Unit 1-9.',
     config: {
+      subject: 'english',
       title: 'Đề Phân Loại Học Sinh Giỏi & Chuyên Anh Vào 10',
       targetProvince: 'Chuyên Anh & Trường Top',
       totalQuestions: 20,
@@ -114,7 +113,74 @@ const PRESETS: PresetOption[] = [
   },
 ];
 
-const PROMPT_SUGGESTIONS = [
+const MATH_PRESETS: PresetOption[] = [
+  {
+    title: 'Đề Thi Thử Toán Vào 10 Chuẩn Sở (15 câu)',
+    badge: 'Chuẩn 100%',
+    badgeColor: 'bg-[#5A5A40] text-white',
+    desc: 'Bám sát ma trận: Căn thức, Hệ phương trình, Tương giao Parabol, Hệ thức Vi-ét, Toán chuyển động & Tứ giác nội tiếp.',
+    config: {
+      subject: 'math',
+      title: 'Đề Thi Thử Môn Toán Tuyển Sinh Lớp 10 - Chuẩn Sở GD&ĐT',
+      targetProvince: 'Chuẩn Sở GD&ĐT Hà Nội / TP.HCM / Toàn quốc',
+      totalQuestions: 15,
+      timeLimitMinutes: 60,
+      difficulty: 'standard',
+      focusTopics: ['math_can_thuc', 'math_he_phuong_trinh', 'math_ham_so_do_thi', 'math_pt_bac_hai_viet', 'math_giai_toan_lap_pt', 'math_duong_tron_tu_giac'],
+      customPrompt: 'Đề thi chuẩn cấu trúc thi vào 10 gồm các câu hỏi: Rút gọn biểu thức chứa căn, giải hệ phương trình, vị trí tương đối Parabol và đường thẳng, định lý Vi-ét, toán chuyển động thực tế và dấu hiệu tứ giác nội tiếp.',
+    },
+  },
+  {
+    title: 'Chuyên Đề Đại Số: Vi-ét & Parabol Điểm 8+',
+    badge: 'Điểm 8+',
+    badgeColor: 'bg-[#8BA888] text-[#2C3E2D]',
+    desc: 'Luyện sâu định lý Vi-ét (biểu thức đối xứng, không đối xứng, tìm tham số m) và bài toán tương giao đồ thị.',
+    config: {
+      subject: 'math',
+      title: 'Chuyên Đề Bứt Phá Đại Số: Hệ Thức Vi-ét & Đồ Thị Parabol',
+      targetProvince: 'Chuyên Đề Trọng Tâm',
+      totalQuestions: 10,
+      timeLimitMinutes: 30,
+      difficulty: 'advanced',
+      focusTopics: ['math_pt_bac_hai_viet', 'math_ham_so_do_thi'],
+      customPrompt: 'Tập trung vào các dạng toán Vi-ét nâng cao: tìm m để pt có 2 nghiệm thỏa mãn x1^2 + x2^2 = k, |x1 - x2| = m, nghiệm đối xứng và phương trình hoành độ giao điểm giữa d và (P).',
+    },
+  },
+  {
+    title: 'Chuyên Đề Hình Học: Tứ Giác Nội Tiếp',
+    badge: 'Chắc Điểm Hình',
+    badgeColor: 'bg-[#E67E22] text-white',
+    desc: 'Rèn luyện 4 dấu hiệu vàng chứng minh tứ giác nội tiếp, góc nội tiếp, tiếp tuyến và hệ thức lượng trong tam giác vuông.',
+    config: {
+      subject: 'math',
+      title: 'Chuyên Đề Hình Học 9: Tứ Giác Nội Tiếp & Hệ Thức Lượng',
+      targetProvince: 'Luyện kỹ năng Hình học',
+      totalQuestions: 10,
+      timeLimitMinutes: 30,
+      difficulty: 'standard',
+      focusTopics: ['math_he_thuc_luong', 'math_duong_tron_tu_giac', 'math_hinh_khong_gian_thuc_te'],
+      customPrompt: 'Các câu hỏi về nhận biết tứ giác nội tiếp qua tổng 2 góc đối bằng 180 độ, 2 đỉnh kề cùng nhìn 1 cạnh, tính chất tiếp tuyến và tỉ số lượng giác tam giác vuông.',
+    },
+  },
+  {
+    title: 'Đề Chuyên Toán & Bất Đẳng Thức Cực Trị 9-10',
+    badge: 'Điểm 9.5-10',
+    badgeColor: 'bg-[#C0392B] text-white',
+    desc: 'Chinh phục câu phân loại điểm 10: BĐT Cauchy AM-GM, Schwarz, Bunhiacopxki và bài toán cực trị hình học.',
+    config: {
+      subject: 'math',
+      title: 'Đề Thách Thức Điểm 9.5 - 10: Bất Đẳng Thức & Vi-ét Nâng Cao',
+      targetProvince: 'Mục tiêu Chuyên & Trường Top 1',
+      totalQuestions: 8,
+      timeLimitMinutes: 40,
+      difficulty: 'challenge',
+      focusTopics: ['math_bat_dang_thuc_cuc_tri', 'math_pt_bac_hai_viet', 'math_he_phuong_trinh'],
+      customPrompt: 'Tập trung vào bất đẳng thức Cauchy chọn điểm rơi, Cauchy-Schwarz dạng phân thức, bài toán tìm giá trị nhỏ nhất/lớn nhất và hệ phương trình nâng cao.',
+    },
+  },
+];
+
+const ENGLISH_SUGGESTIONS = [
   'Tập trung nhiều câu về Mệnh đề quan hệ và Câu gián tiếp',
   'Chủ đề từ vựng Unit 1-6 SGK Global Success (Môi trường, Đô thị, Văn hóa)',
   'Kèm 1 đoạn văn đọc hiểu 5 câu về Biến đổi khí hậu (Climate Change)',
@@ -122,8 +188,28 @@ const PROMPT_SUGGESTIONS = [
   'Luyện kỹ câu hỏi đuôi (Tag questions) và câu ước (Wish clauses)',
 ];
 
+const MATH_SUGGESTIONS = [
+  'Tập trung vào Hệ thức Vi-ét có tham số m và biểu thức đối xứng x1^2 + x2^2',
+  'Đề thi gồm 1 bài toán thực tế chuyển động S = v.t có phân tích bảng',
+  'Kèm câu hình học chứng minh tứ giác nội tiếp và tiếp tuyến đường tròn',
+  'Câu cuối 0.5 điểm bất đẳng thức Cauchy AM-GM tìm giá trị nhỏ nhất',
+  'Nhiều câu về rút gọn biểu thức chứa căn bậc hai và tìm x nguyên để P nhận giá trị nguyên',
+];
+
 export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStartExam }) => {
-  const { addExam, bulkImportQuestions } = useApp();
+  const { currentSubject, switchSubject, addExam, bulkImportQuestions } = useApp();
+
+  // Selected subject for generation
+  const [genSubject, setGenSubject] = useState<SubjectId>(currentSubject);
+
+  // Sync with current subject
+  useEffect(() => {
+    setGenSubject(currentSubject);
+  }, [currentSubject]);
+
+  const currentPresets = genSubject === 'math' ? MATH_PRESETS : ENGLISH_PRESETS;
+  const currentTopicsMeta = genSubject === 'math' ? MATH_TOPICS_META : TOPICS_META;
+  const currentSuggestions = genSubject === 'math' ? MATH_SUGGESTIONS : ENGLISH_SUGGESTIONS;
 
   // API Key State
   const [apiKey, setApiKey] = useState<string>('');
@@ -133,20 +219,38 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
   const [testResult, setTestResult] = useState<{ success?: boolean; message?: string } | null>(null);
 
   // Exam Configuration State
-  const [title, setTitle] = useState<string>('Đề Thi Thử Vào Lớp 10 Chuẩn Sở GD&ĐT');
+  const [title, setTitle] = useState<string>(
+    genSubject === 'math'
+      ? 'Đề Thi Thử Tuyển Sinh Vào 10 Môn Toán (AI Generator)'
+      : 'Đề Thi Thử Vào Lớp 10 Chuẩn Sở GD&ĐT'
+  );
   const [targetProvince, setTargetProvince] = useState<string>('Sở GD&ĐT Hà Nội / TP.HCM');
   const [difficulty, setDifficulty] = useState<'standard' | 'advanced' | 'challenge'>('standard');
-  const [totalQuestions, setTotalQuestions] = useState<number>(20);
-  const [timeLimitMinutes, setTimeLimitMinutes] = useState<number>(30);
-  const [selectedTopics, setSelectedTopics] = useState<TopicId[]>([
-    'grammar',
-    'vocabulary',
-    'pronunciation',
-    'stress',
-    'sentence_rewrite',
-  ]);
+  const [totalQuestions, setTotalQuestions] = useState<number>(genSubject === 'math' ? 12 : 20);
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState<number>(genSubject === 'math' ? 45 : 30);
+  const [selectedTopics, setSelectedTopics] = useState<TopicId[]>(() =>
+    genSubject === 'math'
+      ? ['math_can_thuc', 'math_he_phuong_trinh', 'math_pt_bac_hai_viet', 'math_duong_tron_tu_giac']
+      : ['grammar', 'vocabulary', 'pronunciation', 'stress', 'sentence_rewrite']
+  );
   const [customPrompt, setCustomPrompt] = useState<string>('');
   const [showAdvancedSettings, setShowAdvancedSettings] = useState<boolean>(false);
+
+  // When subject changes, reset default topics and title
+  const handleSubjectTabChange = (subj: SubjectId) => {
+    setGenSubject(subj);
+    if (subj === 'math') {
+      setTitle('Đề Thi Thử Tuyển Sinh Vào 10 Môn Toán (AI Generator)');
+      setTotalQuestions(12);
+      setTimeLimitMinutes(45);
+      setSelectedTopics(['math_can_thuc', 'math_he_phuong_trinh', 'math_pt_bac_hai_viet', 'math_duong_tron_tu_giac']);
+    } else {
+      setTitle('Đề Thi Thử Vào Lớp 10 Chuẩn Sở GD&ĐT');
+      setTotalQuestions(20);
+      setTimeLimitMinutes(30);
+      setSelectedTopics(['grammar', 'vocabulary', 'pronunciation', 'stress', 'sentence_rewrite']);
+    }
+  };
 
   // Generation State
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -191,6 +295,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
   };
 
   const handleApplyPreset = (preset: PresetOption) => {
+    if (preset.config.subject) setGenSubject(preset.config.subject);
     if (preset.config.title) setTitle(preset.config.title);
     if (preset.config.targetProvince) setTargetProvince(preset.config.targetProvince);
     if (preset.config.totalQuestions) setTotalQuestions(preset.config.totalQuestions);
@@ -225,6 +330,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
 
     try {
       const config: ExamGenerationConfig = {
+        subject: genSubject,
         title,
         targetProvince,
         difficulty,
@@ -241,7 +347,10 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
 
       setGeneratedResult(result);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Đã có lỗi xảy ra trong quá trình sinh đề thi bằng AI. Vui lòng kiểm tra API Key hoặc thử lại.');
+      setErrorMessage(
+        err.message ||
+          'Đã có lỗi xảy ra trong quá trình sinh đề thi bằng AI. Vui lòng kiểm tra API Key hoặc thử lại.'
+      );
     } finally {
       setIsGenerating(false);
     }
@@ -251,12 +360,11 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
   const handleSaveToLibrary = () => {
     if (!generatedResult) return;
 
-    // 1. Bulk import questions into questions library
     bulkImportQuestions(generatedResult.questions);
 
-    // 2. Add exam to exams list
     addExam({
       id: generatedResult.exam.id,
+      subject: genSubject,
       code: generatedResult.exam.code,
       title: generatedResult.exam.title,
       description: generatedResult.exam.description,
@@ -275,12 +383,11 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
   const handleStartGeneratedExam = () => {
     if (!generatedResult) return;
 
-    // 1. Bulk import questions into questions library
     bulkImportQuestions(generatedResult.questions);
 
-    // 2. Add exam
     const createdExam = addExam({
       id: generatedResult.exam.id,
+      subject: genSubject,
       code: generatedResult.exam.code,
       title: generatedResult.exam.title,
       description: generatedResult.exam.description,
@@ -292,7 +399,6 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
       isOfficialFormat: false,
     });
 
-    // 3. Switch to exam simulator
     onStartExam(createdExam.id);
   };
 
@@ -300,18 +406,18 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
   const handleCopyExamText = () => {
     if (!generatedResult) return;
     let text = `=== ${generatedResult.exam.title.toUpperCase()} ===\n`;
-    text += `Mã đề: ${generatedResult.exam.code} | Thời gian: ${generatedResult.exam.timeLimitMinutes} phút | Số câu: ${generatedResult.questions.length}\n\n`;
+    text += `Môn: ${genSubject === 'math' ? 'Toán Học' : 'Tiếng Anh'} | Mã đề: ${generatedResult.exam.code} | Thời gian: ${generatedResult.exam.timeLimitMinutes} phút | Số câu: ${generatedResult.questions.length}\n\n`;
 
     generatedResult.questions.forEach((q, idx) => {
       text += `Câu ${idx + 1}: ${q.content}\n`;
-      if (q.passage) text += `[Đoạn văn]:\n${q.passage}\n`;
+      if (q.passage) text += `[Mô tả/Đoạn văn]:\n${q.passage}\n`;
       q.options.forEach((opt) => {
         text += `   ${opt}\n`;
       });
       text += `-> Đáp án đúng: ${q.options[q.correctOption]}\n`;
       text += `-> Lời giải chi tiết: ${q.explanation}\n`;
-      if (q.grammarRule) text += `-> Công thức/Quy tắc: ${q.grammarRule}\n`;
-      if (q.translation) text += `-> Dịch nghĩa: ${q.translation}\n`;
+      if (q.grammarRule) text += `-> Công thức/Định lý: ${q.grammarRule}\n`;
+      if (q.commonMistakeTip) text += `-> Lưu ý tránh bẫy: ${q.commonMistakeTip}\n`;
       text += `------------------------------------\n\n`;
     });
 
@@ -321,22 +427,22 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
   };
 
   return (
-    <div className="space-y-8 pb-16">
+    <div className="space-y-6 sm:space-y-8 pb-16">
       {/* 1. Header Banner */}
-      <div className="bg-[#FAF9F6] border border-[#D9D2C5] rounded-3xl p-6 sm:p-8 shadow-xs relative overflow-hidden">
+      <div className="bg-[#FAF9F6] border border-[#D9D2C5] rounded-3xl p-5 sm:p-8 shadow-xs relative overflow-hidden">
         <div className="absolute -right-8 -bottom-8 w-48 h-48 bg-[#8BA888]/15 rounded-full blur-2xl pointer-events-none" />
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
           <div className="space-y-2">
             <div className="inline-flex items-center space-x-2 px-3 py-1 bg-[#5A5A40] text-white text-xs font-bold rounded-full">
               <Sparkles className="w-3.5 h-3.5 text-[#E67E22]" />
-              <span>AI Exam Generator 2.0</span>
+              <span>AI Exam Generator 2.0 (Đa Môn)</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-[#3D3D2D]">
-              Tạo Đề Thi Tiếng Anh Vào 10 Bằng AI
+              Tạo Đề Thi Vào 10 Bằng Trí Tuệ Nhân Tạo (Gemini AI)
             </h2>
-            <p className="text-sm text-[#8A8A70] max-w-2xl">
-              Tự động biên soạn đề thi chuẩn ma trận tuyển sinh lớp 10 theo tỉnh thành, chuyên đề ngữ pháp,
-              độ khó và các yêu cầu tùy chỉnh riêng của bạn. Kèm đầy đủ 100% đáp án và giải thích chi tiết.
+            <p className="text-xs sm:text-sm text-[#8A8A70] max-w-2xl">
+              Biên soạn đề thi chuẩn ma trận tuyển sinh lớp 10 theo môn học (Toán hoặc Tiếng Anh), tỉnh thành,
+              chuyên đề kiến thức và độ khó tùy chọn. Kèm 100% đáp án và giải thích chi tiết từng bước.
             </p>
           </div>
 
@@ -345,7 +451,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
               href="https://aistudio.google.com/app/apikey"
               target="_blank"
               rel="noreferrer"
-              className="px-4 py-2.5 bg-[#FDFCFB] border border-[#D9D2C5] text-[#5A5A40] rounded-2xl text-xs font-bold hover:bg-[#E8E2D9] transition flex items-center space-x-2"
+              className="px-4 py-2.5 bg-[#FDFCFB] border border-[#D9D2C5] text-[#5A5A40] rounded-2xl text-xs font-bold hover:bg-[#E8E2D9] transition flex items-center space-x-2 shadow-2xs"
             >
               <Key className="w-4 h-4 text-[#E67E22]" />
               <span>Lấy API Key Miễn Phí</span>
@@ -354,8 +460,35 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
         </div>
       </div>
 
+      {/* Subject Selection Tabs for Generator */}
+      <div className="bg-[#FAF9F6] p-1.5 rounded-2xl border border-[#D9D2C5] flex max-w-md shadow-2xs">
+        <button
+          onClick={() => handleSubjectTabChange('english')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${
+            genSubject === 'english'
+              ? 'bg-[#5A5A40] text-white shadow-xs'
+              : 'text-[#6B6B54] hover:text-[#3D3D2D] hover:bg-[#E8E2D9]'
+          }`}
+        >
+          <span>🇬🇧</span>
+          <span>Tạo Đề Môn Tiếng Anh</span>
+        </button>
+
+        <button
+          onClick={() => handleSubjectTabChange('math')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${
+            genSubject === 'math'
+              ? 'bg-[#5A5A40] text-white shadow-xs'
+              : 'text-[#6B6B54] hover:text-[#3D3D2D] hover:bg-[#E8E2D9]'
+          }`}
+        >
+          <span>📐</span>
+          <span>Tạo Đề Môn Toán Học</span>
+        </button>
+      </div>
+
       {/* 2. API Key Box */}
-      <div className="bg-[#FDFCFB] border border-[#D9D2C5] rounded-3xl p-6 shadow-xs space-y-4">
+      <div className="bg-[#FDFCFB] border border-[#D9D2C5] rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#D9D2C5] pb-4">
           <div className="flex items-center space-x-2">
             <div className="w-8 h-8 rounded-xl bg-[#8BA888]/20 flex items-center justify-center text-[#5A5A40]">
@@ -375,7 +508,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
             <select
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
-              className="px-3 py-1.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#5A5A40] outline-none cursor-pointer"
+              className="px-3 py-1.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#5A5A40] outline-hidden cursor-pointer"
             >
               {AVAILABLE_MODELS.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -393,12 +526,12 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
               value={apiKey}
               onChange={(e) => handleSaveApiKey(e.target.value)}
               placeholder="Dán mã Gemini API Key của bạn tại đây (ví dụ: AIzaSy...)"
-              className="w-full pl-4 pr-10 py-2.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-2xl text-xs font-mono text-[#3D3D2D] placeholder-[#A09F8E] focus:bg-white focus:border-[#5A5A40] focus:ring-1 focus:ring-[#5A5A40] outline-none"
+              className="w-full pl-4 pr-10 py-2.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-2xl text-xs font-mono text-[#3D3D2D] placeholder-[#A09F8E] focus:bg-white focus:border-[#5A5A40] focus:ring-1 focus:ring-[#5A5A40] outline-hidden"
             />
             <button
               type="button"
               onClick={() => setShowApiKey(!showApiKey)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8A70] hover:text-[#5A5A40]"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8A70] hover:text-[#5A5A40] cursor-pointer"
             >
               {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
@@ -408,7 +541,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
             <button
               onClick={handleTestApiKey}
               disabled={testingKey || !apiKey.trim()}
-              className="flex-1 px-4 py-2.5 bg-[#5A5A40] text-white rounded-2xl text-xs font-bold hover:bg-[#474733] transition disabled:opacity-50 flex items-center justify-center space-x-1.5 cursor-pointer"
+              className="flex-1 px-4 py-2.5 bg-[#5A5A40] text-white rounded-2xl text-xs font-bold hover:bg-[#474733] transition disabled:opacity-50 flex items-center justify-center space-x-1.5 cursor-pointer shadow-2xs"
             >
               {testingKey ? (
                 <>
@@ -426,7 +559,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
             {apiKey && (
               <button
                 onClick={() => handleSaveApiKey('')}
-                className="px-3 py-2.5 bg-[#FAF9F6] border border-[#D9D2C5] text-[#8A8A70] hover:text-[#C0392B] rounded-2xl text-xs font-bold transition"
+                className="px-3 py-2.5 bg-[#FAF9F6] border border-[#D9D2C5] text-[#8A8A70] hover:text-[#C0392B] rounded-2xl text-xs font-bold transition cursor-pointer"
                 title="Xóa API Key"
               >
                 Xóa
@@ -435,7 +568,6 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
           </div>
         </div>
 
-        {/* Test Result Message */}
         {testResult && (
           <div
             className={`p-3 rounded-2xl text-xs flex items-center space-x-2 ${
@@ -457,15 +589,15 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
       {/* 3. Quick Preset Templates */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-bold text-[#3D3D2D] flex items-center space-x-2">
-            <Zap className="w-4 h-4 text-[#E67E22]" />
-            <span>Mẫu Đề Thi Gợi Ý Nhanh (1-Chạm)</span>
+          <h3 className="text-sm sm:text-base font-bold text-[#3D3D2D] flex items-center space-x-2">
+            <Sparkles className="w-4 h-4 text-[#E67E22]" />
+            <span>Mẫu Đề Thi {genSubject === 'math' ? 'Toán' : 'Tiếng Anh'} Gợi Ý Nhanh</span>
           </h3>
-          <span className="text-xs text-[#8A8A70]">Chọn mẫu để tự động điền cấu hình</span>
+          <span className="text-xs text-[#8A8A70]">Chọn mẫu để tự động điền</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          {PRESETS.map((preset, idx) => (
+          {currentPresets.map((preset, idx) => (
             <div
               key={idx}
               onClick={() => handleApplyPreset(preset)}
@@ -498,15 +630,17 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
       </div>
 
       {/* 4. Detailed Configuration Form */}
-      <div className="bg-[#FAF9F6] border border-[#D9D2C5] rounded-3xl p-6 sm:p-8 shadow-xs space-y-6">
+      <div className="bg-[#FAF9F6] border border-[#D9D2C5] rounded-3xl p-5 sm:p-8 shadow-xs space-y-6">
         <div className="flex items-center justify-between border-b border-[#D9D2C5] pb-4">
           <div className="flex items-center space-x-2">
             <Sliders className="w-5 h-5 text-[#5A5A40]" />
-            <h3 className="text-base font-bold text-[#3D3D2D]">Tùy Chỉnh Ma Trận Đề Thi Chi Tiết</h3>
+            <h3 className="text-base font-bold text-[#3D3D2D]">
+              Tùy Chỉnh Ma Trận Đề {genSubject === 'math' ? 'Toán' : 'Tiếng Anh'}
+            </h3>
           </div>
           <button
             onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
-            className="text-xs font-bold text-[#5A5A40] flex items-center space-x-1 hover:underline"
+            className="text-xs font-bold text-[#5A5A40] flex items-center space-x-1 hover:underline cursor-pointer"
           >
             <span>{showAdvancedSettings ? 'Thu gọn cài đặt nâng cao' : 'Hiện cài đặt nâng cao'}</span>
             {showAdvancedSettings ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -521,8 +655,8 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="VD: Đề Thi Thử Vào 10 - Bứt Phá Ngữ Pháp & Viết Lại Câu"
-              className="w-full px-4 py-2.5 bg-[#FDFCFB] border border-[#D9D2C5] rounded-2xl text-xs text-[#3D3D2D] font-medium outline-none focus:border-[#5A5A40]"
+              placeholder="VD: Đề Thi Thử Vào 10 - Chuẩn Sở GD&ĐT"
+              className="w-full px-4 py-2.5 bg-[#FDFCFB] border border-[#D9D2C5] rounded-2xl text-xs text-[#3D3D2D] font-medium outline-hidden focus:border-[#5A5A40]"
             />
           </div>
 
@@ -533,7 +667,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
               value={targetProvince}
               onChange={(e) => setTargetProvince(e.target.value)}
               placeholder="VD: Sở GD&ĐT Hà Nội / TP.HCM / Đà Nẵng"
-              className="w-full px-4 py-2.5 bg-[#FDFCFB] border border-[#D9D2C5] rounded-2xl text-xs text-[#3D3D2D] font-medium outline-none focus:border-[#5A5A40]"
+              className="w-full px-4 py-2.5 bg-[#FDFCFB] border border-[#D9D2C5] rounded-2xl text-xs text-[#3D3D2D] font-medium outline-hidden focus:border-[#5A5A40]"
             />
           </div>
         </div>
@@ -543,14 +677,13 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-[#5A5A40]">Số lượng câu hỏi</label>
             <div className="grid grid-cols-4 gap-1.5">
-              {[10, 15, 20, 40].map((num) => (
+              {[8, 12, 15, 20].map((num) => (
                 <button
                   key={num}
                   type="button"
                   onClick={() => {
                     setTotalQuestions(num);
-                    // Tự động gợi ý thời gian phù hợp
-                    setTimeLimitMinutes(num === 10 ? 15 : num === 15 ? 25 : num === 20 ? 30 : 60);
+                    setTimeLimitMinutes(num <= 8 ? 20 : num <= 12 ? 35 : num <= 15 ? 45 : 60);
                   }}
                   className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
                     totalQuestions === num
@@ -567,7 +700,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-[#5A5A40]">Thời gian làm bài (phút)</label>
             <div className="grid grid-cols-4 gap-1.5">
-              {[15, 30, 45, 60].map((mins) => (
+              {[20, 30, 45, 60].map((mins) => (
                 <button
                   key={mins}
                   type="button"
@@ -612,10 +745,10 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
         {/* Focus Topics Selection */}
         <div className="space-y-2">
           <label className="text-xs font-bold text-[#5A5A40] block">
-            Chuyên đề & Kỹ năng bao gồm trong đề ({selectedTopics.length} chuyên đề đã chọn)
+            Chuyên đề bao gồm trong đề ({selectedTopics.length} chuyên đề đã chọn)
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {TOPICS_META.map((t) => {
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {currentTopicsMeta.map((t) => {
               const isChecked = selectedTopics.includes(t.id);
               return (
                 <button
@@ -628,11 +761,11 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
                       : 'bg-[#FDFCFB] border-[#D9D2C5] text-[#8A8A70] hover:bg-[#FAF9F6]'
                   }`}
                 >
-                  <span className="text-xs font-bold">{t.nameVi}</span>
+                  <span className="text-xs font-bold truncate pr-1">{t.nameVi}</span>
                   {isChecked ? (
-                    <CheckCircle2 className="w-4 h-4 text-[#5A5A40]" />
+                    <CheckCircle2 className="w-4 h-4 text-[#5A5A40] shrink-0" />
                   ) : (
-                    <div className="w-4 h-4 rounded-full border border-[#D9D2C5]" />
+                    <div className="w-4 h-4 rounded-full border border-[#D9D2C5] shrink-0" />
                   )}
                 </button>
               );
@@ -653,8 +786,12 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
             rows={3}
             value={customPrompt}
             onChange={(e) => setCustomPrompt(e.target.value)}
-            placeholder="Ví dụ: Tập trung vào câu điều kiện loại 2-3, câu bị động kép, 5 câu hỏi đuôi và 1 bài đọc hiểu về bảo vệ môi trường..."
-            className="w-full p-3 bg-[#FDFCFB] border border-[#D9D2C5] rounded-2xl text-xs text-[#3D3D2D] placeholder-[#A09F8E] outline-none focus:border-[#5A5A40]"
+            placeholder={
+              genSubject === 'math'
+                ? 'Ví dụ: Tập trung vào bài toán lập hệ phương trình chuyển động, câu Vi-ét tìm m để x1^2 + x2^2 = 10, và 1 câu hình chứng minh tứ giác nội tiếp...'
+                : 'Ví dụ: Tập trung vào câu điều kiện loại 2-3, câu bị động kép, 5 câu hỏi đuôi và 1 bài đọc hiểu về bảo vệ môi trường...'
+            }
+            className="w-full p-3 bg-[#FDFCFB] border border-[#D9D2C5] rounded-2xl text-xs text-[#3D3D2D] placeholder-[#A09F8E] outline-hidden focus:border-[#5A5A40]"
           />
 
           {/* Quick chips */}
@@ -662,7 +799,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
             <span className="text-[11px] font-semibold text-[#8A8A70] self-center mr-1">
               Gợi ý nhanh:
             </span>
-            {PROMPT_SUGGESTIONS.map((sug, idx) => (
+            {currentSuggestions.map((sug, idx) => (
               <button
                 key={idx}
                 type="button"
@@ -690,7 +827,9 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
             ) : (
               <>
                 <Wand2 className="w-5 h-5 text-[#E67E22]" />
-                <span>Tạo Đề Thi {totalQuestions} Câu Bằng AI Ngay</span>
+                <span>
+                  Tạo Đề Thi {genSubject === 'math' ? 'Toán' : 'Tiếng Anh'} {totalQuestions} Câu Bằng AI Ngay
+                </span>
               </>
             )}
           </button>
@@ -710,13 +849,13 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
 
       {/* 5. Generation Results Preview */}
       {generatedResult && (
-        <div className="bg-[#FAF9F6] border-2 border-[#8BA888] rounded-3xl p-6 sm:p-8 shadow-md space-y-6">
+        <div className="bg-[#FAF9F6] border-2 border-[#8BA888] rounded-3xl p-5 sm:p-8 shadow-md space-y-6">
           {/* Header Summary */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#D9D2C5] pb-5">
             <div className="space-y-1">
               <div className="flex items-center space-x-2">
                 <span className="px-2.5 py-0.5 bg-[#8BA888] text-[#2C3E2D] text-[10px] font-bold rounded-full uppercase">
-                  Đã tạo thành công
+                  Đã tạo thành công ({genSubject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'})
                 </span>
                 <span className="text-xs font-mono text-[#8A8A70]">{generatedResult.exam.code}</span>
               </div>
@@ -748,7 +887,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
                 {savedSuccess ? (
                   <>
                     <Check className="w-4 h-4 text-emerald-600" />
-                    <span>Đã lưu vào kho đề</span>
+                    <span>Đã lưu vào kho đề của tôi</span>
                   </>
                 ) : (
                   <>
@@ -799,85 +938,61 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
                       onClick={() => setExpandedQuestionIdx(isExpanded ? null : idx)}
                       className="p-4 flex items-start justify-between cursor-pointer hover:bg-[#FAF9F6] transition"
                     >
-                      <div className="flex items-start space-x-3 pr-4">
-                        <span className="w-6 h-6 rounded-full bg-[#E8E2D9] text-[#5A5A40] text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                      <div className="flex items-start space-x-3 pr-2">
+                        <span className="w-6 h-6 rounded-lg bg-[#E8E2D9] text-[#5A5A40] font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
                           {idx + 1}
                         </span>
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-[#3D3D2D] leading-snug">
+                        <div>
+                          <p className="text-xs sm:text-sm font-bold text-[#3D3D2D] leading-snug whitespace-pre-line">
                             {q.content}
                           </p>
-                          <div className="flex items-center space-x-2 text-[10px] text-[#8A8A70]">
-                            <span className="capitalize">Chủ đề: {q.topicId}</span>
-                            <span>•</span>
-                            <span className="capitalize">Độ khó: {q.difficulty}</span>
-                            <span>•</span>
-                            <span className="font-bold text-emerald-700">
-                              Đáp án: {['A', 'B', 'C', 'D'][q.correctOption]}
-                            </span>
-                          </div>
+                          <span className="text-[10px] text-[#8A8A70] uppercase font-bold mt-1 inline-block">
+                            {q.topicId.replace('math_', '').replace(/_/g, ' ')} • {q.difficulty}
+                          </span>
                         </div>
                       </div>
 
-                      <div className="text-[#8A8A70] shrink-0 mt-1">
-                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      </div>
+                      <span className="text-xs font-bold text-[#5A5A40] shrink-0 ml-2">
+                        {isExpanded ? 'Ẩn' : 'Chi tiết'}
+                      </span>
                     </div>
 
                     {isExpanded && (
-                      <div className="px-4 pb-4 pt-2 border-t border-[#E8E2D9] bg-[#FAF9F6] space-y-3 text-xs">
+                      <div className="px-4 pb-4 pt-1 border-t border-[#E8E2D9] space-y-3 text-xs">
                         {q.passage && (
-                          <div className="p-3 bg-[#E8E2D9]/40 border border-[#D9D2C5] rounded-xl text-[11px] text-[#4A4A4A] italic leading-relaxed">
-                            <span className="font-bold not-italic text-[#5A5A40] block mb-1">
-                              [Đoạn văn đọc]:
-                            </span>
+                          <div className="p-3 bg-[#FAF9F6] rounded-xl border border-[#D9D2C5] text-[#4A4A4A] whitespace-pre-line">
                             {q.passage}
                           </div>
                         )}
 
-                        {/* Options */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {q.options.map((opt, optIdx) => {
-                            const isCorrect = optIdx === q.correctOption;
-                            return (
-                              <div
-                                key={optIdx}
-                                className={`p-2.5 rounded-xl border text-xs font-medium flex items-center justify-between ${
-                                  isCorrect
-                                    ? 'bg-[#8BA888]/20 border-[#8BA888] text-[#2C3E2D] font-bold'
-                                    : 'bg-[#FDFCFB] border-[#D9D2C5] text-[#5A5A40]'
-                                }`}
-                              >
-                                <span>{opt}</span>
-                                {isCorrect && <Check className="w-3.5 h-3.5 text-emerald-600" />}
-                              </div>
-                            );
-                          })}
+                          {q.options.map((opt, oIdx) => (
+                            <div
+                              key={oIdx}
+                              className={`p-2.5 rounded-xl border text-xs font-medium whitespace-pre-line ${
+                                oIdx === q.correctOption
+                                  ? 'bg-[#EBF2EB] border-[#8BA888] text-[#2C3E2D] font-bold'
+                                  : 'bg-white border-[#EAE7E0] text-[#4A4A4A]'
+                              }`}
+                            >
+                              {opt} {oIdx === q.correctOption && ' ✓ (Đáp án đúng)'}
+                            </div>
+                          ))}
                         </div>
 
-                        {/* Explanations & Rules */}
-                        <div className="p-3 bg-[#FDFCFB] border border-[#D9D2C5] rounded-xl space-y-2 text-[11px]">
-                          <div className="space-y-0.5">
-                            <span className="font-bold text-[#5A5A40]">💡 Lời giải chi tiết: </span>
-                            <span className="text-[#3D3D2D]">{q.explanation}</span>
-                          </div>
+                        <div className="p-3.5 bg-[#FAF9F6] rounded-xl border border-[#D9D2C5] space-y-1.5 text-xs">
+                          <p className="text-[#3D3D2D] whitespace-pre-line">
+                            <strong>Lời giải chi tiết:</strong> {q.explanation}
+                          </p>
                           {q.grammarRule && (
-                            <div className="space-y-0.5">
-                              <span className="font-bold text-[#8BA888]">📐 Quy tắc / Công thức: </span>
-                              <span className="text-[#3D3D2D]">{q.grammarRule}</span>
-                            </div>
+                            <p className="text-[#5A5A40] whitespace-pre-line">
+                              <strong>Công thức/Quy tắc:</strong> {q.grammarRule}
+                            </p>
                           )}
                           {q.commonMistakeTip && (
-                            <div className="space-y-0.5">
-                              <span className="font-bold text-[#E67E22]">⚠️ Mẹo tránh bẫy: </span>
-                              <span className="text-[#3D3D2D]">{q.commonMistakeTip}</span>
-                            </div>
-                          )}
-                          {q.translation && (
-                            <div className="space-y-0.5">
-                              <span className="font-bold text-[#8A8A70]">🇻🇳 Dịch nghĩa: </span>
-                              <span className="text-[#6B6B54] italic">{q.translation}</span>
-                            </div>
+                            <p className="text-[#E67E22]">
+                              <strong>💡 Mẹo tránh bẫy:</strong> {q.commonMistakeTip}
+                            </p>
                           )}
                         </div>
                       </div>

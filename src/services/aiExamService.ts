@@ -1,6 +1,7 @@
-import { Question, Exam, TopicId, SubTopicId, DifficultyLevel } from '../types';
+import { Question, Exam, TopicId, SubTopicId, DifficultyLevel, SubjectId } from '../types';
 
 export interface ExamGenerationConfig {
+  subject?: SubjectId; // 'english' | 'math'
   title?: string;
   targetProvince?: string;
   difficulty: 'standard' | 'advanced' | 'challenge';
@@ -81,20 +82,18 @@ export function tryParseOrRepairExamJson(rawText: string): any {
   // 1. Thử parse trực tiếp
   try {
     return JSON.parse(cleaned);
-  } catch (e) {
+  } catch {
     // Tiếp tục xử lý phục hồi
   }
 
   // 2. Thử đóng ngoặc tự động cho JSON bị cắt cụt
   try {
     let repaired = cleaned;
-    // Nếu kết thúc giữa chừng một chuỗi, đóng dấu nháy kép
     const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
     if (quoteCount % 2 !== 0) {
       repaired += '"';
     }
 
-    // Đếm số ngoặc nhọn và ngoặc vuông chưa đóng
     const openBraces = (repaired.match(/\{/g) || []).length;
     const closeBraces = (repaired.match(/\}/g) || []).length;
     const openBrackets = (repaired.match(/\[/g) || []).length;
@@ -111,7 +110,7 @@ export function tryParseOrRepairExamJson(rawText: string): any {
     if (quickParsed && Array.isArray(quickParsed.questions) && quickParsed.questions.length > 0) {
       return quickParsed;
     }
-  } catch (e) {
+  } catch {
     // Tiếp tục phương pháp trích xuất từng câu hỏi
   }
 
@@ -169,7 +168,7 @@ export function tryParseOrRepairExamJson(rawText: string): any {
               if (qObj && (qObj.content || qObj.options)) {
                 questions.push(qObj);
               }
-            } catch (err) {
+            } catch {
               // Bỏ qua nếu câu đó bị lỗi cú pháp riêng
             }
             startObjIndex = -1;
@@ -189,7 +188,7 @@ export function tryParseOrRepairExamJson(rawText: string): any {
         questions,
       };
     }
-  } catch (err) {
+  } catch {
     // Không thể trích xuất
   }
 
@@ -197,7 +196,7 @@ export function tryParseOrRepairExamJson(rawText: string): any {
 }
 
 /**
- * Tạo đề thi Tiếng Anh vào lớp 10 bằng Gemini API
+ * Tạo đề thi Tiếng Anh hoặc Toán vào lớp 10 bằng Gemini API
  */
 export async function generateExamWithAI(
   apiKey: string,
@@ -209,11 +208,67 @@ export async function generateExamWithAI(
     throw new Error('Chưa cung cấp Gemini API Key. Vui lòng nhập API Key để tiếp tục.');
   }
 
+  const subject = config.subject || 'english';
   const model = config.modelName || 'gemini-2.5-flash';
 
-  onProgressUpdate?.('Đang phân tích ma trận đề thi & xây dựng câu hỏi chuẩn form vào 10...');
+  onProgressUpdate?.(
+    subject === 'math'
+      ? 'Đang phân tích ma trận đề thi môn Toán & xây dựng câu hỏi chuẩn form vào 10...'
+      : 'Đang phân tích ma trận đề thi Tiếng Anh & xây dựng câu hỏi chuẩn form vào 10...'
+  );
 
-  const systemInstruction = `Bạn là một chuyên gia khảo thí và giáo viên luyện thi môn Tiếng Anh vào lớp 10 THPT hàng đầu tại Việt Nam.
+  let systemInstruction = '';
+  let userPrompt = '';
+
+  if (subject === 'math') {
+    systemInstruction = `Bạn là một chuyên gia khảo thí và giáo viên luyện thi môn Toán vào lớp 10 THPT hàng đầu tại Việt Nam.
+Nhiệm vụ của bạn là biên soạn một đề thi trắc nghiệm Toán học tuyển sinh vào lớp 10 bám sát tuyệt đối chương trình GDPT hiện hành và ma trận đề thi của các Sở Giáo dục và Đào tạo (Hà Nội, TP.HCM, Đà Nẵng,...).
+
+YÊU CẦU DỮ LIỆU ĐẦU RA (JSON FORMAT):
+Bạn PHẢI trả về duy nhất một chuỗi JSON hợp lệ không bọc thêm bất kỳ văn bản giải thích nào ngoài JSON.
+Cấu trúc JSON bắt buộc:
+{
+  "title": "Tên đề thi (ví dụ: Đề Thi Thử Toán Vào 10 - Bứt Phá Vi-ét & Hình Học Đường Tròn)",
+  "code": "Mã đề (ví dụ: TOAN10-AI-${Math.floor(100 + Math.random() * 900)})",
+  "description": "Mô tả ngắn gọn về ma trận và độ khó của đề",
+  "targetProvince": "Chuẩn Sở GD&ĐT / Mục tiêu điểm",
+  "difficulty": "${config.difficulty}",
+  "timeLimitMinutes": ${config.timeLimitMinutes},
+  "questions": [
+    {
+      "topicId": "math_can_thuc | math_he_phuong_trinh | math_ham_so_do_thi | math_pt_bac_hai_viet | math_giai_toan_lap_pt | math_he_thuc_luong | math_duong_tron_tu_giac | math_hinh_khong_gian_thuc_te | math_bat_dang_thuc_cuc_tri",
+      "subTopicId": "can_thuc_rut_gon | can_thuc_dkxd | can_thuc_bai_toan_phu | he_pt_the_cong | he_pt_chua_tham_so | ham_so_bac_nhat_song_song | ham_so_parabol_cat_thang | pt_bac_hai_delta | viet_tong_tich | viet_he_thuc_doi_xung | toan_chuyen_dong | toan_nang_suat_cong_viec | toan_thuc_te_phan_tram | he_thuc_luong_tam_giac_vuong | ti_so_luong_giac_thuc_te | tiep_tuyen_duong_tron | goc_noi_tiep | tu_giac_noi_tiep_4_dau_hieu | hinh_tru_non_cau | toan_thuc_te_hinh_hoc | bdt_cauchy_am_gm | bdt_bunhiacopxki_cuc_tri",
+      "difficulty": "easy | medium | hard | expert",
+      "content": "Nội dung câu hỏi Toán học bằng tiếng Việt (viết công thức rõ ràng, ví dụ: √(x + 1), x² - 5x + 6 = 0, Δ ≥ 0)",
+      "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+      "correctOption": 0, // Số nguyên từ 0 đến 3 tương ứng với A, B, C, D
+      "explanation": "Lời giải từng bước ngắn gọn, rõ ràng (Bước 1: ĐKXĐ, Bước 2: Biến đổi, Bước 3: Kết luận)",
+      "grammarRule": "Định lý / Công thức toán áp dụng (ví dụ: Định lý Vi-ét, BĐT Cauchy, Dấu hiệu tứ giác nội tiếp)",
+      "commonMistakeTip": "Cảnh báo bẫy hay sai (ví dụ: Quên đối chiếu ĐKXĐ x ≥ 0, quên xét a ≠ 0, sai dấu khi chuyển vế)",
+      "translation": "Tóm tắt phương pháp giải ngắn gọn"
+    }
+  ]
+}
+
+LƯU Ý CỰC KỲ QUAN TRỌNG:
+1. Đảm bảo đúng chính xác ${config.totalQuestions} câu hỏi trong mảng 'questions'.
+2. Các đáp án trong 'options' phải bắt đầu bằng 'A. ', 'B. ', 'C. ', 'D. '.
+3. 'correctOption' phải là số index (0 cho A, 1 cho B, 2 cho C, 3 cho D).
+4. Sử dụng ký hiệu toán học phổ thông dễ đọc: √ (căn), ² ³ (mũ), π (pi), Δ (delta), ≥ ≤ (lớn/nhỏ hơn hoặc bằng), ∠ (góc), ° (độ).`;
+
+    userPrompt = `Hãy tạo một đề thi Toán vào lớp 10 với các thông số sau:
+- Tên đề (gợi ý): ${config.title || 'Đề Thi Thử Môn Toán Vào 10 - Tạo bởi AI'}
+- Độ khó: ${config.difficulty === 'challenge' ? 'Nâng cao / Chuyên Toán (Mục tiêu 9-10đ)' : config.difficulty === 'advanced' ? 'Khá - Giỏi (Mục tiêu 8-8.5đ)' : 'Cơ bản - Chuẩn đề chung (Mục tiêu 7-8đ)'}
+- Số lượng câu hỏi: ${config.totalQuestions} câu
+- Thời gian làm bài: ${config.timeLimitMinutes} phút
+${config.focusTopics && config.focusTopics.length > 0 ? `- Các chủ đề trọng tâm: ${config.focusTopics.join(', ')}` : ''}
+${config.targetProvince ? `- Định dạng / Tỉnh thành hướng tới: ${config.targetProvince}` : ''}
+${config.customPrompt ? `- Yêu cầu đặc biệt bổ sung từ người dùng: "${config.customPrompt}"` : ''}
+
+Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
+  } else {
+    // English prompt
+    systemInstruction = `Bạn là một chuyên gia khảo thí và giáo viên luyện thi môn Tiếng Anh vào lớp 10 THPT hàng đầu tại Việt Nam.
 Nhiệm vụ của bạn là biên soạn một đề thi trắc nghiệm Tiếng Anh tuyển sinh vào lớp 10 bám sát tuyệt đối chương trình GDPT hiện hành và ma trận đề thi của các Sở Giáo dục và Đào tạo (Hà Nội, TP.HCM, Đà Nẵng,...).
 
 YÊU CẦU DỮ LIỆU ĐẦU RA (JSON FORMAT):
@@ -247,9 +302,9 @@ LƯU Ý CỰC KỲ QUAN TRỌNG:
 1. Đảm bảo đúng chính xác ${config.totalQuestions} câu hỏi trong mảng 'questions'.
 2. Các đáp án trong 'options' phải bắt đầu bằng 'A. ', 'B. ', 'C. ', 'D. '.
 3. 'correctOption' phải là số index (0 cho A, 1 cho B, 2 cho C, 3 cho D).
-4. Giữ phần giải thích 'explanation', 'grammarRule', 'translation' súc tích, ngắn gọn (1-2 câu) để đảm bảo toàn bộ đề thi được sinh trọn vẹn và nhanh chóng.`;
+4. Giữ phần giải thích 'explanation', 'grammarRule', 'translation' súc tích, ngắn gọn (1-2 câu).`;
 
-  const userPrompt = `Hãy tạo một đề thi Tiếng Anh vào lớp 10 với các thông số sau:
+    userPrompt = `Hãy tạo một đề thi Tiếng Anh vào lớp 10 với các thông số sau:
 - Tên đề (gợi ý): ${config.title || 'Đề Thi Thử Tiếng Anh Vào 10 - Tạo bởi AI'}
 - Độ khó: ${config.difficulty === 'challenge' ? 'Nâng cao / Chuyên Anh (Mục tiêu 9-10đ)' : config.difficulty === 'advanced' ? 'Khá - Giỏi (Mục tiêu 8-8.5đ)' : 'Cơ bản - Chuẩn đề chung (Mục tiêu 7-8đ)'}
 - Số lượng câu hỏi: ${config.totalQuestions} câu
@@ -259,12 +314,12 @@ ${config.targetProvince ? `- Định dạng / Tỉnh thành hướng tới: ${co
 ${config.customPrompt ? `- Yêu cầu đặc biệt bổ sung từ người dùng: "${config.customPrompt}"` : ''}
 
 Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
+  }
 
   onProgressUpdate?.('Đang gửi yêu cầu đến Gemini AI và khởi tạo câu hỏi...');
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(effectiveKey)}`;
 
-  // Cấu hình payload với token limit lớn và tắt thinking budget cho model 2.5 flash
   const requestBody: any = {
     contents: [
       {
@@ -281,7 +336,6 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
     },
   };
 
-  // Nếu là model gemini-2.5-flash hoặc 2.0, tắt/giảm thinking budget để tránh ngốn token output
   if (model.includes('2.5-flash') || model.includes('2.0-flash')) {
     requestBody.generationConfig.thinkingConfig = {
       thinkingBudget: 0,
@@ -309,7 +363,6 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
     throw new Error('Không nhận được phản hồi nội dung từ AI. Vui lòng thử lại.');
   }
 
-  // Parse JSON với bộ phục hồi tự động thông minh
   const parsedData = tryParseOrRepairExamJson(rawText);
 
   if (!parsedData || !Array.isArray(parsedData.questions) || parsedData.questions.length === 0) {
@@ -321,11 +374,12 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
   const examTimestamp = Date.now();
   const examId = `exam_ai_${examTimestamp}`;
 
-  // Chuẩn hóa danh sách câu hỏi
+  const defaultTopic: TopicId = subject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar';
+  const defaultSubTopic: SubTopicId = subject === 'math' ? 'viet_tong_tich' : 'tenses';
+
   const formattedQuestions: Question[] = parsedData.questions.map((q: any, idx: number) => {
     const qId = `q_ai_${examTimestamp}_${idx + 1}`;
     
-    // Đảm bảo options là mảng 4 phần tử
     let opts = Array.isArray(q.options) && q.options.length === 4 ? q.options : ['A. ', 'B. ', 'C. ', 'D. '];
     opts = opts.map((opt: string, i: number) => {
       const prefix = ['A. ', 'B. ', 'C. ', 'D. '][i];
@@ -342,14 +396,15 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
 
     return {
       id: qId,
-      topicId: (q.topicId as TopicId) || 'grammar',
-      subTopicId: (q.subTopicId as SubTopicId) || 'tenses',
+      subject,
+      topicId: (q.topicId as TopicId) || defaultTopic,
+      subTopicId: (q.subTopicId as SubTopicId) || defaultSubTopic,
       difficulty: (q.difficulty as DifficultyLevel) || 'medium',
       content: q.content || `Câu ${idx + 1}`,
       passage: q.passage || undefined,
       options: opts,
       correctOption: validCorrect,
-      explanation: q.explanation || 'Xem đáp án và tự ôn tập quy tắc ngữ pháp.',
+      explanation: q.explanation || 'Xem đáp án và tự đối chiếu phương pháp giải.',
       grammarRule: q.grammarRule || undefined,
       commonMistakeTip: q.commonMistakeTip || undefined,
       translation: q.translation || undefined,
@@ -358,9 +413,15 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
 
   const generatedExam: Exam = {
     id: examId,
-    code: parsedData.code || `TS10-AI-${Math.floor(100 + Math.random() * 900)}`,
-    title: parsedData.title || config.title || 'Đề Thi Thử Tiếng Anh Tuyển Sinh Lớp 10 (Tạo bởi AI)',
-    description: parsedData.description || `Đề thi ${formattedQuestions.length} câu được thiết kế tự động bởi Gemini AI theo yêu cầu riêng.`,
+    subject,
+    code: parsedData.code || `${subject === 'math' ? 'TOAN10' : 'TS10'}-AI-${Math.floor(100 + Math.random() * 900)}`,
+    title:
+      parsedData.title ||
+      config.title ||
+      (subject === 'math'
+        ? 'Đề Thi Thử Môn Toán Tuyển Sinh Lớp 10 (Tạo bởi AI)'
+        : 'Đề Thi Thử Tiếng Anh Tuyển Sinh Lớp 10 (Tạo bởi AI)'),
+    description: parsedData.description || `Đề thi ${formattedQuestions.length} câu môn ${subject === 'math' ? 'Toán' : 'Tiếng Anh'} được thiết kế tự động bởi Gemini AI.`,
     targetProvince: parsedData.targetProvince || config.targetProvince || 'Chuẩn Sở GD&ĐT',
     timeLimitMinutes: parsedData.timeLimitMinutes || config.timeLimitMinutes || 45,
     totalQuestions: formattedQuestions.length,
@@ -375,7 +436,6 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
     questions: formattedQuestions,
   };
 }
-
 
 export interface ExamEvaluationReport {
   overallAssessment: string;
@@ -400,14 +460,12 @@ export function getLocalExamEvaluation(
   timeSpentSeconds: number,
   timeLimitMinutes: number,
   topicBreakdown: Record<string, { total: number; correct: number; wrong: number; name: string }>,
-  targetScore: number = 8.5
+  targetScore: number = 8.5,
+  subject: SubjectId = 'english'
 ): ExamEvaluationReport {
-  const percentage = Math.round((score / 10) * 100);
   const timeSpentMinutes = Math.round(timeSpentSeconds / 60);
 
-  // Điểm mạnh: những phần làm đúng >= 80%
   const strengths: string[] = [];
-  // Điểm yếu: những phần làm sai > 30%
   const weaknesses: { topicName: string; issue: string; solution: string }[] = [];
 
   Object.values(topicBreakdown).forEach((tb) => {
@@ -419,7 +477,7 @@ export function getLocalExamEvaluation(
         weaknesses.push({
           topicName: tb.name,
           issue: `Tỷ lệ làm đúng chỉ đạt ${Math.round(acc)}% (${tb.wrong} câu sai trong phần này).`,
-          solution: `Xem lại lý thuyết trọng tâm về ${tb.name} và luyện tập thêm 15-20 câu chuyên đề tương tự.`,
+          solution: `Xem lại lý thuyết và công thức cốt lõi về ${tb.name}, làm thêm bài tập chuyên đề tương tự.`,
         });
       }
     }
@@ -432,16 +490,16 @@ export function getLocalExamEvaluation(
   let overall = '';
   let gradePrediction = '';
   if (score >= 9.0) {
-    overall = `Xuất sắc! Bạn đã đạt ${score} điểm, hoàn toàn làm chủ kiến thức và đạt phong độ sẵn sàng thi vào các trường THPT Chuyên hoặc Top 1.`;
+    overall = `Xuất sắc! Bạn đã đạt ${score} điểm môn ${subject === 'math' ? 'Toán' : 'Tiếng Anh'}, hoàn toàn làm chủ kiến thức và đạt phong độ sẵn sàng thi vào các trường THPT Chuyên hoặc Top 1.`;
     gradePrediction = `Dự đoán điểm thi vào 10 thực tế: 9.0 - 9.75 (Tỷ lệ đỗ NV1: >95%)`;
   } else if (score >= 8.0) {
-    overall = `Rất tốt! Điểm số ${score} cho thấy nền tảng ngữ pháp và từ vựng của bạn rất vững vàng, đang tiệm cận mức điểm thi vào các trường THPT chất lượng cao.`;
+    overall = `Rất tốt! Điểm số ${score} cho thấy nền tảng môn ${subject === 'math' ? 'Toán' : 'Tiếng Anh'} của bạn rất vững vàng, đang tiệm cận mức điểm thi vào các trường THPT chất lượng cao.`;
     gradePrediction = `Dự đoán điểm thi vào 10 thực tế: 8.0 - 8.75 (Tỷ lệ đỗ NV1: ~88%)`;
   } else if (score >= 6.5) {
-    overall = `Khá ổn! Bạn đạt ${score} điểm. Bạn đã nắm chắc các câu cơ bản nhưng còn vấp phải một số bẫy câu phân loại và mệnh đề nâng cao.`;
+    overall = `Khá ổn! Bạn đạt ${score} điểm. Bạn đã nắm chắc các câu cơ bản nhưng còn vấp phải một số bẫy câu phân loại và bài toán nâng cao.`;
     gradePrediction = `Dự đoán điểm thi vào 10 thực tế: 6.5 - 7.5 (Cần bứt phá thêm để chắc suất NV1)`;
   } else {
-    overall = `Bạn đạt ${score} điểm. Cần tập trung ôn luyện lại các mảng ngữ pháp nền tảng (các thì cơ bản, câu điều kiện, phát âm) trước khi giải thêm đề tổng hợp.`;
+    overall = `Bạn đạt ${score} điểm. Cần tập trung ôn luyện lại các chuyên đề nền tảng trước khi giải thêm đề tổng hợp.`;
     gradePrediction = `Dự đoán điểm thi vào 10 thực tế: 5.5 - 6.5 (Cần kế hoạch ôn luyện tập trung)`;
   }
 
@@ -449,7 +507,7 @@ export function getLocalExamEvaluation(
   if (timeSpentMinutes <= timeLimitMinutes * 0.6) {
     timeComment = `Bạn làm bài rất nhanh (${timeSpentMinutes}/${timeLimitMinutes} phút). Hãy chú ý đọc kỹ từng câu và rà soát lại các câu bẫy trước khi nộp để tránh mất điểm đáng tiếc.`;
   } else if (timeSpentMinutes >= timeLimitMinutes * 0.95) {
-    timeComment = `Bạn dùng gần hết thời gian (${timeSpentMinutes}/${timeLimitMinutes} phút). Nên rèn thêm phản xạ làm nhanh các câu ngữ âm và ngữ pháp đơn giản để dành nhiều thời gian cho phần Đọc hiểu.`;
+    timeComment = `Bạn dùng gần hết thời gian (${timeSpentMinutes}/${timeLimitMinutes} phút). Nên rèn thêm phản xạ làm nhanh các câu nhận biết để dành nhiều thời gian cho các câu phân loại.`;
   } else {
     timeComment = `Tốc độ phân bổ thời gian hợp lý (${timeSpentMinutes}/${timeLimitMinutes} phút).`;
   }
@@ -459,7 +517,9 @@ export function getLocalExamEvaluation(
     weaknesses.length > 0
       ? `Tập trung luyện chuyên đề "${weaknesses[0].topicName}" để vá lỗ hổng kiến thức ngay trong tuần này.`
       : 'Tiếp tục luyện thêm 1 đề thi thử mới để duy trì cảm giác phòng thi.',
-    'Áp dụng quy tắc "loại trừ đáp án sai rõ ràng" trước khi chọn đáp án cuối cùng đối với câu phân vân.',
+    subject === 'math'
+      ? 'Luôn kiểm tra điều kiện xác định và đối chiếu nghiệm trước khi kết luận.'
+      : 'Áp dụng quy tắc loại trừ đáp án sai rõ ràng trước khi chọn đáp án cuối cùng.',
   ];
 
   return {
@@ -469,7 +529,10 @@ export function getLocalExamEvaluation(
     weaknesses,
     actionPlan,
     timeManagementComment: timeComment,
-    examTacticsTip: 'Chiến thuật phòng thi: Làm phần Ngữ âm & Trọng âm trước (5 phút) -> Câu ngắn từ vựng/ngữ pháp (15 phút) -> Bài đọc & Viết lại câu (25 phút) -> 10 phút cuối soát lại toàn bộ phiếu trả lời.',
+    examTacticsTip:
+      subject === 'math'
+        ? 'Chiến thuật làm bài thi môn Toán: Làm phần Căn thức & Hệ PT trước (15 phút) -> Hàm số & Vi-ét (20 phút) -> Hình học ý a, b & Toán thực tế (35 phút) -> Soát lại bài và thử câu 10 điểm BĐT.'
+        : 'Chiến thuật phòng thi: Làm phần Ngữ âm & Trọng âm trước (5 phút) -> Câu ngắn từ vựng/ngữ pháp (15 phút) -> Bài đọc & Viết lại câu (25 phút) -> 10 phút cuối soát lại toàn bộ phiếu trả lời.',
   };
 }
 
@@ -485,18 +548,20 @@ export async function generateExamEvaluationWithAI(
   topicBreakdown: Record<string, { total: number; correct: number; wrong: number; name: string }>,
   wrongQuestionsList: { content: string; userChoice: string; correctChoice: string; topic: string; explanation: string }[],
   targetScore: number = 8.5,
-  modelName: string = 'gemini-2.5-flash'
+  modelName: string = 'gemini-2.5-flash',
+  subject: SubjectId = 'english'
 ): Promise<ExamEvaluationReport> {
   const effectiveKey = apiKey.trim() || getStoredApiKey();
   if (!effectiveKey) {
     throw new Error('Chưa cung cấp Gemini API Key.');
   }
 
-  const prompt = `Bạn là một chuyên gia khảo thí và cố vấn học tập luyện thi Tiếng Anh vào lớp 10 THPT.
+  const prompt = `Bạn là một chuyên gia khảo thí và cố vấn học tập luyện thi môn ${subject === 'math' ? 'Toán' : 'Tiếng Anh'} vào lớp 10 THPT.
 Hãy phân tích kết quả bài làm sau của một học sinh và đưa ra báo cáo đánh giá năng lực chi tiết, chỉ ra chính xác các lỗ hổng kiến thức và lộ trình khắc phục điểm yếu.
 
 THÔNG TIN BÀI THI:
 - Đề thi: ${examTitle}
+- Môn: ${subject === 'math' ? 'Toán học' : 'Tiếng Anh'}
 - Điểm số đạt được: ${score}/10 (Số câu đúng: ${totalQuestions - wrongQuestionsList.length}/${totalQuestions})
 - Thời gian làm bài: ${Math.round(timeSpentSeconds / 60)} phút
 - Mục tiêu điểm của học sinh: ${targetScore}/10
@@ -526,7 +591,7 @@ Bạn PHẢI trả về DUY NHẤT một chuỗi JSON hợp lệ không bọc th
   ],
   "weaknesses": [
     {
-      "topicName": "Tên phần kiến thức bị hổng (ví dụ: Mệnh đề quan hệ / Câu điều kiện loại 3)",
+      "topicName": "Tên phần kiến thức bị hổng",
       "issue": "Mô tả cụ thể lỗi sai hay mắc phải và bẫy bị lừa",
       "solution": "Cách khắc phục và mẹo ghi nhớ ngắn gọn"
     }
@@ -577,4 +642,3 @@ Bạn PHẢI trả về DUY NHẤT một chuỗi JSON hợp lệ không bọc th
 
   return parsed;
 }
-

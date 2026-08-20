@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Exam, Question, TopicId } from '../types';
+import { Exam, Question } from '../types';
 import { TOPICS_META } from '../data/topicsMeta';
+import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
 import {
   getLocalExamEvaluation,
   generateExamEvaluationWithAI,
@@ -25,12 +26,14 @@ import {
   Sparkles,
   Award,
   TrendingUp,
-  Target,
   RefreshCw,
   Lightbulb,
   ShieldAlert,
   ListOrdered,
   X,
+  FileText,
+  Zap,
+  Wand2,
 } from 'lucide-react';
 
 interface ExamSimulatorViewProps {
@@ -40,21 +43,40 @@ interface ExamSimulatorViewProps {
 }
 
 export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
-  examId = 'exam_official_01',
+  examId,
   onBackToDashboard,
-  onOpenAiTutor,
 }) => {
-  const { currentUser, exams, getQuestionById, saveExamAttempt, isBookmarked, toggleBookmark } = useApp();
+  const {
+    currentSubject,
+    currentUser,
+    exams,
+    getQuestionById,
+    saveExamAttempt,
+    isBookmarked,
+    toggleBookmark,
+  } = useApp();
 
-  const [selectedExamId, setSelectedExamId] = useState<string>(examId);
-  const exam = exams.find((e) => e.id === selectedExamId) || exams[0];
+  // Filter exams by current subject
+  const subjectExams = exams.filter((e) => (e.subject || 'english') === currentSubject);
+  const defaultInitialExamId =
+    examId && subjectExams.some((e) => e.id === examId)
+      ? examId
+      : subjectExams.length > 0
+      ? subjectExams[0].id
+      : 'exam_official_01';
 
-  // Sync selectedExamId when examId prop changes
+  const [selectedExamId, setSelectedExamId] = useState<string>(defaultInitialExamId);
+  const [examTabFilter, setExamTabFilter] = useState<'all' | 'official' | 'speed' | 'custom'>('all');
+
+  const exam = exams.find((e) => e.id === selectedExamId) || subjectExams[0] || exams[0];
+
   useEffect(() => {
-    if (examId) {
+    if (examId && subjectExams.some((e) => e.id === examId)) {
       setSelectedExamId(examId);
+    } else if (subjectExams.length > 0) {
+      setSelectedExamId(subjectExams[0].id);
     }
-  }, [examId]);
+  }, [examId, currentSubject]);
 
   // Exam States
   const [stage, setStage] = useState<'intro' | 'active' | 'result'>('intro');
@@ -101,7 +123,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   const handleStartExam = (selectedId?: string) => {
     const idToUse = selectedId || selectedExamId;
     if (selectedId) setSelectedExamId(selectedId);
-    const targetExam = exams.find((e) => e.id === idToUse) || exams[0];
+    const targetExam = exams.find((e) => e.id === idToUse) || subjectExams[0] || exams[0];
     if (!targetExam) return;
 
     const targetQuestions = targetExam.questionIds
@@ -152,13 +174,14 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
     });
 
     const totalQ = examQuestions.length;
-    const scoreVal = parseFloat(((correctCount / totalQ) * 10).toFixed(2));
-    const score100Val = Math.round((correctCount / totalQ) * 100);
+    const scoreVal = parseFloat(((correctCount / (totalQ || 1)) * 10).toFixed(2));
+    const score100Val = Math.round((correctCount / (totalQ || 1)) * 100);
     const timeSpent = exam.timeLimitMinutes * 60 - timeLeft;
 
     const saved = saveExamAttempt({
       examId: exam.id,
       examTitle: exam.title,
+      subject: currentSubject,
       date: new Date().toISOString(),
       score: scoreVal,
       score100: score100Val,
@@ -185,6 +208,19 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  const currentSubjectTarget =
+    currentSubject === 'math'
+      ? currentUser.targetScoreMath || currentUser.targetScore
+      : currentUser.targetScoreEnglish || currentUser.targetScore;
+
+  // Filter exams in list
+  const filteredExamsList = subjectExams.filter((ex) => {
+    if (examTabFilter === 'official') return ex.isOfficialFormat;
+    if (examTabFilter === 'speed') return ex.timeLimitMinutes <= 30 && !ex.id.startsWith('exam_ai_');
+    if (examTabFilter === 'custom') return ex.id.startsWith('exam_ai_') || ex.creatorUserId === currentUser.id;
+    return true;
+  });
+
   // 1. INTRO / EXAM LIST SELECTION STAGE
   if (stage === 'intro') {
     return (
@@ -197,64 +233,111 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 text-[#5A5A40]" />
           </button>
           <div>
-            <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-[#3D3D2D]">
-              Phòng Thi Thử Tuyển Sinh Vào Lớp 10
-            </h2>
+            <div className="flex items-center space-x-2">
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-[#3D3D2D]">
+                Phòng Thi Thử Vào Lớp 10: {currentSubject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}
+              </h2>
+            </div>
             <p className="text-xs sm:text-sm text-[#8A8A70]">
-              Mô phỏng cấu trúc đề thi chính thức với tính giờ tự động và chấm điểm chi tiết
+              Mô phỏng cấu trúc đề thi tuyển sinh chính thức với tính giờ tự động và chấm điểm chi tiết
             </p>
           </div>
         </div>
 
+        {/* Filter categories tabs */}
+        <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] max-w-lg shadow-2xs text-xs font-bold">
+          <button
+            onClick={() => setExamTabFilter('all')}
+            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer ${
+              examTabFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+            }`}
+          >
+            Tất cả ({subjectExams.length})
+          </button>
+          <button
+            onClick={() => setExamTabFilter('official')}
+            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer ${
+              examTabFilter === 'official' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+            }`}
+          >
+            Đề Chuẩn Sở
+          </button>
+          <button
+            onClick={() => setExamTabFilter('speed')}
+            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer ${
+              examTabFilter === 'speed' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+            }`}
+          >
+            Luyện Tốc Độ
+          </button>
+          <button
+            onClick={() => setExamTabFilter('custom')}
+            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer ${
+              examTabFilter === 'custom' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+            }`}
+          >
+            Đề AI của tôi
+          </button>
+        </div>
+
         {/* Exam Cards list */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-          {exams.map((ex) => {
-            const isSelected = ex.id === selectedExamId;
-            return (
-              <div
-                key={ex.id}
-                onClick={() => setSelectedExamId(ex.id)}
-                className={`p-4 sm:p-6 rounded-2xl sm:rounded-[2.5rem] border transition-all cursor-pointer flex flex-col justify-between ${
-                  isSelected
-                    ? 'bg-white border-[#5A5A40] shadow-md ring-2 ring-[#5A5A40]/20'
-                    : 'bg-white border-[#EAE7E0] hover:border-[#D9D2C5] hover:shadow-xs'
-                }`}
-              >
-                <div className="space-y-2.5 sm:space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="px-2.5 py-0.5 sm:px-3 sm:py-1 text-xs font-bold bg-[#F5F2ED] text-[#5A5A40] rounded-xl border border-[#D9D2C5]">
-                      {ex.code}
-                    </span>
-                    <span className="text-xs font-bold text-[#8A8A70] flex items-center space-x-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>{ex.timeLimitMinutes} phút</span>
-                    </span>
+          {filteredExamsList.length === 0 ? (
+            <div className="md:col-span-2 p-8 bg-white rounded-3xl border border-[#EAE7E0] text-center space-y-2">
+              <p className="text-sm font-bold text-[#3D3D2D]">Chưa có đề thi nào trong mục này</p>
+              <p className="text-xs text-[#8A8A70]">
+                Hãy dùng tính năng "AI Tạo đề" để tự động tạo đề thi môn {currentSubject === 'math' ? 'Toán' : 'Tiếng Anh'} mới!
+              </p>
+            </div>
+          ) : (
+            filteredExamsList.map((ex) => {
+              const isSelected = ex.id === selectedExamId;
+              return (
+                <div
+                  key={ex.id}
+                  onClick={() => setSelectedExamId(ex.id)}
+                  className={`p-4 sm:p-6 rounded-2xl sm:rounded-[2.5rem] border transition-all cursor-pointer flex flex-col justify-between ${
+                    isSelected
+                      ? 'bg-white border-[#5A5A40] shadow-md ring-2 ring-[#5A5A40]/20'
+                      : 'bg-white border-[#EAE7E0] hover:border-[#D9D2C5] hover:shadow-xs'
+                  }`}
+                >
+                  <div className="space-y-2.5 sm:space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-0.5 sm:px-3 sm:py-1 text-xs font-bold bg-[#F5F2ED] text-[#5A5A40] rounded-xl border border-[#D9D2C5]">
+                        {ex.code}
+                      </span>
+                      <span className="text-xs font-bold text-[#8A8A70] flex items-center space-x-1">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>{ex.timeLimitMinutes} phút</span>
+                      </span>
+                    </div>
+
+                    <h3 className="font-bold text-[#3D3D2D] text-sm sm:text-base leading-snug">{ex.title}</h3>
+                    <p className="text-xs text-[#8A8A70] line-clamp-3 leading-relaxed">
+                      {ex.description}
+                    </p>
                   </div>
 
-                  <h3 className="font-bold text-[#3D3D2D] text-sm sm:text-base leading-snug">{ex.title}</h3>
-                  <p className="text-xs text-[#8A8A70] line-clamp-3 leading-relaxed">
-                    {ex.description}
-                  </p>
-                </div>
-
-                <div className="pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-[#F5F2ED] flex items-center justify-between gap-2">
-                  <div className="text-xs text-[#8A8A70]">
-                    <strong>{ex.questionIds.length}</strong> câu hỏi trắc nghiệm
+                  <div className="pt-3 sm:pt-4 mt-3 sm:mt-4 border-t border-[#F5F2ED] flex items-center justify-between gap-2">
+                    <div className="text-xs text-[#8A8A70]">
+                      <strong>{ex.questionIds.length}</strong> câu hỏi
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartExam(ex.id);
+                      }}
+                      className="px-4 sm:px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-full text-xs font-bold shadow-xs transition flex items-center space-x-1 cursor-pointer shrink-0"
+                    >
+                      <span>Bắt đầu thi</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleStartExam(ex.id);
-                    }}
-                    className="px-4 sm:px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-full text-xs font-bold shadow-xs transition flex items-center space-x-1 cursor-pointer shrink-0"
-                  >
-                    <span>Bắt đầu thi</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         {/* Rules Card */}
@@ -264,9 +347,9 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             <span>Quy chế và Lưu ý phòng thi:</span>
           </h4>
           <ul className="list-disc list-inside space-y-1 text-xs text-[#6B6B54]">
-            <li>Hệ thống sẽ đếm ngược tự động và tự nộp bài khi hết 60 phút.</li>
+            <li>Hệ thống sẽ đếm ngược tự động và tự nộp bài khi hết giờ.</li>
             <li>Bạn có thể gắn cờ các câu chưa chắc chắn để xem lại trước khi nộp.</li>
-            <li>Sau khi hoàn thành, hệ thống sẽ trả bảng điểm chi tiết kèm lời giải thích cặn kẽ.</li>
+            <li>Sau khi hoàn thành, hệ thống sẽ lưu kết quả vào lịch sử cá nhân của bạn kèm phân tích điểm mạnh/yếu.</li>
           </ul>
         </div>
       </div>
@@ -354,7 +437,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                     Câu {currentIdx + 1}/{examQuestions.length}
                   </span>
                   <span className="text-xs font-semibold text-[#8A8A70] capitalize truncate max-w-[120px] sm:max-w-none">
-                    {currentQ.topicId.replace('_', ' ')}
+                    {currentQ.topicId.replace('math_', '').replace(/_/g, ' ')}
                   </span>
                 </div>
 
@@ -410,7 +493,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                           : 'bg-white border-[#EAE7E0] text-[#4A4A4A] hover:bg-[#FAF9F6]'
                       }`}
                     >
-                      <span className="pr-2 leading-relaxed">{option}</span>
+                      <span className="pr-2 leading-relaxed whitespace-pre-line">{option}</span>
                       <div
                         className={`w-5 h-5 rounded-full border shrink-0 flex items-center justify-center ${
                           isSelected
@@ -556,21 +639,6 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                   );
                 })}
               </div>
-
-              <div className="pt-2 border-t border-[#F5F2ED] flex items-center justify-between text-[10px] text-[#8A8A70]">
-                <span className="flex items-center space-x-1">
-                  <span className="w-2.5 h-2.5 rounded-xs bg-[#EBF2EB] border border-[#8BA888]" />
-                  <span>Đã làm</span>
-                </span>
-                <span className="flex items-center space-x-1">
-                  <span className="w-2.5 h-2.5 rounded-xs bg-[#FAF9F6] border border-[#EAE7E0]" />
-                  <span>Chưa làm</span>
-                </span>
-                <span className="flex items-center space-x-1">
-                  <span className="w-2.5 h-2.5 rounded-xs bg-[#FDF2E9] border border-[#E67E22]" />
-                  <span>Gắn cờ</span>
-                </span>
-              </div>
             </div>
           </div>
         )}
@@ -633,10 +701,12 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
       return true;
     });
 
+    const currentTopicsMeta = currentSubject === 'math' ? MATH_TOPICS_META : TOPICS_META;
+
     // 1. Compute Topic Matrix Breakdown
     const topicBreakdown: Record<string, { total: number; correct: number; wrong: number; name: string }> = {};
     examQuestions.forEach((q) => {
-      const tMeta = TOPICS_META.find((t) => t.id === q.topicId);
+      const tMeta = currentTopicsMeta.find((t) => t.id === q.topicId);
       const tName = tMeta ? tMeta.nameVi : q.topicId;
       if (!topicBreakdown[q.topicId]) {
         topicBreakdown[q.topicId] = { total: 0, correct: 0, wrong: 0, name: tName };
@@ -650,7 +720,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
       }
     });
 
-    // 2. Active Evaluation (either AI or Local rule-based)
+    // 2. Active Evaluation
     const currentEvaluation =
       aiEvaluation ||
       getLocalExamEvaluation(
@@ -659,7 +729,8 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
         completedAttempt.timeSpentSeconds,
         exam.timeLimitMinutes,
         topicBreakdown,
-        currentUser.targetScore
+        currentSubjectTarget,
+        currentSubject
       );
 
     // AI Trigger handler
@@ -667,7 +738,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
       const key = getStoredApiKey();
       if (!key) {
         setAiError(
-          'Vui lòng vào tab "AI Tạo đề theo yêu cầu" để nhập Gemini API Key trước khi sử dụng tính năng phân tích chuyên sâu.'
+          'Vui lòng vào tab "AI Tạo đề" để nhập Gemini API Key trước khi sử dụng tính năng phân tích chuyên sâu.'
         );
         return;
       }
@@ -692,7 +763,9 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           completedAttempt.timeSpentSeconds,
           topicBreakdown,
           wrongList,
-          currentUser.targetScore
+          currentSubjectTarget,
+          'gemini-2.5-flash',
+          currentSubject
         );
         setAiEvaluation(result);
       } catch (err: any) {
@@ -709,11 +782,11 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           <div className="p-4 sm:p-6 lg:p-8 bg-[#5A5A40] text-white flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-6">
             <div className="space-y-1 text-center sm:text-left">
               <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
-                Kết quả Thi Thử Vào Lớp 10
+                Kết quả Thi Thử Môn {currentSubject === 'math' ? 'Toán' : 'Tiếng Anh'}
               </span>
               <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold">{completedAttempt.examTitle}</h2>
               <p className="text-xs sm:text-sm text-[#D9D2C5]">
-                Thời gian làm bài: {Math.round(completedAttempt.timeSpentSeconds / 60)} phút • Ngày{' '}
+                Học sinh: <strong>{currentUser.name}</strong> • Thời gian: {Math.round(completedAttempt.timeSpentSeconds / 60)} phút • Ngày{' '}
                 {new Date(completedAttempt.date).toLocaleDateString('vi-VN')}
               </p>
             </div>
@@ -764,7 +837,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
               </div>
               <div>
                 <h3 className="text-base sm:text-lg font-bold text-[#3D3D2D]">
-                  Đánh Giá Năng Lực & Các Điểm Cần Cải Thiện
+                  Đánh Giá Năng Lực & Các Điểm Cần Cải Thiện ({currentSubject === 'math' ? 'Toán' : 'Tiếng Anh'})
                 </h3>
                 <p className="text-xs text-[#8A8A70]">
                   {aiEvaluation
@@ -825,7 +898,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                 </p>
               </div>
               <span className="text-[10px] text-[#5A5A40] font-medium">
-                🎯 Mục tiêu của bạn: {currentUser.targetScore}đ ({currentUser.targetSchool})
+                🎯 Mục tiêu của bạn: {currentSubjectTarget}đ ({currentUser.targetSchool})
               </span>
             </div>
           </div>
@@ -1025,30 +1098,30 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                       Câu {examQuestions.findIndex((item) => item.id === q.id) + 1}
                     </span>
                     <span className="text-xs text-[#8A8A70] font-semibold capitalize">
-                      {q.topicId.replace('_', ' ')}
+                      {q.topicId.replace('math_', '').replace(/_/g, ' ')}
                     </span>
                   </div>
 
                   {isCorrect ? (
                     <span className="inline-flex items-center space-x-1 text-xs font-bold text-[#8BA888]">
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>Đúng (+0.25đ)</span>
+                      <span>Đúng</span>
                     </span>
                   ) : (
                     <span className="inline-flex items-center space-x-1 text-xs font-bold text-[#E67E22]">
                       <XCircle className="w-4 h-4" />
-                      <span>Sai (Đã lưu)</span>
+                      <span>Sai (Đã lưu vào Sổ câu sai)</span>
                     </span>
                   )}
                 </div>
 
                 {q.passage && (
-                  <div className="my-2.5 p-3 bg-[#FAF9F6] rounded-xl text-xs text-[#8A8A70] border border-[#EAE7E0]">
+                  <div className="my-2.5 p-3 bg-[#FAF9F6] rounded-xl text-xs text-[#8A8A70] border border-[#EAE7E0] whitespace-pre-line">
                     {q.passage}
                   </div>
                 )}
 
-                <div className="mt-2.5 text-xs sm:text-sm font-bold text-[#3D3D2D] leading-relaxed">
+                <div className="mt-2.5 text-xs sm:text-sm font-bold text-[#3D3D2D] leading-relaxed whitespace-pre-line">
                   {q.content}
                 </div>
 
@@ -1067,10 +1140,10 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                     return (
                       <div
                         key={oIdx}
-                        className={`p-2.5 rounded-xl border flex items-center justify-between ${style}`}
+                        className={`p-2.5 rounded-xl border flex items-center justify-between whitespace-pre-line ${style}`}
                       >
                         <span>{opt}</span>
-                        {isOptionCorrect && <Check className="w-4 h-4 text-[#8BA888]" />}
+                        {isOptionCorrect && <Check className="w-4 h-4 text-[#8BA888] shrink-0 ml-1" />}
                       </div>
                     );
                   })}
@@ -1079,18 +1152,18 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                 <div className="mt-3.5 p-3.5 sm:p-4 rounded-2xl bg-[#FAF9F6] border border-[#EAE7E0] text-xs text-[#3D3D2D] space-y-2">
                   <div className="font-bold flex items-center space-x-1.5 text-[#5A5A40]">
                     <BookOpen className="w-4 h-4" />
-                    <span>Giải thích chi tiết & Quy tắc:</span>
+                    <span>Giải thích chi tiết & Phương pháp giải:</span>
                   </div>
-                  <p className="leading-relaxed">{q.explanation}</p>
+                  <p className="leading-relaxed whitespace-pre-line">{q.explanation}</p>
 
                   {q.grammarRule && (
-                    <div className="p-2 bg-white rounded-xl border border-[#D9D2C5] font-mono text-[11px] text-[#3D3D2D]">
-                      <strong>Công thức:</strong> {q.grammarRule}
+                    <div className="p-2.5 bg-white rounded-xl border border-[#D9D2C5] font-mono text-[11px] text-[#3D3D2D] whitespace-pre-line">
+                      <strong>Công thức / Định lý:</strong> {q.grammarRule}
                     </div>
                   )}
 
                   {q.commonMistakeTip && (
-                    <p className="text-[#E67E22] text-[11px]">💡 {q.commonMistakeTip}</p>
+                    <p className="text-[#E67E22] text-[11px] font-medium">💡 {q.commonMistakeTip}</p>
                   )}
                 </div>
               </div>

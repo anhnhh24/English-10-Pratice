@@ -1,21 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { TOPICS_META } from '../data/topicsMeta';
-import { DifficultyLevel, Question, TopicId } from '../types';
+import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
+import { Question, TopicId } from '../types';
 import {
-  Layers,
   CheckCircle2,
   XCircle,
-  HelpCircle,
   BookOpen,
   Bookmark,
   RotateCcw,
-  Sparkles,
   ChevronRight,
-  Filter,
-  Check,
   Award,
-  Clock,
   ArrowLeft,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -23,22 +18,32 @@ import confetti from 'canvas-confetti';
 interface TopicPracticeViewProps {
   initialTopicId?: string;
   onBackToDashboard: () => void;
-  onOpenAiTutor?: (q: Question) => void;
 }
 
 export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
-  initialTopicId = 'grammar',
+  initialTopicId,
   onBackToDashboard,
-  onOpenAiTutor,
 }) => {
-  const { questions, recordAnswerResult, savePracticeSession, toggleBookmark, isBookmarked } =
+  const { currentSubject, questions, recordAnswerResult, savePracticeSession, toggleBookmark, isBookmarked } =
     useApp();
 
+  const currentTopicsMeta = currentSubject === 'math' ? MATH_TOPICS_META : TOPICS_META;
+  const defaultTopic: TopicId = currentSubject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar';
+
   const [selectedTopic, setSelectedTopic] = useState<TopicId>(
-    (initialTopicId as TopicId) || 'grammar'
+    (initialTopicId as TopicId) || defaultTopic
   );
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
   const [questionCount, setQuestionCount] = useState<number>(10);
+
+  // Update selected topic when subject changes
+  useEffect(() => {
+    if (initialTopicId) {
+      setSelectedTopic(initialTopicId as TopicId);
+    } else {
+      setSelectedTopic(currentSubject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar');
+    }
+  }, [currentSubject, initialTopicId]);
 
   // Active practice session states
   const [isPracticing, setIsPracticing] = useState<boolean>(false);
@@ -49,8 +54,9 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
   const [isFinished, setIsFinished] = useState<boolean>(false);
   const [startTime, setStartTime] = useState<number>(Date.now());
 
-  // Filter pool
+  // Filter pool by topic, subject & difficulty
   const topicQuestionsPool = questions.filter((q) => {
+    if ((q.subject || 'english') !== currentSubject) return false;
     if (q.topicId !== selectedTopic) return false;
     if (selectedDifficulty !== 'all' && q.difficulty !== selectedDifficulty) return false;
     return true;
@@ -61,7 +67,9 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
     const picked = shuffled.slice(0, Math.min(questionCount, shuffled.length));
 
     if (picked.length === 0) {
-      const allInTopic = questions.filter((q) => q.topicId === selectedTopic);
+      const allInTopic = questions.filter(
+        (q) => (q.subject || 'english') === currentSubject && q.topicId === selectedTopic
+      );
       picked.push(...allInTopic.slice(0, questionCount));
     }
 
@@ -109,6 +117,7 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
     const scorePct = Math.round((correctCount / totalQ) * 100);
 
     savePracticeSession({
+      subject: currentSubject,
       type: 'topic',
       topicId: selectedTopic,
       date: new Date().toISOString(),
@@ -139,7 +148,7 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
           </button>
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-[#3D3D2D]">
-              Luyện Tập Theo Từng Chuyên Đề
+              Luyện Chuyên Đề: {currentSubject === 'math' ? 'Môn Toán 10' : 'Môn Tiếng Anh 10'}
             </h2>
             <p className="text-xs sm:text-sm text-[#8A8A70]">
               Chủ động lựa chọn nội dung kiến thức, độ khó và số lượng câu muốn ôn luyện
@@ -152,10 +161,12 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
           <label className="block text-xs font-bold uppercase text-[#8A8A70] tracking-wider">
             1. Chọn Chuyên Đề Trọng Tâm:
           </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {TOPICS_META.map((t) => {
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {currentTopicsMeta.map((t) => {
               const isSelected = selectedTopic === t.id;
-              const countInBank = questions.filter((q) => q.topicId === t.id).length;
+              const countInBank = questions.filter(
+                (q) => (q.subject || 'english') === currentSubject && q.topicId === t.id
+              ).length;
 
               return (
                 <button
@@ -279,7 +290,7 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
               Câu {currentIdx + 1}/{practiceQuestions.length}
             </span>
             <span className="text-xs font-bold text-[#3D3D2D] capitalize">
-              {currentQ.topicId.replace('_', ' ')}
+              {currentQ.topicId.replace('math_', '').replace(/_/g, ' ')}
             </span>
           </div>
 
@@ -298,7 +309,7 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
             </button>
             <button
               onClick={() => setIsPracticing(false)}
-              className="text-xs font-bold text-[#8A8A70] hover:text-[#3D3D2D] underline px-2"
+              className="text-xs font-bold text-[#8A8A70] hover:text-[#3D3D2D] underline px-2 cursor-pointer"
             >
               Thoát
             </button>
@@ -313,7 +324,7 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
             </div>
           )}
 
-          <div className="text-base sm:text-lg font-bold text-[#3D3D2D] leading-relaxed">
+          <div className="text-base sm:text-lg font-bold text-[#3D3D2D] leading-relaxed whitespace-pre-line">
             {currentQ.content}
           </div>
 
@@ -342,12 +353,12 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
                   onClick={() => handleSelectOption(idx)}
                   className={`w-full text-left p-4 rounded-2xl border text-xs sm:text-sm transition flex items-center justify-between cursor-pointer ${style}`}
                 >
-                  <span>{opt}</span>
+                  <span className="whitespace-pre-line">{opt}</span>
                   {isCurrentChecked && isOptionCorrect && (
-                    <CheckCircle2 className="w-5 h-5 text-[#8BA888]" />
+                    <CheckCircle2 className="w-5 h-5 text-[#8BA888] shrink-0" />
                   )}
                   {isCurrentChecked && isSelected && !isOptionCorrect && (
-                    <XCircle className="w-5 h-5 text-[#E67E22]" />
+                    <XCircle className="w-5 h-5 text-[#E67E22] shrink-0" />
                   )}
                 </button>
               );
@@ -367,16 +378,16 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
                 <BookOpen className="w-4 h-4" />
                 <span>{isCorrect ? 'Chính xác! Lời giải:' : 'Chưa đúng! Lời giải chi tiết:'}</span>
               </div>
-              <p className="leading-relaxed">{currentQ.explanation}</p>
+              <p className="leading-relaxed whitespace-pre-line">{currentQ.explanation}</p>
 
               {currentQ.grammarRule && (
-                <p className="p-2 bg-white/80 rounded-xl border border-[#D9D2C5] font-mono text-[11px] text-[#3D3D2D]">
-                  <strong>Công thức:</strong> {currentQ.grammarRule}
+                <p className="p-2.5 bg-white/80 rounded-xl border border-[#D9D2C5] font-mono text-[11px] text-[#3D3D2D] whitespace-pre-line">
+                  <strong>Công thức / Định lý:</strong> {currentQ.grammarRule}
                 </p>
               )}
 
               {currentQ.commonMistakeTip && (
-                <p className="text-[#E67E22] text-[11px]">💡 {currentQ.commonMistakeTip}</p>
+                <p className="text-[#E67E22] text-[11px] font-medium">💡 {currentQ.commonMistakeTip}</p>
               )}
             </div>
           )}
@@ -424,7 +435,7 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
         <div className="space-y-1">
           <h3 className="text-xl font-bold text-[#3D3D2D]">Hoàn Thành Bài Luyện Tập!</h3>
           <p className="text-xs text-[#8A8A70]">
-            Chuyên đề {TOPICS_META.find((t) => t.id === selectedTopic)?.nameVi}
+            Chuyên đề {currentTopicsMeta.find((t) => t.id === selectedTopic)?.nameVi}
           </p>
         </div>
 

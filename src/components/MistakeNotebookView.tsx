@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { TOPICS_META } from '../data/topicsMeta';
+import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
 import { Question, MistakeItem } from '../types';
 import {
   BookMarked,
@@ -10,15 +11,16 @@ import {
   BookOpen,
   Trash2,
   Check,
-  Filter,
 } from 'lucide-react';
 
 interface MistakeNotebookViewProps {
   onOpenAiTutor?: (q: Question) => void;
 }
 
-export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpenAiTutor }) => {
+export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = () => {
   const {
+    currentSubject,
+    currentUser,
     mistakes,
     getQuestionById,
     recordAnswerResult,
@@ -26,6 +28,8 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpen
     removeMistake,
     clearMasteredMistakes,
   } = useApp();
+
+  const currentTopicsMeta = currentSubject === 'math' ? MATH_TOPICS_META : TOPICS_META;
 
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'unmastered' | 'mastered'>('unmastered');
@@ -41,7 +45,11 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpen
       const q = getQuestionById(item.questionId);
       return { ...item, question: q };
     })
-    .filter((item) => item.question !== undefined) as Array<{
+    .filter(
+      (item) =>
+        item.question !== undefined &&
+        (item.question.subject || 'english') === currentSubject
+    ) as Array<{
       questionId: string;
       wrongCount: number;
       lastAttemptDate: string;
@@ -97,14 +105,14 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpen
           <div className="space-y-1 max-w-xl">
             <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
               <BookMarked className="w-3.5 h-3.5" />
-              <span>Sổ tay thông minh ghi nhớ lỗi sai</span>
+              <span>Sổ tay thông minh ghi nhớ câu sai ({currentSubject === 'math' ? 'Toán' : 'Tiếng Anh'})</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
               Sổ Câu Sai & Luyện Lại Lỗ Hổng
             </h1>
             <p className="text-xs sm:text-sm text-[#D9D2C5] leading-relaxed">
               Mỗi câu sai là một cơ hội để bạn ghi nhớ sâu hơn. Hãy làm lại cho đến khi trả lời đúng
-              2 lần liên tiếp để biến điểm yếu thành điểm mạnh!
+              2 lần liên tiếp để biến điểm yếu thành điểm mạnh! Dữ liệu được lưu riêng cho tài khoản <strong>{currentUser.name}</strong>.
             </p>
           </div>
 
@@ -131,25 +139,25 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpen
                 Luyện câu sai {practiceIdx + 1}/{questionsToPractice.length}
               </span>
               <span className="text-xs font-bold text-[#3D3D2D] capitalize">
-                {currentPracticeQ.topicId.replace('_', ' ')}
+                {currentPracticeQ.topicId.replace('math_', '').replace(/_/g, ' ')}
               </span>
             </div>
 
             <button
               onClick={() => setIsPracticing(false)}
-              className="text-xs font-bold text-[#8A8A70] hover:text-[#3D3D2D] underline"
+              className="text-xs font-bold text-[#8A8A70] hover:text-[#3D3D2D] underline cursor-pointer"
             >
               Thoát luyện tập
             </button>
           </div>
 
           {currentPracticeQ.passage && (
-            <div className="p-4 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] text-xs sm:text-sm text-[#4A4A4A] leading-relaxed max-h-48 overflow-y-auto">
+            <div className="p-4 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] text-xs sm:text-sm text-[#4A4A4A] leading-relaxed max-h-48 overflow-y-auto whitespace-pre-line">
               {currentPracticeQ.passage}
             </div>
           )}
 
-          <div className="text-base font-bold text-[#3D3D2D] leading-relaxed">
+          <div className="text-base font-bold text-[#3D3D2D] leading-relaxed whitespace-pre-line">
             {currentPracticeQ.content}
           </div>
 
@@ -178,9 +186,9 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpen
                   onClick={() => !hasChecked && setChosenAnswer(idx)}
                   className={`w-full text-left p-4 rounded-2xl border text-xs sm:text-sm transition flex items-center justify-between cursor-pointer ${style}`}
                 >
-                  <span>{opt}</span>
+                  <span className="whitespace-pre-line">{opt}</span>
                   {hasChecked && isCorrectOpt && (
-                    <CheckCircle2 className="w-5 h-5 text-[#8BA888]" />
+                    <CheckCircle2 className="w-5 h-5 text-[#8BA888] shrink-0" />
                   )}
                 </button>
               );
@@ -194,10 +202,10 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpen
                 <BookOpen className="w-4 h-4" />
                 <span>Giải thích cặn kẽ:</span>
               </div>
-              <p className="leading-relaxed">{currentPracticeQ.explanation}</p>
+              <p className="leading-relaxed whitespace-pre-line">{currentPracticeQ.explanation}</p>
               {currentPracticeQ.grammarRule && (
-                <p className="font-mono text-[11px] bg-white p-2 rounded-xl text-[#3D3D2D] border border-[#D9D2C5]">
-                  {currentPracticeQ.grammarRule}
+                <p className="font-mono text-[11px] bg-white p-2.5 rounded-xl text-[#3D3D2D] border border-[#D9D2C5] whitespace-pre-line">
+                  <strong>Công thức / Định lý:</strong> {currentPracticeQ.grammarRule}
                 </p>
               )}
             </div>
@@ -265,10 +273,10 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpen
               <select
                 value={selectedTopic}
                 onChange={(e) => setSelectedTopic(e.target.value)}
-                className="px-3 py-1.5 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl text-xs font-medium text-[#4A4A4A] outline-hidden"
+                className="px-3 py-1.5 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl text-xs font-medium text-[#4A4A4A] outline-hidden cursor-pointer"
               >
                 <option value="all">Tất cả chuyên đề</option>
-                {TOPICS_META.map((t) => (
+                {currentTopicsMeta.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.nameVi}
                   </option>
@@ -305,8 +313,7 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpen
               </div>
               <h3 className="font-bold text-[#3D3D2D] text-base">Tuyệt vời! Không có câu sai nào</h3>
               <p className="text-xs text-[#8A8A70] max-w-sm mx-auto">
-                Tất cả câu hỏi trong danh mục này bạn đều đã nắm chắc. Hãy thi thử hoặc luyện thêm
-                đề mới!
+                Tất cả câu hỏi môn {currentSubject === 'math' ? 'Toán' : 'Tiếng Anh'} bạn đều đã nắm chắc. Hãy thi thử hoặc luyện thêm đề mới!
               </p>
             </div>
           ) : (
@@ -324,7 +331,7 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpen
                         Sai {wrongCount} lần
                       </span>
                       <span className="text-xs font-semibold text-[#8A8A70] capitalize">
-                        {q.topicId.replace('_', ' ')}
+                        {q.topicId.replace('math_', '').replace(/_/g, ' ')}
                       </span>
                     </div>
 
@@ -351,7 +358,7 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpen
                     </div>
                   </div>
 
-                  <div className="mt-3 text-sm font-bold text-[#3D3D2D] leading-relaxed">
+                  <div className="mt-3 text-sm font-bold text-[#3D3D2D] leading-relaxed whitespace-pre-line">
                     {q.content}
                   </div>
 
@@ -362,14 +369,14 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpen
                       return (
                         <div
                           key={oIdx}
-                          className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                          className={`p-2.5 rounded-xl border flex items-center justify-between whitespace-pre-line ${
                             isCorrect
                               ? 'bg-[#EBF2EB] border-[#8BA888] text-[#3D3D2D] font-bold'
                               : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#6B6B54]'
                           }`}
                         >
                           <span>{opt}</span>
-                          {isCorrect && <Check className="w-4 h-4 text-[#8BA888]" />}
+                          {isCorrect && <Check className="w-4 h-4 text-[#8BA888] shrink-0 ml-1" />}
                         </div>
                       );
                     })}
@@ -377,12 +384,12 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = ({ onOpen
 
                   {/* Detailed explanation */}
                   <div className="mt-3 p-3.5 bg-[#FAF9F6] rounded-xl text-xs text-[#3D3D2D] space-y-1.5 border border-[#EAE7E0]">
-                    <p className="leading-relaxed font-medium">
+                    <p className="leading-relaxed font-medium whitespace-pre-line">
                       <strong>Giải thích:</strong> {q.explanation}
                     </p>
                     {q.grammarRule && (
-                      <p className="font-mono text-[11px] text-[#5A5A40] bg-white p-1.5 rounded-md border border-[#D9D2C5]">
-                        <strong>Công thức:</strong> {q.grammarRule}
+                      <p className="font-mono text-[11px] text-[#5A5A40] bg-white p-2 rounded-md border border-[#D9D2C5] whitespace-pre-line">
+                        <strong>Công thức / Định lý:</strong> {q.grammarRule}
                       </p>
                     )}
                   </div>

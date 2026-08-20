@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { TOPICS_META } from '../data/topicsMeta';
+import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
 import { MistakeItem } from '../types';
 import {
   Award,
@@ -25,14 +26,25 @@ interface AnalyticsViewProps {
 }
 
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
-  onOpenTargetModal,
   onPracticeWeakness,
   onPracticeTopic,
 }) => {
-  const { currentUser, examAttempts, practiceSessions, mistakes, analytics } = useApp();
+  const { currentSubject, currentUser, examAttempts, mistakes, analytics, getQuestionById } = useApp();
 
   const handlePractice = onPracticeWeakness || onPracticeTopic || (() => {});
-  const activeMistakesCount = (Object.values(mistakes) as MistakeItem[]).filter((m) => !m.mastered).length;
+  const currentTopicsMeta = currentSubject === 'math' ? MATH_TOPICS_META : TOPICS_META;
+
+  const subjectExamAttempts = examAttempts.filter((a) => (a.subject || 'english') === currentSubject);
+  const activeMistakesCount = (Object.values(mistakes) as MistakeItem[]).filter((m) => {
+    if (m.mastered) return false;
+    const q = getQuestionById(m.questionId);
+    return q && (q.subject || 'english') === currentSubject;
+  }).length;
+
+  const subjectTargetScore =
+    currentSubject === 'math'
+      ? currentUser.targetScoreMath || currentUser.targetScore
+      : currentUser.targetScoreEnglish || currentUser.targetScore;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
@@ -41,14 +53,13 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
-              Hệ Thống Phân Tích Dữ Liệu Học Tập
+              Báo Cáo Năng Lực Học Tập: {currentSubject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}
             </span>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-              Báo Cáo Năng Lực & Dự Đoán Điểm Số
+              Phân Tích & Dự Đoán Điểm Số Tuyển Sinh
             </h1>
             <p className="text-xs sm:text-sm text-[#D9D2C5]">
-              Thuật toán ước lượng điểm thi vào 10 dựa trên độ chính xác thực tế và tần suất khắc phục
-              lỗi sai.
+              Dữ liệu học tập của học sinh <strong>{currentUser.name}</strong> ({currentUser.targetSchool}) được cập nhật thời gian thực theo từng môn thi.
             </p>
           </div>
 
@@ -60,7 +71,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               ~{analytics.predictedGrade10Score.toFixed(1)}
             </div>
             <p className="text-[11px] text-[#8BA888] font-bold mt-0.5">
-              Mục tiêu: {currentUser.targetScore}/10
+              Mục tiêu: {subjectTargetScore}/10
             </p>
           </div>
         </div>
@@ -74,13 +85,13 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             <span>Tổng câu đã giải</span>
           </div>
           <div className="text-2xl font-bold text-[#5A5A40]">{analytics.totalSolved} câu</div>
-          <p className="text-[11px] text-[#8A8A70] mt-1">Bao gồm đề thi & luyện tập</p>
+          <p className="text-[11px] text-[#8A8A70] mt-1">Đề thi & luyện chuyên đề</p>
         </div>
 
         <div className="bg-white p-5 rounded-[2rem] border border-[#EAE7E0] shadow-sm">
           <div className="flex items-center space-x-2 text-[#8A8A70] text-xs font-bold uppercase mb-1">
             <TrendingUp className="w-4 h-4 text-[#E67E22]" />
-            <span>Độ chính xác chung</span>
+            <span>Độ chính xác môn {currentSubject === 'math' ? 'Toán' : 'Anh'}</span>
           </div>
           <div className="text-2xl font-bold text-[#5A5A40]">{analytics.overallAccuracy}%</div>
           <div className="w-full bg-[#F5F2ED] h-1.5 rounded-full mt-2 overflow-hidden">
@@ -100,7 +111,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             {analytics.averageExamScore.toFixed(1)}/10
           </div>
           <p className="text-[11px] text-[#8BA888] font-semibold mt-1">
-            Qua {examAttempts.length} lượt làm bài
+            Qua {subjectExamAttempts.length} lượt làm bài
           </p>
         </div>
 
@@ -119,7 +130,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base sm:text-lg font-bold text-[#3D3D2D]">
-              Ma Trận Năng Lực Theo Từng Chuyên Đề
+              Ma Trận Năng Lực Từng Chuyên Đề ({currentSubject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'})
             </h3>
             <p className="text-xs text-[#8A8A70]">
               Tỷ lệ chính xác tương ứng với từng dạng bài trong cấu trúc đề thi tuyển sinh
@@ -128,7 +139,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         </div>
 
         <div className="space-y-4">
-          {TOPICS_META.map((topic) => {
+          {currentTopicsMeta.map((topic) => {
             const stat = analytics.topicStats[topic.id] || { solved: 0, accuracy: 0 };
             const pct = stat.accuracy || 50;
             const barColor =

@@ -7,60 +7,88 @@ import {
   MistakeItem,
   UserAccount,
   TopicId,
-  DifficultyLevel,
+  SubjectId,
 } from '../types';
 import { QUESTIONS_DATA } from '../data/questionsData';
 import { EXAMS_DATA } from '../data/examsData';
+import { MATH_QUESTIONS_DATA } from '../data/mathQuestionsData';
+import { MATH_EXAMS_DATA } from '../data/mathExamsData';
+
+interface UserScopedData {
+  examAttempts: ExamAttempt[];
+  practiceSessions: PracticeSession[];
+  mistakes: Record<string, MistakeItem>;
+  bookmarks: string[];
+  customExams: Exam[];
+}
 
 interface AppContextType {
+  // Current active subject (English or Math)
+  currentSubject: SubjectId;
+  switchSubject: (subject: SubjectId) => void;
+
+  // Authentication & Users
   currentUser: UserAccount;
   setCurrentUser: (user: UserAccount) => void;
+  usersList: UserAccount[];
+  login: (email: string, password?: string) => { success: boolean; message?: string };
+  register: (data: {
+    name: string;
+    email: string;
+    password?: string;
+    targetScore?: number;
+    targetScoreMath?: number;
+    targetScoreEnglish?: number;
+    targetSchool?: string;
+  }) => { success: boolean; message?: string };
+  logout: () => void;
+  switchUser: (userId: string) => void;
   switchUserRole: (role: 'student' | 'admin') => void;
   updateUserTarget: (targetScore: number, school: string) => void;
-  usersList: UserAccount[];
+  updateUserProfile: (data: Partial<UserAccount>) => void;
   toggleUserLock: (userId: string) => void;
 
-  // Questions
+  // Questions (combined english + math + custom)
   questions: Question[];
   getQuestionById: (id: string) => Question | undefined;
   addQuestion: (q: Omit<Question, 'id'>) => Question;
   updateQuestion: (id: string, q: Partial<Question>) => void;
   deleteQuestion: (id: string) => void;
-  bulkImportQuestions: (newQuestions: Omit<Question, 'id'>[]) => number;
+  bulkImportQuestions: (newQuestions: (Question | Omit<Question, 'id'>)[]) => number;
 
-  // Exams
+  // Exams (combined official + math + user-created)
   exams: Exam[];
   getExamById: (id: string) => Exam | undefined;
-  addExam: (e: Omit<Exam, 'id' | 'createdAt'>) => Exam;
+  addExam: (e: Omit<Exam, 'id' | 'createdAt'> & { id?: string }) => Exam;
   updateExam: (id: string, e: Partial<Exam>) => void;
   deleteExam: (id: string) => void;
 
-  // Exam Attempts & Practice Sessions
+  // Exam Attempts & Practice Sessions (Per User)
   examAttempts: ExamAttempt[];
   saveExamAttempt: (attempt: Omit<ExamAttempt, 'id'>) => ExamAttempt;
   practiceSessions: PracticeSession[];
   savePracticeSession: (session: Omit<PracticeSession, 'id'>) => PracticeSession;
 
-  // Mistake Notebook (Sổ câu sai)
+  // Mistake Notebook (Per User)
   mistakes: Record<string, MistakeItem>;
   recordAnswerResult: (questionId: string, isCorrect: boolean) => void;
   toggleMistakeMastered: (questionId: string) => void;
   removeMistake: (questionId: string) => void;
   clearMasteredMistakes: () => void;
 
-  // Bookmarks
+  // Bookmarks (Per User)
   bookmarks: string[]; // question IDs
   toggleBookmark: (questionId: string) => void;
   isBookmarked: (questionId: string) => boolean;
 
-  // Analytics & Stats
+  // Analytics & Stats (Calculated dynamically for current subject and overall)
   analytics: {
     totalSolved: number;
     totalCorrect: number;
     overallAccuracy: number;
     averageExamScore: number;
     predictedGrade10Score: number;
-    topicStats: Record<TopicId, { solved: number; correct: number; accuracy: number }>;
+    topicStats: Record<string, { solved: number; correct: number; accuracy: number }>;
     weakestTopics: TopicId[];
     strongestTopics: TopicId[];
     recentAttempts: ExamAttempt[];
@@ -76,60 +104,56 @@ const DEFAULT_USERS: UserAccount[] = [
     id: 'user_student_1',
     name: 'Nguyễn Hoàng Minh',
     email: 'hoangminh.lop9@gmail.com',
+    password: '123',
     role: 'student',
     targetScore: 8.5,
+    targetScoreEnglish: 8.5,
+    targetScoreMath: 8.5,
     targetSchool: 'THPT Chu Văn An / THPT Kim Liên',
     streakDays: 7,
     lastActiveDate: new Date().toISOString(),
     avatarColor: 'bg-indigo-600',
+    createdAt: '2026-08-01',
+  },
+  {
+    id: 'user_student_2',
+    name: 'Lê Phương Linh',
+    email: 'phuonglinh.ams@gmail.com',
+    password: '123',
+    role: 'student',
+    targetScore: 9.25,
+    targetScoreEnglish: 9.5,
+    targetScoreMath: 9.0,
+    targetSchool: 'THPT Chuyên Hà Nội - Amsterdam',
+    streakDays: 14,
+    lastActiveDate: new Date().toISOString(),
+    avatarColor: 'bg-rose-600',
+    createdAt: '2026-08-05',
   },
   {
     id: 'user_admin_1',
     name: 'Thầy Tuấn (Quản trị viên)',
     email: 'admin.edulop10@edu.vn',
+    password: 'admin',
     role: 'admin',
     targetScore: 10,
-    targetSchool: 'Hệ thống Quản trị EduEnglish 10',
+    targetScoreEnglish: 10,
+    targetScoreMath: 10,
+    targetSchool: 'Hệ thống Quản trị EduVao10',
     streakDays: 45,
     lastActiveDate: new Date().toISOString(),
     avatarColor: 'bg-emerald-600',
+    createdAt: '2026-07-01',
   },
 ];
 
-const AppContext = createContext<AppContextType | undefined>(undefined);
-
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // 1. Users state
-  const [usersList, setUsersList] = useState<UserAccount[]>(() => {
-    const saved = localStorage.getItem('edu10_users');
-    return saved ? JSON.parse(saved) : DEFAULT_USERS;
-  });
-
-  const [currentUser, setCurrentUser] = useState<UserAccount>(() => {
-    const saved = localStorage.getItem('edu10_currentUser');
-    return saved ? JSON.parse(saved) : DEFAULT_USERS[0];
-  });
-
-  // 2. Questions state
-  const [questions, setQuestions] = useState<Question[]>(() => {
-    const saved = localStorage.getItem('edu10_questions');
-    return saved ? JSON.parse(saved) : QUESTIONS_DATA;
-  });
-
-  // 3. Exams state
-  const [exams, setExams] = useState<Exam[]>(() => {
-    const saved = localStorage.getItem('edu10_exams');
-    return saved ? JSON.parse(saved) : EXAMS_DATA;
-  });
-
-  // 4. Attempts & Practice state
-  const [examAttempts, setExamAttempts] = useState<ExamAttempt[]>(() => {
-    const saved = localStorage.getItem('edu10_attempts');
-    if (saved) return JSON.parse(saved);
-    // Seed 2 realistic past attempts so the dashboard looks vibrant right away
-    return [
+const INITIAL_DEMO_DATA: Record<string, UserScopedData> = {
+  user_student_1: {
+    examAttempts: [
       {
         id: 'attempt_demo_1',
+        userId: 'user_student_1',
+        subject: 'english',
         examId: 'exam_official_01',
         examTitle: 'Đề Thi Thử Tuyển Sinh Vào Lớp 10 - Đề Chuẩn Số 01',
         date: new Date(Date.now() - 3 * 86400000).toISOString(),
@@ -143,18 +167,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         userAnswers: {
           q_pron_01: 3,
           q_pron_02: 3,
-          q_pron_03: 0, // wrong
+          q_pron_03: 0,
           q_stress_01: 2,
           q_stress_02: 2,
           q_gram_01: 1,
           q_gram_02: 0,
-          q_gram_03: 0, // wrong
+          q_gram_03: 0,
           q_pass_01: 1,
           q_cond_01: 0,
           q_cond_02: 2,
-          q_cond_04: 0, // wrong
+          q_cond_04: 0,
           q_rel_01: 0,
-          q_rel_02: 0, // wrong
+          q_rel_02: 0,
           q_rep_01: 1,
           q_voc_01: 0,
           q_rew_01: 0,
@@ -165,7 +189,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         flaggedQuestions: ['q_gram_03', 'q_rel_02'],
       },
       {
+        id: 'attempt_demo_math_1',
+        userId: 'user_student_1',
+        subject: 'math',
+        examId: 'math_exam_official_01',
+        examTitle: 'Đề Thi Thử Tuyển Sinh Vào Lớp 10 Môn Toán - Đề Chuẩn Số 01 (Sở GD&ĐT)',
+        date: new Date(Date.now() - 2 * 86400000).toISOString(),
+        score: 8.5,
+        score100: 85,
+        correctCount: 10,
+        incorrectCount: 2,
+        unattemptedCount: 0,
+        totalQuestions: 12,
+        timeSpentSeconds: 2980,
+        userAnswers: {
+          q_math_can_01: 0,
+          q_math_can_02: 0,
+          q_math_can_03: 0,
+          q_math_he_01: 0,
+          q_math_ham_01: 0,
+          q_math_ham_02: 0,
+          q_math_viet_01: 0,
+          q_math_lap_pt_01: 0,
+          q_math_he_thuc_01: 0,
+          q_math_tron_01: 0,
+          q_math_kg_01: 1, // wrong
+          q_math_bdt_01: 1, // wrong
+        },
+        flaggedQuestions: ['q_math_bdt_01'],
+      },
+      {
         id: 'attempt_demo_2',
+        userId: 'user_student_1',
+        subject: 'english',
         examId: 'exam_speed_sprint_03',
         examTitle: 'Đề Luyện Tốc Độ 30 Phút - Bứt Phá Ngữ Âm & Từ Vựng',
         date: new Date(Date.now() - 86400000).toISOString(),
@@ -186,28 +242,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           q_voc_01: 0,
           q_voc_02: 1,
           q_voc_03: 1,
-          q_voc_04: 2, // wrong
+          q_voc_04: 2,
           q_voc_05: 0,
-          q_voc_06: 0, // wrong
+          q_voc_06: 0,
         },
         flaggedQuestions: ['q_voc_04'],
       },
-    ];
-  });
-
-  const [practiceSessions, setPracticeSessions] = useState<PracticeSession[]>(() => {
-    const saved = localStorage.getItem('edu10_practice_sessions');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // 5. Mistakes notebook state
-  const [mistakes, setMistakes] = useState<Record<string, MistakeItem>>(() => {
-    const saved = localStorage.getItem('edu10_mistakes');
-    if (saved) return JSON.parse(saved);
-    // Seed initial mistakes from demo attempts
-    return {
+    ],
+    practiceSessions: [],
+    mistakes: {
       q_pron_03: {
         questionId: 'q_pron_03',
+        subject: 'english',
         wrongCount: 2,
         lastAttemptDate: new Date(Date.now() - 3 * 86400000).toISOString(),
         consecutiveCorrect: 0,
@@ -216,6 +262,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       q_gram_03: {
         questionId: 'q_gram_03',
+        subject: 'english',
         wrongCount: 1,
         lastAttemptDate: new Date(Date.now() - 3 * 86400000).toISOString(),
         consecutiveCorrect: 0,
@@ -224,29 +271,122 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       q_rel_02: {
         questionId: 'q_rel_02',
+        subject: 'english',
         wrongCount: 2,
         lastAttemptDate: new Date(Date.now() - 2 * 86400000).toISOString(),
         consecutiveCorrect: 0,
         mastered: false,
-        userNote: 'Sau dấu phẩy cấm kỵ dùng THAT. Có động từ IS phía sau nên phải dùng WHICH, không dùng WHERE.',
+        userNote: 'Sau dấu phẩy cấm kỵ dùng THAT. Có động từ IS phía sau nên phải dùng WHICH.',
       },
-      q_voc_04: {
-        questionId: 'q_voc_04',
+      q_math_bdt_01: {
+        questionId: 'q_math_bdt_01',
+        subject: 'math',
         wrongCount: 1,
-        lastAttemptDate: new Date(Date.now() - 86400000).toISOString(),
+        lastAttemptDate: new Date(Date.now() - 2 * 86400000).toISOString(),
         consecutiveCorrect: 0,
         mastered: false,
+        userNote: 'Áp dụng Cauchy cho x và 9/x: Min = 2√(x . 9/x) = 6 khi x = 3.',
       },
+      q_math_kg_01: {
+        questionId: 'q_math_kg_01',
+        subject: 'math',
+        wrongCount: 1,
+        lastAttemptDate: new Date(Date.now() - 2 * 86400000).toISOString(),
+        consecutiveCorrect: 0,
+        mastered: false,
+        userNote: 'Đường sinh hình nón l = √(r² + h²) = √(3² + 4²) = 5cm.',
+      },
+    },
+    bookmarks: ['q_rel_02', 'q_math_viet_02', 'q_math_bdt_01'],
+    customExams: [],
+  },
+};
+
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // 1. Current Subject state
+  const [currentSubject, setCurrentSubject] = useState<SubjectId>(() => {
+    const saved = localStorage.getItem('edu10_current_subject');
+    return (saved as SubjectId) || 'english';
+  });
+
+  const switchSubject = (subj: SubjectId) => {
+    setCurrentSubject(subj);
+    localStorage.setItem('edu10_current_subject', subj);
+  };
+
+  // 2. Users state
+  const [usersList, setUsersList] = useState<UserAccount[]>(() => {
+    const saved = localStorage.getItem('edu10_users');
+    return saved ? JSON.parse(saved) : DEFAULT_USERS;
+  });
+
+  const [currentUser, setCurrentUser] = useState<UserAccount>(() => {
+    const saved = localStorage.getItem('edu10_currentUser');
+    return saved ? JSON.parse(saved) : DEFAULT_USERS[0];
+  });
+
+  // 3. User Scoped Data Helper
+  const getUserDataKey = (userId: string) => `edu10_userdata_${userId}`;
+
+  const loadUserData = (userId: string): UserScopedData => {
+    const raw = localStorage.getItem(getUserDataKey(userId));
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch (e) {
+        // fallback
+      }
+    }
+    return INITIAL_DEMO_DATA[userId] || {
+      examAttempts: [],
+      practiceSessions: [],
+      mistakes: {},
+      bookmarks: [],
+      customExams: [],
     };
+  };
+
+  // Active User Data States
+  const [examAttempts, setExamAttempts] = useState<ExamAttempt[]>(() => loadUserData(currentUser.id).examAttempts);
+  const [practiceSessions, setPracticeSessions] = useState<PracticeSession[]>(() => loadUserData(currentUser.id).practiceSessions);
+  const [mistakes, setMistakes] = useState<Record<string, MistakeItem>>(() => loadUserData(currentUser.id).mistakes);
+  const [bookmarks, setBookmarks] = useState<string[]>(() => loadUserData(currentUser.id).bookmarks);
+  const [customExams, setCustomExams] = useState<Exam[]>(() => loadUserData(currentUser.id).customExams);
+
+  // Custom User Questions
+  const [customQuestions, setCustomQuestions] = useState<Question[]>(() => {
+    const saved = localStorage.getItem('edu10_custom_questions');
+    return saved ? JSON.parse(saved) : [];
   });
 
-  // 6. Bookmarks state
-  const [bookmarks, setBookmarks] = useState<string[]>(() => {
-    const saved = localStorage.getItem('edu10_bookmarks');
-    return saved ? JSON.parse(saved) : ['q_rel_02', 'q_rew_03', 'q_err_02'];
-  });
+  // Base Question Bank (English + Math + Custom)
+  const allQuestions: Question[] = [
+    ...QUESTIONS_DATA.map((q) => ({ ...q, subject: 'english' as SubjectId })),
+    ...MATH_QUESTIONS_DATA.map((q) => ({ ...q, subject: 'math' as SubjectId })),
+    ...customQuestions,
+  ];
 
-  // Persistence effects
+  // Base Exam Bank (English + Math + Custom)
+  const allExams: Exam[] = [
+    ...EXAMS_DATA.map((e) => ({ ...e, subject: 'english' as SubjectId })),
+    ...MATH_EXAMS_DATA.map((e) => ({ ...e, subject: 'math' as SubjectId })),
+    ...customExams,
+  ];
+
+  // Sync user data to localStorage on changes
+  useEffect(() => {
+    const userData: UserScopedData = {
+      examAttempts,
+      practiceSessions,
+      mistakes,
+      bookmarks,
+      customExams,
+    };
+    localStorage.setItem(getUserDataKey(currentUser.id), JSON.stringify(userData));
+  }, [examAttempts, practiceSessions, mistakes, bookmarks, customExams, currentUser.id]);
+
   useEffect(() => {
     localStorage.setItem('edu10_users', JSON.stringify(usersList));
   }, [usersList]);
@@ -256,41 +396,105 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [currentUser]);
 
   useEffect(() => {
-    localStorage.setItem('edu10_questions', JSON.stringify(questions));
-  }, [questions]);
+    localStorage.setItem('edu10_custom_questions', JSON.stringify(customQuestions));
+  }, [customQuestions]);
 
-  useEffect(() => {
-    localStorage.setItem('edu10_exams', JSON.stringify(exams));
-  }, [exams]);
+  // Auth Operations
+  const login = (email: string, password?: string): { success: boolean; message?: string } => {
+    const cleanEmail = email.trim().toLowerCase();
+    const user = usersList.find((u) => u.email.toLowerCase() === cleanEmail);
 
-  useEffect(() => {
-    localStorage.setItem('edu10_attempts', JSON.stringify(examAttempts));
-  }, [examAttempts]);
+    if (!user) {
+      return { success: false, message: 'Email này chưa được đăng ký trong hệ thống.' };
+    }
 
-  useEffect(() => {
-    localStorage.setItem('edu10_practice_sessions', JSON.stringify(practiceSessions));
-  }, [practiceSessions]);
+    if (user.isLocked) {
+      return { success: false, message: 'Tài khoản này đang bị tạm khóa. Vui lòng liên hệ Admin.' };
+    }
 
-  useEffect(() => {
-    localStorage.setItem('edu10_mistakes', JSON.stringify(mistakes));
-  }, [mistakes]);
+    if (password && user.password && user.password !== password) {
+      return { success: false, message: 'Mật khẩu không chính xác. Vui lòng thử lại.' };
+    }
 
-  useEffect(() => {
-    localStorage.setItem('edu10_bookmarks', JSON.stringify(bookmarks));
-  }, [bookmarks]);
+    // Switch active user & load their data
+    switchUser(user.id);
+    return { success: true, message: `Chào mừng ${user.name} đã quay trở lại!` };
+  };
 
-  // User Actions
-  const switchUserRole = (role: 'student' | 'admin') => {
-    const target = usersList.find((u) => u.role === role) || {
-      ...currentUser,
-      role,
-      name: role === 'admin' ? 'Thầy Tuấn (Quản trị viên)' : 'Nguyễn Hoàng Minh',
+  const register = (data: {
+    name: string;
+    email: string;
+    password?: string;
+    targetScore?: number;
+    targetScoreMath?: number;
+    targetScoreEnglish?: number;
+    targetSchool?: string;
+  }): { success: boolean; message?: string } => {
+    const cleanEmail = data.email.trim().toLowerCase();
+    if (usersList.some((u) => u.email.toLowerCase() === cleanEmail)) {
+      return { success: false, message: 'Email này đã được sử dụng. Vui lòng dùng email khác.' };
+    }
+
+    const newUser: UserAccount = {
+      id: `user_${Date.now()}`,
+      name: data.name.trim(),
+      email: cleanEmail,
+      password: data.password || '123456',
+      role: 'student',
+      targetScore: data.targetScore || 8.5,
+      targetScoreEnglish: data.targetScoreEnglish || data.targetScore || 8.5,
+      targetScoreMath: data.targetScoreMath || data.targetScore || 8.5,
+      targetSchool: data.targetSchool || 'THPT Chu Văn An / Kim Liên',
+      streakDays: 1,
+      lastActiveDate: new Date().toISOString(),
+      avatarColor: 'bg-emerald-600',
+      createdAt: new Date().toISOString().split('T')[0],
     };
+
+    setUsersList((prev) => [newUser, ...prev]);
+    switchUser(newUser.id, newUser);
+    return { success: true, message: 'Đăng ký tài khoản mới thành công!' };
+  };
+
+  const logout = () => {
+    // Revert to demo student 1 or guest
+    switchUser(DEFAULT_USERS[0].id);
+  };
+
+  const switchUser = (userId: string, directUserObj?: UserAccount) => {
+    const target = directUserObj || usersList.find((u) => u.id === userId) || DEFAULT_USERS[0];
     setCurrentUser(target);
+
+    // Load target user's data
+    const uData = loadUserData(target.id);
+    setExamAttempts(uData.examAttempts || []);
+    setPracticeSessions(uData.practiceSessions || []);
+    setMistakes(uData.mistakes || {});
+    setBookmarks(uData.bookmarks || []);
+    setCustomExams(uData.customExams || []);
+  };
+
+  const switchUserRole = (role: 'student' | 'admin') => {
+    const target = usersList.find((u) => u.role === role);
+    if (target) {
+      switchUser(target.id);
+    }
   };
 
   const updateUserTarget = (targetScore: number, school: string) => {
-    const updated = { ...currentUser, targetScore, targetSchool: school };
+    const updated: UserAccount = {
+      ...currentUser,
+      targetScore,
+      targetScoreEnglish: currentSubject === 'english' ? targetScore : currentUser.targetScoreEnglish,
+      targetScoreMath: currentSubject === 'math' ? targetScore : currentUser.targetScoreMath,
+      targetSchool: school,
+    };
+    setCurrentUser(updated);
+    setUsersList((prev) => prev.map((u) => (u.id === currentUser.id ? updated : u)));
+  };
+
+  const updateUserProfile = (data: Partial<UserAccount>) => {
+    const updated: UserAccount = { ...currentUser, ...data };
     setCurrentUser(updated);
     setUsersList((prev) => prev.map((u) => (u.id === currentUser.id ? updated : u)));
   };
@@ -301,25 +505,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  // Question CRUD
-  const getQuestionById = (id: string) => questions.find((q) => q.id === id) || QUESTIONS_DATA.find((q) => q.id === id);
+  // Questions
+  const getQuestionById = (id: string) => allQuestions.find((q) => q.id === id);
 
   const addQuestion = (q: Omit<Question, 'id'>): Question => {
     const newQ: Question = {
       ...q,
+      subject: q.subject || currentSubject,
       id: `q_custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     };
-    setQuestions((prev) => [newQ, ...prev]);
+    setCustomQuestions((prev) => [newQ, ...prev]);
     return newQ;
   };
 
   const updateQuestion = (id: string, q: Partial<Question>) => {
-    setQuestions((prev) => prev.map((item) => (item.id === id ? { ...item, ...q } : item)));
+    setCustomQuestions((prev) => prev.map((item) => (item.id === id ? { ...item, ...q } : item)));
   };
 
   const deleteQuestion = (id: string) => {
-    setQuestions((prev) => prev.filter((item) => item.id !== id));
-    // clean up mistakes and bookmarks
+    setCustomQuestions((prev) => prev.filter((item) => item.id !== id));
     removeMistake(id);
     setBookmarks((prev) => prev.filter((bId) => bId !== id));
   };
@@ -327,9 +531,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const bulkImportQuestions = (newQuestions: (Question | Omit<Question, 'id'>)[]): number => {
     const formatted: Question[] = newQuestions.map((q: any, idx) => ({
       ...q,
+      subject: q.subject || currentSubject,
       id: q.id || `q_import_${Date.now()}_${idx}`,
     }));
-    setQuestions((prev) => {
+    setCustomQuestions((prev) => {
       const existingIds = new Set(prev.map((p) => p.id));
       const toAdd = formatted.filter((f) => !existingIds.has(f.id));
       return [...toAdd, ...prev];
@@ -337,16 +542,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return formatted.length;
   };
 
-  // Exam CRUD
-  const getExamById = (id: string) => exams.find((e) => e.id === id);
+  // Exams
+  const getExamById = (id: string) => allExams.find((e) => e.id === id);
 
   const addExam = (e: Omit<Exam, 'id' | 'createdAt'> & { id?: string }): Exam => {
     const newExam: Exam = {
       ...e,
+      subject: e.subject || currentSubject,
       id: e.id || `exam_${Date.now()}`,
       createdAt: new Date().toISOString().split('T')[0],
+      creatorUserId: currentUser.id,
     };
-    setExams((prev) => {
+    setCustomExams((prev) => {
       const filtered = prev.filter((item) => item.id !== newExam.id);
       return [newExam, ...filtered];
     });
@@ -354,22 +561,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateExam = (id: string, e: Partial<Exam>) => {
-    setExams((prev) => prev.map((item) => (item.id === id ? { ...item, ...e } : item)));
+    setCustomExams((prev) => prev.map((item) => (item.id === id ? { ...item, ...e } : item)));
   };
 
   const deleteExam = (id: string) => {
-    setExams((prev) => prev.filter((item) => item.id !== id));
+    setCustomExams((prev) => prev.filter((item) => item.id !== id));
   };
 
-  // Save Exam Attempt
+  // Attempts & Practice
   const saveExamAttempt = (attempt: Omit<ExamAttempt, 'id'>): ExamAttempt => {
     const newAttempt: ExamAttempt = {
       ...attempt,
+      userId: currentUser.id,
+      subject: attempt.subject || currentSubject,
       id: `attempt_${Date.now()}`,
     };
     setExamAttempts((prev) => [newAttempt, ...prev]);
 
-    // Record mistakes automatically
+    // Automatically record mistakes
     Object.entries(attempt.userAnswers).forEach(([qId, chosenOpt]) => {
       const q = getQuestionById(qId);
       if (q) {
@@ -384,11 +593,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const savePracticeSession = (session: Omit<PracticeSession, 'id'>): PracticeSession => {
     const newSession: PracticeSession = {
       ...session,
+      userId: currentUser.id,
+      subject: session.subject || currentSubject,
       id: `practice_${Date.now()}`,
     };
     setPracticeSessions((prev) => [newSession, ...prev]);
 
-    // Record answers
     Object.entries(session.userAnswers).forEach(([qId, chosenOpt]) => {
       const q = getQuestionById(qId);
       if (q) {
@@ -400,8 +610,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newSession;
   };
 
-  // Mistake Notebook Management
+  // Mistake Notebook
   const recordAnswerResult = (questionId: string, isCorrect: boolean) => {
+    const q = getQuestionById(questionId);
+    const qSubj = q?.subject || currentSubject;
+
     setMistakes((prev) => {
       const existing = prev[questionId];
       if (!isCorrect) {
@@ -409,6 +622,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...prev,
           [questionId]: {
             questionId,
+            subject: qSubj,
             wrongCount: (existing?.wrongCount || 0) + 1,
             lastAttemptDate: new Date().toISOString(),
             consecutiveCorrect: 0,
@@ -417,7 +631,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           },
         };
       } else {
-        if (!existing) return prev; // If not in mistake book, do nothing
+        if (!existing) return prev;
         const newConsecutive = (existing.consecutiveCorrect || 0) + 1;
         const isNowMastered = newConsecutive >= 2;
         return {
@@ -475,94 +689,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isBookmarked = (questionId: string) => bookmarks.includes(questionId);
 
-  // Compute Live Analytics
+  // Compute Live Analytics (Filtered by current subject)
   const computeAnalytics = () => {
     let totalSolved = 0;
     let totalCorrect = 0;
-    const topicStats: Record<TopicId, { solved: number; correct: number; accuracy: number }> = {
-      grammar: { solved: 0, correct: 0, accuracy: 0 },
-      vocabulary: { solved: 0, correct: 0, accuracy: 0 },
-      pronunciation: { solved: 0, correct: 0, accuracy: 0 },
-      stress: { solved: 0, correct: 0, accuracy: 0 },
-      reading: { solved: 0, correct: 0, accuracy: 0 },
-      sentence_rewrite: { solved: 0, correct: 0, accuracy: 0 },
-      cloze: { solved: 0, correct: 0, accuracy: 0 },
-      error_identification: { solved: 0, correct: 0, accuracy: 0 },
-    };
+    const topicStats: Record<string, { solved: number; correct: number; accuracy: number }> = {};
 
-    // Calculate from exam attempts
-    examAttempts.forEach((attempt) => {
+    // Filter attempts and sessions by current subject
+    const filteredAttempts = examAttempts.filter(
+      (a) => (a.subject || 'english') === currentSubject
+    );
+    const filteredSessions = practiceSessions.filter(
+      (s) => (s.subject || 'english') === currentSubject
+    );
+
+    filteredAttempts.forEach((attempt) => {
       Object.entries(attempt.userAnswers).forEach(([qId, ans]) => {
         const q = getQuestionById(qId);
-        if (q) {
+        if (q && (q.subject || 'english') === currentSubject) {
           totalSolved += 1;
           const isRight = ans === q.correctOption;
           if (isRight) totalCorrect += 1;
-          if (topicStats[q.topicId]) {
-            topicStats[q.topicId].solved += 1;
-            if (isRight) topicStats[q.topicId].correct += 1;
+          if (!topicStats[q.topicId]) {
+            topicStats[q.topicId] = { solved: 0, correct: 0, accuracy: 0 };
           }
+          topicStats[q.topicId].solved += 1;
+          if (isRight) topicStats[q.topicId].correct += 1;
         }
       });
     });
 
-    // Calculate from practice sessions
-    practiceSessions.forEach((session) => {
+    filteredSessions.forEach((session) => {
       Object.entries(session.userAnswers).forEach(([qId, ans]) => {
         const q = getQuestionById(qId);
-        if (q) {
+        if (q && (q.subject || 'english') === currentSubject) {
           totalSolved += 1;
           const isRight = ans === q.correctOption;
           if (isRight) totalCorrect += 1;
-          if (topicStats[q.topicId]) {
-            topicStats[q.topicId].solved += 1;
-            if (isRight) topicStats[q.topicId].correct += 1;
+          if (!topicStats[q.topicId]) {
+            topicStats[q.topicId] = { solved: 0, correct: 0, accuracy: 0 };
           }
+          topicStats[q.topicId].solved += 1;
+          if (isRight) topicStats[q.topicId].correct += 1;
         }
       });
     });
 
-    // Compute topic accuracy percentages
-    (Object.keys(topicStats) as TopicId[]).forEach((tId) => {
+    Object.keys(topicStats).forEach((tId) => {
       const item = topicStats[tId];
       item.accuracy = item.solved > 0 ? Math.round((item.correct / item.solved) * 100) : 0;
     });
 
-    const overallAccuracy = totalSolved > 0 ? Math.round((totalCorrect / totalSolved) * 100) : 78;
+    const overallAccuracy = totalSolved > 0 ? Math.round((totalCorrect / totalSolved) * 100) : 80;
     const averageExamScore =
-      examAttempts.length > 0
+      filteredAttempts.length > 0
         ? parseFloat(
-            (examAttempts.reduce((acc, curr) => acc + curr.score, 0) / examAttempts.length).toFixed(2)
+            (filteredAttempts.reduce((acc, curr) => acc + curr.score, 0) / filteredAttempts.length).toFixed(2)
           )
-        : 8.0;
+        : 8.2;
 
-    // Estimate predicted score based on average and mistake frequency
-    const activeMistakesCount = (Object.values(mistakes) as MistakeItem[]).filter((m) => !m.mastered).length;
+    const activeMistakesCount = Object.values(mistakes).filter(
+      (m) => !m.mastered && (m.subject || 'english') === currentSubject
+    ).length;
+
     const penalty = Math.min(1.2, activeMistakesCount * 0.15);
+    const targetScore =
+      currentSubject === 'math'
+        ? currentUser.targetScoreMath || currentUser.targetScore
+        : currentUser.targetScoreEnglish || currentUser.targetScore;
+
     const predictedGrade10Score = Math.max(
       5.0,
-      Math.min(9.8, parseFloat((averageExamScore * 0.9 + 0.8 - penalty * 0.5).toFixed(1)))
+      Math.min(9.8, parseFloat((averageExamScore * 0.9 + 0.8 - penalty * 0.4).toFixed(1)))
     );
 
-    // Sort weakest and strongest
-    const topicArray = (Object.keys(topicStats) as TopicId[])
-      .map((tId) => ({ topicId: tId, ...topicStats[tId] }))
+    const topicArray = Object.keys(topicStats)
+      .map((tId) => ({ topicId: tId as TopicId, ...topicStats[tId] }))
       .filter((t) => t.solved > 0);
 
     topicArray.sort((a, b) => a.accuracy - b.accuracy);
     const weakestTopics = topicArray.slice(0, 3).map((t) => t.topicId);
     const strongestTopics = [...topicArray].reverse().slice(0, 3).map((t) => t.topicId);
 
+    const defaultWeakest: TopicId[] =
+      currentSubject === 'math' ? ['math_pt_bac_hai_viet', 'math_duong_tron_tu_giac'] : ['grammar', 'sentence_rewrite'];
+    const defaultStrongest: TopicId[] =
+      currentSubject === 'math' ? ['math_can_thuc', 'math_he_thuc_luong'] : ['pronunciation', 'vocabulary'];
+
     return {
-      totalSolved: totalSolved || 32,
-      totalCorrect: totalCorrect || 26,
+      totalSolved: totalSolved || (currentSubject === 'math' ? 24 : 32),
+      totalCorrect: totalCorrect || (currentSubject === 'math' ? 20 : 26),
       overallAccuracy,
       averageExamScore,
       predictedGrade10Score,
       topicStats,
-      weakestTopics: weakestTopics.length > 0 ? weakestTopics : (['relative_clauses', 'tenses'] as any),
-      strongestTopics: strongestTopics.length > 0 ? strongestTopics : (['pronunciation', 'vocabulary'] as any),
-      recentAttempts: examAttempts.slice(0, 5),
+      weakestTopics: weakestTopics.length > 0 ? weakestTopics : defaultWeakest,
+      strongestTopics: strongestTopics.length > 0 ? strongestTopics : defaultStrongest,
+      recentAttempts: filteredAttempts.slice(0, 5),
     };
   };
 
@@ -581,19 +804,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        currentSubject,
+        switchSubject,
         currentUser,
         setCurrentUser,
+        usersList,
+        login,
+        register,
+        logout,
+        switchUser,
         switchUserRole,
         updateUserTarget,
-        usersList,
+        updateUserProfile,
         toggleUserLock,
-        questions,
+        questions: allQuestions,
         getQuestionById,
         addQuestion,
         updateQuestion,
         deleteQuestion,
         bulkImportQuestions,
-        exams,
+        exams: allExams,
         getExamById,
         addExam,
         updateExam,

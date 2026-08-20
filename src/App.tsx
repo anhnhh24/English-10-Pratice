@@ -13,10 +13,14 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { BookmarksView } from './components/BookmarksView';
 import { AdminPanel } from './components/AdminPanel';
 import { TargetSettingModal } from './components/TargetSettingModal';
+import { AuthModal } from './components/AuthModal';
+import { UserProfileModal } from './components/UserProfileModal';
 
 const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [targetModalOpen, setTargetModalOpen] = useState<boolean>(false);
+  const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
+  const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false);
   const [activeExamId, setActiveExamId] = useState<string>('exam_official_01');
   const [activePracticeTopicId, setActivePracticeTopicId] = useState<string>('grammar');
 
@@ -37,6 +41,8 @@ const AppContent: React.FC = () => {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onOpenTargetModal={() => setTargetModalOpen(true)}
+        onOpenAuthModal={() => setAuthModalOpen(true)}
+        onOpenProfileModal={() => setProfileModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -98,6 +104,19 @@ const AppContent: React.FC = () => {
       <TargetSettingModal
         isOpen={targetModalOpen}
         onClose={() => setTargetModalOpen(false)}
+      />
+
+      {/* Authentication Modal (Login / Register / 1-Click Demo Accounts) */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+      />
+
+      {/* User Profile & Account Switching Modal */}
+      <UserProfileModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        onSwitchToLogin={() => setAuthModalOpen(true)}
       />
     </div>
   );

@@ -9,7 +9,7 @@ interface QuickBlitzViewProps {
 }
 
 export const QuickBlitzView: React.FC<QuickBlitzViewProps> = ({ onBackToDashboard }) => {
-  const { questions, recordAnswerResult, savePracticeSession, toggleBookmark, isBookmarked } =
+  const { currentSubject, questions, recordAnswerResult, savePracticeSession, toggleBookmark, isBookmarked } =
     useApp();
 
   const [isStarted, setIsStarted] = useState<boolean>(false);
@@ -20,8 +20,12 @@ export const QuickBlitzView: React.FC<QuickBlitzViewProps> = ({ onBackToDashboar
   const [startTime, setStartTime] = useState<number>(0);
 
   const handleStartBlitz = () => {
-    const shuffled = [...questions].sort(() => 0.5 - Math.random());
-    const picked = shuffled.slice(0, 10);
+    const subjectQuestions = questions.filter(
+      (q) => (q.subject || 'english') === currentSubject
+    );
+    const shuffled = [...subjectQuestions].sort(() => 0.5 - Math.random());
+    const count = Math.min(10, shuffled.length);
+    const picked = shuffled.slice(0, count);
     setBlitzQuestions(picked);
     setCurrentIdx(0);
     setUserAnswers({});
@@ -57,9 +61,10 @@ export const QuickBlitzView: React.FC<QuickBlitzViewProps> = ({ onBackToDashboar
 
     const totalQ = blitzQuestions.length;
     const timeSpent = Math.round((Date.now() - startTime) / 1000);
-    const scorePct = Math.round((correctCount / totalQ) * 100);
+    const scorePct = Math.round((correctCount / (totalQ || 1)) * 100);
 
     savePracticeSession({
+      subject: currentSubject,
       type: 'quick_blitz',
       date: new Date().toISOString(),
       totalQuestions: totalQ,
@@ -84,7 +89,9 @@ export const QuickBlitzView: React.FC<QuickBlitzViewProps> = ({ onBackToDashboar
           <div className="w-16 h-16 rounded-[2rem] bg-white/20 backdrop-blur-md flex items-center justify-center mx-auto text-[#E8E2D9]">
             <Zap className="w-8 h-8 fill-white" />
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold">Luyện Tập Nhanh 10 Câu (Daily Blitz)</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold">
+            Luyện Nhanh Phản Xạ ({currentSubject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'})
+          </h2>
           <p className="text-xs sm:text-sm text-[#D9D2C5] leading-relaxed max-w-md mx-auto">
             10 câu hỏi ngẫu nhiên được trích xuất từ tất cả các chuyên đề để rèn luyện phản xạ làm
             bài thi mỗi ngày.
@@ -111,14 +118,14 @@ export const QuickBlitzView: React.FC<QuickBlitzViewProps> = ({ onBackToDashboar
       <div className="max-w-2xl mx-auto space-y-5 pb-12">
         <div className="bg-white rounded-[2rem] border border-[#EAE7E0] shadow-xs p-4 flex items-center justify-between">
           <span className="px-3 py-1 bg-[#E67E22] text-white font-bold text-xs rounded-xl">
-            Câu {currentIdx + 1}/10
+            Câu {currentIdx + 1}/{blitzQuestions.length}
           </span>
           <span className="text-xs text-[#8A8A70] font-bold capitalize">
-            {currentQ.topicId.replace('_', ' ')}
+            {currentQ.topicId.replace('math_', '').replace(/_/g, ' ')}
           </span>
           <button
             onClick={() => toggleBookmark(currentQ.id)}
-            className={`p-1.5 rounded-xl border transition ${
+            className={`p-1.5 rounded-xl border transition cursor-pointer ${
               isBookmarked(currentQ.id)
                 ? 'bg-[#FDF2E9] border-[#E67E22] text-[#E67E22]'
                 : 'text-[#8A8A70] border-[#EAE7E0]'
@@ -129,7 +136,7 @@ export const QuickBlitzView: React.FC<QuickBlitzViewProps> = ({ onBackToDashboar
         </div>
 
         <div className="bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-sm p-6 sm:p-8 space-y-6">
-          <div className="text-base sm:text-lg font-bold text-[#3D3D2D] leading-relaxed">
+          <div className="text-base sm:text-lg font-bold text-[#3D3D2D] leading-relaxed whitespace-pre-line">
             {currentQ.content}
           </div>
 
@@ -146,7 +153,7 @@ export const QuickBlitzView: React.FC<QuickBlitzViewProps> = ({ onBackToDashboar
                       : 'bg-white border-[#EAE7E0] text-[#4A4A4A] hover:bg-[#FAF9F6]'
                   }`}
                 >
-                  {opt}
+                  <span className="whitespace-pre-line">{opt}</span>
                 </button>
               );
             })}
@@ -177,7 +184,7 @@ export const QuickBlitzView: React.FC<QuickBlitzViewProps> = ({ onBackToDashboar
         <div className="p-4 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] space-y-2 text-xs">
           <div className="flex justify-between">
             <span className="text-[#8A8A70]">Số câu đúng:</span>
-            <strong className="text-[#8BA888] font-bold">{correctCount}/10 câu</strong>
+            <strong className="text-[#8BA888] font-bold">{correctCount}/{blitzQuestions.length} câu</strong>
           </div>
         </div>
 
@@ -187,7 +194,7 @@ export const QuickBlitzView: React.FC<QuickBlitzViewProps> = ({ onBackToDashboar
             className="w-full py-3 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-full text-xs font-bold shadow-xs transition flex items-center justify-center space-x-1.5 cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" />
-            <span>Làm thêm 10 câu nữa</span>
+            <span>Làm thêm 1 lượt nữa</span>
           </button>
           <button
             onClick={onBackToDashboard}

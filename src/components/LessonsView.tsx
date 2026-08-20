@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useApp } from '../context/AppContext';
 import { LESSONS_DATA } from '../data/lessonsData';
+import { MATH_LESSONS_DATA } from '../data/mathLessonsData';
 import { TOPICS_META } from '../data/topicsMeta';
+import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
 import {
   BookOpen,
   Zap,
   Lightbulb,
   ChevronRight,
   Search,
+  Calculator,
 } from 'lucide-react';
 
 interface LessonsViewProps {
@@ -14,15 +18,26 @@ interface LessonsViewProps {
 }
 
 export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => {
-  const [selectedLessonId, setSelectedLessonId] = useState<string>(LESSONS_DATA[0].id);
+  const { currentSubject } = useApp();
+
+  const lessonsList = currentSubject === 'math' ? MATH_LESSONS_DATA : LESSONS_DATA;
+  const topicsMetaList = currentSubject === 'math' ? MATH_TOPICS_META : TOPICS_META;
+
+  const [selectedLessonId, setSelectedLessonId] = useState<string>(lessonsList[0].id);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const currentLesson =
-    LESSONS_DATA.find((l) => l.id === selectedLessonId) || LESSONS_DATA[0];
+  // Update selected lesson when subject changes
+  useEffect(() => {
+    setSelectedLessonId(lessonsList[0].id);
+  }, [currentSubject]);
 
-  const filteredLessons = LESSONS_DATA.filter((l) =>
-    l.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    l.subTitle.toLowerCase().includes(searchQuery.toLowerCase())
+  const currentLesson =
+    lessonsList.find((l) => l.id === selectedLessonId) || lessonsList[0];
+
+  const filteredLessons = lessonsList.filter(
+    (l) =>
+      l.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.subTitle.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -30,15 +45,20 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
       {/* Header */}
       <div className="bg-[#5A5A40] text-white p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-[2rem] shadow-sm">
         <div className="max-w-2xl space-y-1.5 sm:space-y-2">
-          <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
-            Hệ thống Kiến thức Trọng tâm Vào 10
-          </span>
+          <div className="flex items-center space-x-2">
+            <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
+              {currentSubject === 'math' ? '📐 Môn Toán Lớp 9 Lên 10' : '🇬🇧 Môn Tiếng Anh Lớp 9 Lên 10'}
+            </span>
+          </div>
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-white">
-            Sổ Tay Lý Thuyết & Mẹo Thi Đột Phá
+            {currentSubject === 'math'
+              ? 'Sổ Tay Công Thức Toán & Bí Kíp Giải Nhanh'
+              : 'Sổ Tay Lý Thuyết & Mẹo Thi Đột Phá'}
           </h1>
           <p className="text-xs sm:text-sm text-[#D9D2C5] leading-relaxed">
-            Tổng hợp toàn bộ công thức cốt lõi, dấu hiệu nhận biết nhanh và bẫy đề thi tuyển sinh
-            thường gặp nhất.
+            {currentSubject === 'math'
+              ? 'Tổng hợp toàn bộ công thức Đại số, Hình học 9, Định lý Vi-ét, BĐT Cauchy và mẹo bấm máy tính Casio FX-580VN X.'
+              : 'Tổng hợp toàn bộ công thức cốt lõi, dấu hiệu nhận biết nhanh và bẫy đề thi tuyển sinh thường gặp nhất.'}
           </p>
         </div>
       </div>
@@ -71,7 +91,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
 
       {/* Main 2-Column: Sidebar of Lessons (Left on Desktop) & Detailed Theory Sheet (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
-        {/* Left Lesson Navigation (4 cols on Desktop, hidden on Mobile in favor of horizontal bar above) */}
+        {/* Left Lesson Navigation (4 cols on Desktop) */}
         <div className="hidden lg:block lg:col-span-4 space-y-3">
           {/* Search box */}
           <div className="relative">
@@ -88,7 +108,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
           <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto no-scrollbar pr-1">
             {filteredLessons.map((lesson) => {
               const isSelected = lesson.id === selectedLessonId;
-              const topicMeta = TOPICS_META.find((t) => t.id === lesson.topicId);
+              const topicMeta = topicsMetaList.find((t) => t.id === lesson.topicId);
 
               return (
                 <button
@@ -128,7 +148,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
           {/* Lesson Header */}
           <div className="pb-4 border-b border-[#F5F2ED] space-y-1.5 sm:space-y-2">
             <span className="px-2.5 py-0.5 bg-[#F5F2ED] text-[#5A5A40] font-bold text-[10px] sm:text-xs rounded-lg uppercase">
-              Chuyên đề ôn thi số {LESSONS_DATA.findIndex((l) => l.id === currentLesson.id) + 1}
+              Chuyên đề ôn thi số {lessonsList.findIndex((l) => l.id === currentLesson.id) + 1}
             </span>
             <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-[#3D3D2D]">{currentLesson.title}</h2>
             <p className="text-xs sm:text-sm text-[#8A8A70] leading-relaxed">
@@ -226,7 +246,7 @@ export const LessonsView: React.FC<LessonsViewProps> = ({ onPracticeTopic }) => 
               className="w-full sm:w-auto px-5 py-2.5 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-full text-xs font-bold shadow-xs transition flex items-center justify-center space-x-1.5 cursor-pointer"
             >
               <Zap className="w-4 h-4" />
-              <span>Luyện bài tập chủ đề này</span>
+              <span>Luyện bài tập chuyên đề này</span>
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>

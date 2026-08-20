@@ -1,14 +1,16 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { Bookmark, Check, Trash2, BookOpen } from 'lucide-react';
+import { Bookmark, Check, Trash2 } from 'lucide-react';
 import { Question } from '../types';
 
 export const BookmarksView: React.FC = () => {
-  const { bookmarks, getQuestionById, toggleBookmark } = useApp();
+  const { currentSubject, currentUser, bookmarks, getQuestionById, toggleBookmark } = useApp();
 
   const savedQuestions = bookmarks
     .map((id) => getQuestionById(id))
-    .filter(Boolean) as Question[];
+    .filter(
+      (q): q is Question => q !== undefined && (q.subject || 'english') === currentSubject
+    );
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">
@@ -16,13 +18,13 @@ export const BookmarksView: React.FC = () => {
       <div className="bg-[#5A5A40] text-white p-6 sm:p-8 rounded-[2rem] shadow-sm">
         <div className="space-y-1">
           <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
-            Bộ Sưu Tập Cá Nhân
+            Bộ Sưu Tập Cá Nhân: {currentSubject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}
           </span>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
             Câu Hỏi Đã Lưu & Ghi Nhớ ({savedQuestions.length})
           </h1>
           <p className="text-xs sm:text-sm text-[#D9D2C5]">
-            Những câu hỏi hay, bẫy tinh vi hoặc kiến thức bạn đã lưu lại để tra cứu trước ngày thi.
+            Những câu hỏi hay, công thức đặc biệt hoặc bẫy đề thi bạn đã lưu lại dưới tài khoản <strong>{currentUser.name}</strong>.
           </p>
         </div>
       </div>
@@ -32,7 +34,7 @@ export const BookmarksView: React.FC = () => {
           <div className="w-16 h-16 rounded-full bg-[#FAF9F6] border border-[#D9D2C5] text-[#8A8A70] flex items-center justify-center mx-auto">
             <Bookmark className="w-8 h-8" />
           </div>
-          <h3 className="font-bold text-[#3D3D2D] text-base">Chưa có câu hỏi nào được lưu</h3>
+          <h3 className="font-bold text-[#3D3D2D] text-base">Chưa có câu hỏi môn {currentSubject === 'math' ? 'Toán' : 'Tiếng Anh'} nào được lưu</h3>
           <p className="text-xs text-[#8A8A70] max-w-sm mx-auto">
             Khi làm bài thi hoặc luyện tập, bạn hãy nhấn biểu tượng Bookmark để lưu lại câu hỏi cần
             xem kỹ nhé!
@@ -48,7 +50,7 @@ export const BookmarksView: React.FC = () => {
               <div className="flex items-start justify-between">
                 <div className="flex items-center space-x-2">
                   <span className="px-3 py-1 bg-[#F5F2ED] text-[#5A5A40] text-xs font-bold rounded-xl border border-[#D9D2C5]">
-                    Câu {idx + 1} • {q.topicId.replace('_', ' ')}
+                    Câu {idx + 1} • {q.topicId.replace('math_', '').replace(/_/g, ' ')}
                   </span>
                   <span className="text-xs text-[#8A8A70] uppercase font-bold">
                     {q.difficulty}
@@ -65,12 +67,12 @@ export const BookmarksView: React.FC = () => {
               </div>
 
               {q.passage && (
-                <div className="p-3 bg-[#FAF9F6] rounded-xl text-xs text-[#8A8A70] italic">
+                <div className="p-3 bg-[#FAF9F6] rounded-xl text-xs text-[#8A8A70] italic whitespace-pre-line">
                   {q.passage}
                 </div>
               )}
 
-              <div className="text-sm font-bold text-[#3D3D2D]">{q.content}</div>
+              <div className="text-sm font-bold text-[#3D3D2D] whitespace-pre-line">{q.content}</div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 {q.options.map((opt, oIdx) => {
@@ -78,26 +80,26 @@ export const BookmarksView: React.FC = () => {
                   return (
                     <div
                       key={oIdx}
-                      className={`p-2.5 rounded-xl border flex items-center justify-between ${
+                      className={`p-2.5 rounded-xl border flex items-center justify-between whitespace-pre-line ${
                         isCorrect
                           ? 'bg-[#EBF2EB] border-[#8BA888] text-[#3D3D2D] font-bold'
                           : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#6B6B54]'
                       }`}
                     >
                       <span>{opt}</span>
-                      {isCorrect && <Check className="w-4 h-4 text-[#8BA888]" />}
+                      {isCorrect && <Check className="w-4 h-4 text-[#8BA888] shrink-0 ml-1" />}
                     </div>
                   );
                 })}
               </div>
 
               <div className="p-3.5 bg-[#FAF9F6] rounded-xl text-xs text-[#4A4A4A] space-y-1 border border-[#EAE7E0]">
-                <p>
+                <p className="whitespace-pre-line">
                   <strong>Giải thích:</strong> {q.explanation}
                 </p>
                 {q.grammarRule && (
-                  <p className="font-mono text-[11px] text-[#5A5A40]">
-                    <strong>Quy tắc:</strong> {q.grammarRule}
+                  <p className="font-mono text-[11px] text-[#5A5A40] whitespace-pre-line">
+                    <strong>Công thức / Quy tắc:</strong> {q.grammarRule}
                   </p>
                 )}
               </div>

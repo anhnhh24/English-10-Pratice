@@ -18,6 +18,9 @@ import {
   Wand2,
   ChevronRight,
   User,
+  Calculator,
+  Languages,
+  LogOut,
 } from 'lucide-react';
 
 export type TabType =
@@ -30,9 +33,6 @@ export type TabType =
   | 'mistakes'
   | 'bookmarks'
   | 'vocab'
-  | 'pronunciation'
-  | 'rewrite'
-  | 'reading'
   | 'analytics'
   | 'admin';
 
@@ -40,14 +40,29 @@ interface NavbarProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   onOpenTargetModal: () => void;
+  onOpenProfileModal: () => void;
+  onOpenAuthModal: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenTargetModal }) => {
-  const { currentUser, mistakes, bookmarks, analytics } = useApp();
+export const Navbar: React.FC<NavbarProps> = ({
+  activeTab,
+  setActiveTab,
+  onOpenTargetModal,
+  onOpenProfileModal,
+  onOpenAuthModal,
+}) => {
+  const { currentSubject, switchSubject, currentUser, mistakes, bookmarks, analytics } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const activeMistakesCount = (Object.values(mistakes) as MistakeItem[]).filter((m) => !m.mastered).length;
+  const activeMistakesCount = Object.values(mistakes).filter(
+    (m) => !m.mastered && (m.subject || 'english') === currentSubject
+  ).length;
   const bookmarksCount = bookmarks.length;
+
+  const currentSubjectTarget =
+    currentSubject === 'math'
+      ? currentUser.targetScoreMath || currentUser.targetScore
+      : currentUser.targetScoreEnglish || currentUser.targetScore;
 
   const navItems: {
     id: TabType;
@@ -59,7 +74,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenT
     { id: 'dashboard', label: 'Tổng quan', icon: BarChart3 },
     {
       id: 'ai_generator',
-      label: 'AI Tạo đề theo yêu cầu',
+      label: currentSubject === 'math' ? 'AI Tạo đề Toán' : 'AI Tạo đề Tiếng Anh',
       icon: Wand2,
       badge: 'MỚI',
       badgeColor: 'bg-[#5A5A40] text-white animate-pulse',
@@ -72,10 +87,18 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenT
       badge: activeMistakesCount,
       badgeColor: 'bg-[#E67E22] text-white',
     },
-    { id: 'lessons', label: 'Học lý thuyết', icon: BookOpen },
-    { id: 'topic_practice', label: 'Luyện theo chủ đề', icon: Layers },
+    {
+      id: 'lessons',
+      label: currentSubject === 'math' ? 'Công thức & Lý thuyết' : 'Học lý thuyết',
+      icon: BookOpen,
+    },
+    { id: 'topic_practice', label: 'Luyện theo chuyên đề', icon: Layers },
     { id: 'quick_blitz', label: 'Luyện nhanh 10 câu', icon: Zap },
-    { id: 'vocab', label: 'Flashcard Từ vựng', icon: Sparkles },
+    {
+      id: 'vocab',
+      label: currentSubject === 'math' ? 'Flashcard Công thức' : 'Flashcard Từ vựng',
+      icon: Sparkles,
+    },
     {
       id: 'bookmarks',
       label: 'Câu đã lưu',
@@ -85,7 +108,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenT
     { id: 'analytics', label: 'Báo cáo năng lực', icon: Award },
   ];
 
-  // 4 main tabs for bottom bar
   const bottomNavItems = [
     { id: 'dashboard' as TabType, label: 'Tổng quan', icon: BarChart3 },
     { id: 'mock_exam' as TabType, label: 'Thi thử', icon: GraduationCap },
@@ -103,22 +125,49 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenT
       {/* SIDEBAR FOR DESKTOP */}
       <aside className="hidden lg:flex w-64 bg-[#E8E2D9] border-r border-[#D9D2C5] flex-col shrink-0 h-screen sticky top-0">
         {/* Brand Header */}
-        <div className="p-6 mb-2">
+        <div className="p-5 pb-3 space-y-3">
           <div
             onClick={() => setActiveTab('dashboard')}
             className="cursor-pointer group flex items-center space-x-3"
           >
             <div className="w-10 h-10 rounded-2xl bg-[#5A5A40] text-white flex items-center justify-center font-bold text-lg shadow-sm">
-              E10
+              {currentSubject === 'math' ? 'M10' : 'E10'}
             </div>
             <div>
-              <h1 className="text-xl font-bold text-[#5A5A40] tracking-tight">
-                EngMaster
+              <h1 className="text-lg font-bold text-[#5A5A40] tracking-tight leading-tight">
+                {currentSubject === 'math' ? 'MathMaster' : 'EngMaster'}
                 <span className="text-[10px] block font-semibold tracking-widest uppercase text-[#8A8A70]">
-                  Lớp 10 Entrance Prep
+                  Luyện Thi Vào 10
                 </span>
               </h1>
             </div>
+          </div>
+
+          {/* 1-Click Subject Switcher (Segmented Control) */}
+          <div className="bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] flex shadow-2xs">
+            <button
+              onClick={() => switchSubject('english')}
+              className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
+                currentSubject === 'english'
+                  ? 'bg-[#5A5A40] text-white shadow-xs'
+                  : 'text-[#6B6B54] hover:text-[#3D3D2D] hover:bg-[#E8E2D9]'
+              }`}
+            >
+              <span>🇬🇧</span>
+              <span>Tiếng Anh</span>
+            </button>
+
+            <button
+              onClick={() => switchSubject('math')}
+              className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
+                currentSubject === 'math'
+                  ? 'bg-[#5A5A40] text-white shadow-xs'
+                  : 'text-[#6B6B54] hover:text-[#3D3D2D] hover:bg-[#E8E2D9]'
+              }`}
+            >
+              <span>📐</span>
+              <span>Toán Học</span>
+            </button>
           </div>
         </div>
 
@@ -172,12 +221,38 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenT
           )}
         </nav>
 
-        {/* Goal & Target Card */}
-        <div className="p-4 border-t border-[#D9D2C5]">
-          <div className="bg-[#FDFCFB] p-4 rounded-2xl border border-[#D9D2C5] shadow-xs space-y-2">
+        {/* User Account & Goal Card (Bottom) */}
+        <div className="p-4 border-t border-[#D9D2C5] space-y-2">
+          {/* User Profile Trigger */}
+          <div
+            onClick={onOpenProfileModal}
+            className="bg-[#FAF9F6] hover:bg-white p-2.5 rounded-2xl border border-[#D9D2C5] shadow-2xs flex items-center justify-between cursor-pointer transition group"
+          >
+            <div className="flex items-center space-x-2.5 min-w-0">
+              <div
+                className={`w-8 h-8 rounded-xl ${
+                  currentUser.avatarColor || 'bg-[#5A5A40]'
+                } text-white flex items-center justify-center font-bold text-xs shadow-2xs`}
+              >
+                {currentUser.name.charAt(0)}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-[#3D3D2D] truncate group-hover:text-[#5A5A40]">
+                  {currentUser.name}
+                </p>
+                <p className="text-[10px] text-[#8A8A70] truncate">
+                  {currentUser.role === 'admin' ? 'Quản trị viên' : `${currentSubjectTarget}đ ${currentSubject === 'math' ? 'Toán' : 'Anh'}`}
+                </p>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-[#8A8A70] group-hover:translate-x-0.5 transition" />
+          </div>
+
+          {/* Goal & Target Score Card */}
+          <div className="bg-[#FDFCFB] p-3.5 rounded-2xl border border-[#D9D2C5] shadow-xs space-y-1.5">
             <div className="flex items-center justify-between">
               <p className="text-[10px] font-bold uppercase tracking-wider text-[#8A8A70]">
-                Mục tiêu điểm số
+                Mục tiêu môn {currentSubject === 'math' ? 'Toán' : 'Anh'}
               </p>
               <button
                 onClick={onOpenTargetModal}
@@ -187,20 +262,20 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenT
               </button>
             </div>
             <div className="flex items-end justify-between">
-              <span className="text-2xl font-bold text-[#5A5A40]">
+              <span className="text-xl font-bold text-[#5A5A40]">
                 {analytics.averageExamScore.toFixed(1)}
               </span>
               <span className="text-xs text-[#8A8A70] font-medium">
-                / {currentUser.targetScore.toFixed(1)} NV1
+                / {currentSubjectTarget.toFixed(1)}đ NV1
               </span>
             </div>
-            <div className="w-full bg-[#E8E2D9] h-2 rounded-full overflow-hidden">
+            <div className="w-full bg-[#E8E2D9] h-1.5 rounded-full overflow-hidden">
               <div
                 className="bg-[#8BA888] h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${Math.min(
                     100,
-                    Math.round((analytics.averageExamScore / currentUser.targetScore) * 100)
+                    Math.round((analytics.averageExamScore / currentSubjectTarget) * 100)
                   )}%`,
                 }}
               />
@@ -211,31 +286,55 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenT
       </aside>
 
       {/* MOBILE / TABLET TOP BAR */}
-      <header className="lg:hidden shrink-0 z-30 bg-[#E8E2D9] border-b border-[#D9D2C5] px-3.5 py-2.5 flex items-center justify-between shadow-xs">
+      <header className="lg:hidden shrink-0 z-30 bg-[#E8E2D9] border-b border-[#D9D2C5] px-3 py-2 flex items-center justify-between shadow-xs">
         <div
           onClick={() => setActiveTab('dashboard')}
           className="flex items-center space-x-2 cursor-pointer select-none"
         >
           <div className="w-8 h-8 rounded-xl bg-[#5A5A40] text-white flex items-center justify-center font-bold text-xs shadow-xs">
-            E10
+            {currentSubject === 'math' ? 'M10' : 'E10'}
           </div>
           <div>
-            <span className="font-bold text-sm text-[#5A5A40] leading-none block">EngMaster</span>
+            <span className="font-bold text-sm text-[#5A5A40] leading-none block">
+              {currentSubject === 'math' ? 'MathMaster' : 'EngMaster'}
+            </span>
             <span className="text-[9px] text-[#8A8A70] font-semibold uppercase tracking-wider block">Vào 10</span>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
+        {/* Center Subject Switcher on Mobile */}
+        <div className="flex bg-[#FAF9F6] p-0.5 rounded-xl border border-[#D9D2C5] text-[11px] font-bold">
           <button
-            onClick={onOpenTargetModal}
-            className="px-2.5 py-1 bg-[#FDFCFB] hover:bg-[#FAF9F6] border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#5A5A40] flex items-center space-x-1 cursor-pointer transition shadow-2xs"
+            onClick={() => switchSubject('english')}
+            className={`px-2 py-1 rounded-lg transition ${
+              currentSubject === 'english' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+            }`}
           >
-            <span>🎯</span>
-            <span>{currentUser.targetScore}đ</span>
+            🇬🇧 Anh
+          </button>
+          <button
+            onClick={() => switchSubject('math')}
+            className={`px-2 py-1 rounded-lg transition ${
+              currentSubject === 'math' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+            }`}
+          >
+            📐 Toán
+          </button>
+        </div>
+
+        {/* Right Actions */}
+        <div className="flex items-center space-x-1.5">
+          <button
+            onClick={onOpenProfileModal}
+            className={`w-7 h-7 rounded-xl ${
+              currentUser.avatarColor || 'bg-[#5A5A40]'
+            } text-white flex items-center justify-center text-xs font-bold shadow-2xs`}
+          >
+            {currentUser.name.charAt(0)}
           </button>
           <button
             onClick={() => setMobileMenuOpen(true)}
-            className="p-2 rounded-xl bg-[#FAF9F6] hover:bg-[#DED8CE] border border-[#D9D2C5] text-[#5A5A40] transition cursor-pointer"
+            className="p-1.5 rounded-xl bg-[#FAF9F6] hover:bg-[#DED8CE] border border-[#D9D2C5] text-[#5A5A40] transition cursor-pointer"
             aria-label="Mở danh mục ôn thi"
           >
             <Menu className="w-4 h-4" />
@@ -302,11 +401,13 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenT
             <div className="flex justify-between items-center pb-3 border-b border-[#D9D2C5]">
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 rounded-xl bg-[#5A5A40] text-white flex items-center justify-center font-bold text-xs">
-                  E10
+                  {currentSubject === 'math' ? 'M10' : 'E10'}
                 </div>
                 <div>
-                  <span className="font-bold text-[#5A5A40] text-sm leading-none block">Danh mục ôn thi</span>
-                  <span className="text-[10px] text-[#8A8A70]">Lớp 10 Entrance Prep</span>
+                  <span className="font-bold text-[#5A5A40] text-sm leading-none block">
+                    {currentSubject === 'math' ? 'Toán Học Vào 10' : 'Tiếng Anh Vào 10'}
+                  </span>
+                  <span className="text-[10px] text-[#8A8A70]">{currentUser.name}</span>
                 </div>
               </div>
               <button
@@ -321,18 +422,18 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, onOpenT
             <div className="bg-[#FDFCFB] p-3.5 rounded-2xl border border-[#D9D2C5] flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-[#8A8A70]">
-                  Mục tiêu NV1: {currentUser.targetScore} điểm
+                  Mục tiêu {currentSubject === 'math' ? 'Toán' : 'Anh'}: {currentSubjectTarget}đ
                 </p>
                 <p className="text-xs font-bold text-[#5A5A40] truncate">{currentUser.targetSchool}</p>
               </div>
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  onOpenTargetModal();
+                  onOpenProfileModal();
                 }}
                 className="px-3 py-1.5 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white text-[11px] font-bold rounded-xl transition cursor-pointer"
               >
-                Đổi mục tiêu
+                Hồ sơ & Đổi User
               </button>
             </div>
 
