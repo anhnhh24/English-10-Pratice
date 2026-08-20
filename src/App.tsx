@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AppProvider } from './context/AppContext';
+import { AppProvider, useApp } from './context/AppContext';
 import { Navbar, TabType } from './components/Navbar';
 import { Dashboard } from './components/Dashboard';
 import { AiExamGeneratorView } from './components/AiExamGeneratorView';
@@ -15,8 +15,10 @@ import { AdminPanel } from './components/AdminPanel';
 import { TargetSettingModal } from './components/TargetSettingModal';
 import { AuthModal } from './components/AuthModal';
 import { UserProfileModal } from './components/UserProfileModal';
+import { RealtimeStudentTaskListener } from './components/RealtimeStudentTaskListener';
 
 const AppContent: React.FC = () => {
+  const { currentSubject } = useApp();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [targetModalOpen, setTargetModalOpen] = useState<boolean>(false);
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
@@ -34,8 +36,10 @@ const AppContent: React.FC = () => {
     setActiveTab('topic_practice');
   };
 
+  const isMath = currentSubject === 'math';
+
   return (
-    <div className="flex flex-col lg:flex-row h-screen w-full bg-[#F5F2ED] text-[#4A4A4A] font-sans overflow-hidden">
+    <div className={`flex flex-col lg:flex-row h-screen w-full ${isMath ? 'bg-[#F0F4F8]' : 'bg-[#F5F2ED]'} text-[#334155] font-sans overflow-hidden transition-colors duration-300`}>
       {/* Sidebar Navigation (Desktop) & Top Header + Bottom Bar (Mobile) */}
       <Navbar
         activeTab={activeTab}
@@ -99,6 +103,12 @@ const AppContent: React.FC = () => {
           {activeTab === 'admin' && <AdminPanel />}
         </div>
       </main>
+
+      {/* Real-time remote task listener banner */}
+      <RealtimeStudentTaskListener
+        onStartExam={handleStartExam}
+        onPracticeTopic={handlePracticeTopic}
+      />
 
       {/* Target Setting Modal */}
       <TargetSettingModal

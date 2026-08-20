@@ -231,3 +231,32 @@ export interface TopicMeta {
   description: string;
   weightInExam: string; // e.g. "20% Đề thi"
 }
+
+export interface RealtimeActivityEvent {
+  id: string;
+  userId: string;
+  userName: string;
+  avatarColor?: string;
+  subject?: SubjectId;
+  type: 'exam_submitted' | 'question_wrong' | 'question_correct' | 'study_start' | 'flashcard_mastered' | 'goal_updated';
+  title: string;
+  detail: string;
+  timestamp: string;
+  score?: number;
+  examTitle?: string;
+  topicName?: string;
+}
+
+export interface RemoteTaskAssignment {
+  id: string;
+  senderName: string;
+  recipientUserId: string; // 'all' or student userId
+  subject: SubjectId;
+  title: string;
+  message: string;
+  assignedExamId?: string;
+  assignedTopicId?: string;
+  targetDeadline?: string;
+  timestamp: string;
+  completed?: boolean;
+}

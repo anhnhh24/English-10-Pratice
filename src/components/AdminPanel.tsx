@@ -1,8 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { TOPICS_META } from '../data/topicsMeta';
 import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
-import { DifficultyLevel, Question, TopicId, SubTopicId, Exam, UserAccount, SubjectId } from '../types';
+import { DifficultyLevel, Question, TopicId, SubTopicId, Exam, UserAccount, SubjectId, RealtimeActivityEvent } from '../types';
+import {
+  getStoredRealtimeActivities,
+  subscribeToRealtimeActivities,
+  broadcastRemoteTask,
+  logAndBroadcastActivity,
+} from '../services/realtimeSyncService';
 import {
   ShieldCheck,
   Plus,
@@ -34,7 +40,16 @@ import {
   UserCheck,
   FileText,
   UserPlus,
+  Radio,
+  Send,
+  Zap,
+  Bell,
+  Activity,
+  HeartHandshake,
+  Database,
+  Cloud,
 } from 'lucide-react';
+import { CloudSyncModal } from './CloudSyncModal';
 
 export const AdminPanel: React.FC = () => {
   const {
@@ -55,10 +70,30 @@ export const AdminPanel: React.FC = () => {
     deleteExam,
   } = useApp();
 
-  const [activeAdminTab, setActiveAdminTab] = useState<'overview' | 'students' | 'questions' | 'exams'>('overview');
+  const [activeAdminTab, setActiveAdminTab] = useState<'overview' | 'realtime_pulse' | 'students' | 'questions' | 'exams'>('overview');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
   const [searchStudentQuery, setSearchStudentQuery] = useState<string>('');
   const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<UserAccount | null>(null);
+
+  // Real-time Activities State
+  const [realtimeEvents, setRealtimeEvents] = useState<RealtimeActivityEvent[]>(() => getStoredRealtimeActivities());
+  const [liveToast, setLiveToast] = useState<RealtimeActivityEvent | null>(null);
+  const [isLiveConnected, setIsLiveConnected] = useState<boolean>(true);
+
+  // Remote Task Assignment State
+  const [showAssignTaskModal, setShowAssignTaskModal] = useState<boolean>(false);
+  const [taskTargetStudentId, setTaskTargetStudentId] = useState<string>('user_student_1');
+  const [taskSubject, setTaskSubject] = useState<SubjectId>('math');
+  const [taskTitle, setTaskTitle] = useState<string>('Đề Thi Thử Tuyển Sinh Vào 10 Môn Toán - Đề Số 01');
+  const [taskMessage, setTaskMessage] = useState<string>('Em hãy hoàn thành đề thi thử này trong 60 phút và chú ý câu Vi-ét nhé!');
+  const [taskAssignedExamId, setTaskAssignedExamId] = useState<string>('math_exam_official_01');
+  const [taskSuccessMsg, setTaskSuccessMsg] = useState<boolean>(false);
+
+  // Sibling Focus Id (default to first student)
+  const [siblingId, setSiblingId] = useState<string>('user_student_1');
+
+  // Cloud DB Modal
+  const [showCloudModal, setShowCloudModal] = useState<boolean>(false);
 
   // Teacher feedback note state for inspected student
   const [teacherNoteInput, setTeacherNoteInput] = useState<string>('');
@@ -104,6 +139,17 @@ export const AdminPanel: React.FC = () => {
   const [examDesc, setExamDesc] = useState<string>('');
   const [examTime, setExamTime] = useState<number>(60);
   const [selectedQIds, setSelectedQIds] = useState<string[]>([]);
+
+  // Real-time Activity Subscription
+  useEffect(() => {
+    const unsubscribe = subscribeToRealtimeActivities((event) => {
+      setRealtimeEvents((prev) => [event, ...prev.filter((e) => e.id !== event.id)].slice(0, 50));
+      setLiveToast(event);
+      setTimeout(() => setLiveToast(null), 5000);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Calculate Aggregate Class Performance
   const studentUsers = usersList.filter((u) => u.role === 'student');
@@ -164,6 +210,9 @@ export const AdminPanel: React.FC = () => {
   const targetReachPercent = Math.round((targetReachCount / (totalStudents || 1)) * 100);
   const totalClassMistakes = allStudentStats.reduce((s, st) => s + st.activeMistakesCount, 0);
 
+  // Sibling Focus Stat
+  const siblingStat = allStudentStats.find((s) => s.student.id === siblingId) || allStudentStats[0];
+
   // Filtered student list
   const filteredStudents = allStudentStats.filter(({ student }) => {
     const q = searchStudentQuery.toLowerCase();
@@ -187,105 +236,270 @@ export const AdminPanel: React.FC = () => {
     setTimeout(() => setTeacherNoteSaved(false), 2500);
   };
 
-  const handleAddStudentSubmit = (e: React.FormEvent) => {
+  // Remote Task Send Handler
+  const handleSendRemoteTask = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStudentName.trim() || !newStudentEmail.trim()) {
-      setAddStudentMsg('Vui lòng điền đầy đủ tên và email.');
-      return;
-    }
-    const res = register({
-      name: newStudentName.trim(),
-      email: newStudentEmail.trim().toLowerCase(),
-      password: newStudentPassword.trim() || '123',
-      targetSchool: newStudentSchool.trim(),
-      targetScoreMath: newStudentTargetMath,
-      targetScoreEnglish: newStudentTargetEng,
-      targetScore: parseFloat(((newStudentTargetMath + newStudentTargetEng) / 2).toFixed(2)),
+    broadcastRemoteTask({
+      senderName: currentUser.name || 'Anh/Chị (Người giám sát)',
+      recipientUserId: taskTargetStudentId,
+      subject: taskSubject,
+      title: taskTitle,
+      message: taskMessage,
+      assignedExamId: taskAssignedExamId,
     });
-    if (res.success) {
-      setShowAddStudentModal(false);
-      setNewStudentName('');
-      setNewStudentEmail('');
-      setAddStudentMsg(null);
-    } else {
-      setAddStudentMsg(res.message || 'Lỗi khi tạo học sinh');
-    }
+    setTaskSuccessMsg(true);
+    setTimeout(() => {
+      setTaskSuccessMsg(false);
+      setShowAssignTaskModal(false);
+    }, 1500);
   };
 
-  // Export JSON Report
-  const handleExportClassReport = () => {
-    const reportData = {
-      className: 'Lớp 9 Ôn Thi Vào 10 Chuyên Sâu',
-      exportDate: new Date().toISOString(),
-      teacher: currentUser.name,
-      totalStudents,
-      classAvgMath,
-      classAvgEng,
-      targetReachPercent,
-      students: allStudentStats.map((st) => ({
-        id: st.student.id,
-        name: st.student.name,
-        email: st.student.email,
-        targetSchool: st.student.targetSchool,
-        targetScoreMath: st.student.targetScoreMath,
-        targetScoreEnglish: st.student.targetScoreEnglish,
-        predictedAvgMath: st.avgMath,
-        predictedAvgEng: st.avgEng,
-        totalExamsTaken: st.totalAttemptsCount,
-        accuracyPercent: st.accuracy,
-        activeMistakes: st.activeMistakesCount,
-        streakDays: st.student.streakDays,
-        teacherNote: st.teacherNote,
-      })),
-    };
-
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(reportData, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `Bao_cao_hoc_sinh_lop9_Vao10_${Date.now()}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+  // Live Test Simulation Trigger
+  const handleSimulateStudentExam = (score: number) => {
+    const targetStu = studentUsers.find((s) => s.id === siblingId) || studentUsers[0];
+    logAndBroadcastActivity({
+      userId: targetStu.id,
+      userName: `${targetStu.name} (Em tôi)`,
+      avatarColor: targetStu.avatarColor,
+      subject: 'math',
+      type: 'exam_submitted',
+      title: `Vừa nộp bài thi Môn Toán (${score}/10đ)`,
+      detail: `Đạt ${score}/10 điểm • Đề Thi Thử Vào 10 Chuẩn Sở GD&ĐT`,
+      score,
+      examTitle: 'Đề Thi Thử Tuyển Sinh Vào Lớp 10 Môn Toán (Sở GD&ĐT)',
+    });
   };
+
+  const handleSimulateStudentMistake = () => {
+    const targetStu = studentUsers.find((s) => s.id === siblingId) || studentUsers[0];
+    logAndBroadcastActivity({
+      userId: targetStu.id,
+      userName: `${targetStu.name} (Em tôi)`,
+      avatarColor: targetStu.avatarColor,
+      subject: 'math',
+      type: 'question_wrong',
+      title: 'Làm sai câu hỏi Hệ thức Vi-ét',
+      detail: 'Sai câu tìm tham số m để phương trình có 2 nghiệm đối xứng',
+      topicName: 'Phương trình bậc hai & Vi-ét',
+    });
+  };
+
+  const [adminEmail, setAdminEmail] = useState<string>('admin.edulop10@edu.vn');
+  const [adminPass, setAdminPass] = useState<string>('admin');
+  const [adminError, setAdminError] = useState<string | null>(null);
+
+  // If NOT logged in as Admin, show Dedicated Secure Admin Gateway Portal
+  if (currentUser.role !== 'admin') {
+    return (
+      <div className="max-w-xl mx-auto py-12 px-4 animate-in fade-in">
+        <div className="bg-white rounded-[2.5rem] p-8 sm:p-10 border border-[#D9D2C5] shadow-xl space-y-6 text-center">
+          <div className="w-16 h-16 rounded-3xl bg-[#5A5A40] text-white flex items-center justify-center mx-auto shadow-md">
+            <ShieldCheck className="w-8 h-8 text-[#8BA888]" />
+          </div>
+
+          <div className="space-y-1.5">
+            <h2 className="text-2xl font-bold text-[#3D3D2D]">Cổng Quản Trị & Giám Sát Riêng Biệt</h2>
+            <p className="text-xs text-[#8A8A70]">
+              Đăng nhập bằng tài khoản Quản trị viên / Phụ huynh để theo dõi kết quả học tập của <strong>Nguyễn Hoàng Hà</strong>
+            </p>
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const adminAcc = usersList.find((u) => u.email.toLowerCase() === adminEmail.toLowerCase() && u.role === 'admin');
+              if (adminAcc && adminAcc.password === adminPass) {
+                switchUser(adminAcc.id);
+                setAdminError(null);
+              } else {
+                setAdminError('Email hoặc mật khẩu quản trị không chính xác!');
+              }
+            }}
+            className="space-y-3.5 text-left text-xs"
+          >
+            <div>
+              <label className="block font-bold text-[#5A5A40] mb-1">Email Quản Trị:</label>
+              <input
+                type="email"
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden font-medium text-[#3D3D2D]"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-[#5A5A40] mb-1">Mật khẩu:</label>
+              <input
+                type="password"
+                value={adminPass}
+                onChange={(e) => setAdminPass(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden text-[#3D3D2D]"
+                required
+              />
+            </div>
+
+            {adminError && (
+              <p className="text-red-600 font-bold text-[11px]">{adminError}</p>
+            )}
+
+            <button
+              type="submit"
+              className="w-full py-3 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white font-bold rounded-2xl shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer"
+            >
+              <Lock className="w-4 h-4" />
+              <span>Đăng nhập vào Dashboard Quản Trị</span>
+            </button>
+          </form>
+
+          {/* 1-Click Fast Admin Switch */}
+          <div className="pt-2 border-t border-[#F5F2ED] space-y-2">
+            <p className="text-[11px] text-[#8A8A70]">Hoặc truy cập nhanh với tài khoản quản trị mẫu:</p>
+            <button
+              onClick={() => {
+                const adminAcc = usersList.find((u) => u.role === 'admin');
+                if (adminAcc) switchUser(adminAcc.id);
+              }}
+              className="w-full py-2.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] text-[#5A5A40] rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-2xs"
+            >
+              <Sparkles className="w-4 h-4 text-[#8BA888]" />
+              <span>Đăng nhập 1-Chạm: Thầy Tuấn (Quản trị viên)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-16">
+    <div className="max-w-6xl mx-auto space-y-6 pb-16 relative">
+      {/* Real-time Live Toast Alert */}
+      {liveToast && (
+        <div className="fixed top-5 right-5 z-50 max-w-sm bg-white rounded-2xl p-4 border-2 border-[#8BA888] shadow-2xl flex items-start space-x-3 animate-in slide-in-from-top duration-300">
+          <div className="w-8 h-8 rounded-xl bg-[#8BA888]/20 flex items-center justify-center text-[#5A5A40] shrink-0 mt-0.5 animate-pulse">
+            <Radio className="w-4 h-4 text-[#8BA888]" />
+          </div>
+          <div className="flex-1 min-w-0 space-y-0.5">
+            <div className="flex items-center justify-between">
+              <span className="px-2 py-0.2 bg-[#8BA888] text-[#2C3E2D] text-[9px] font-bold rounded-full uppercase">
+                ⚡ Realtime Pulse
+              </span>
+              <button onClick={() => setLiveToast(null)} className="text-[#8A8A70] hover:text-[#3D3D2D]">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-xs font-bold text-[#3D3D2D] truncate">{liveToast.userName}: {liveToast.title}</p>
+            <p className="text-[11px] text-[#6B6B54] line-clamp-2">{liveToast.detail}</p>
+          </div>
+        </div>
+      )}
+
       {/* 1. Header Banner */}
       <div className="bg-[#5A5A40] text-white p-6 sm:p-8 rounded-[2rem] shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="space-y-1.5 max-w-2xl">
-          <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
-            <ShieldCheck className="w-4 h-4 text-[#8BA888]" />
-            <span>Khu Vực Quản Trị Giáo Viên & Admin ({currentUser.name})</span>
+          <div className="flex items-center space-x-2">
+            <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
+              <Radio className="w-3.5 h-3.5 text-[#8BA888] animate-pulse" />
+              <span>Giám Sát Thời Gian Thực (Real-time Live Sync)</span>
+            </div>
+            <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-full text-[10px] font-bold">
+              ● Live 0ms
+            </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-            Dashboard Quản Lý & Phân Tích Học Sinh Lớp 9
+            Dashboard Giám Sát Quá Trình Học & Kiểm Soát Từ Xa
           </h1>
           <p className="text-xs sm:text-sm text-[#D9D2C5] leading-relaxed">
-            Theo dõi tổng quan tiến độ làm bài, ma trận điểm số môn Toán & Tiếng Anh, phân tích lỗ hổng kiến thức và can thiệp kịp thời cho từng học sinh.
+            Cập nhật kết quả làm bài, câu sai và tiến độ học tập của em bạn thời gian thực không độ trễ. Hỗ trợ giao bài tập và gửi lời dặn dò trực tiếp từ xa.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2 shrink-0">
           <button
-            onClick={() => setShowAddStudentModal(true)}
+            onClick={() => setShowCloudModal(true)}
+            className="px-3.5 py-2.5 bg-white/20 hover:bg-white/30 text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs"
+            title="Cài đặt mã phòng & đồng bộ Online DB"
+          >
+            <Database className="w-4 h-4 text-[#8BA888]" />
+            <span>DB Online & Mã Phòng</span>
+          </button>
+
+          <button
+            onClick={() => setShowAssignTaskModal(true)}
             className="px-4 py-2.5 bg-[#8BA888] hover:bg-[#789675] text-white rounded-2xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+          >
+            <Send className="w-4 h-4" />
+            <span>Giao bài từ xa cho em</span>
+          </button>
+
+          <button
+            onClick={() => setShowAddStudentModal(true)}
+            className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
           >
             <UserPlus className="w-4 h-4" />
             <span>Thêm học sinh</span>
           </button>
-
-          <button
-            onClick={handleExportClassReport}
-            className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
-          >
-            <Download className="w-4 h-4" />
-            <span>Xuất báo cáo</span>
-          </button>
         </div>
       </div>
 
-      {/* 2. Admin Navigation Tabs */}
-      <div className="flex bg-[#E8E2D9] p-1.5 rounded-2xl max-w-xl shadow-2xs text-xs font-bold overflow-x-auto no-scrollbar">
+      {/* 2. Sibling Quick Live Spotlight Card */}
+      {siblingStat && (
+        <div className="bg-[#FAF9F6] p-5 sm:p-6 rounded-[2.5rem] border border-[#D9D2C5] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3.5 min-w-0">
+            <div className="relative">
+              <div
+                className={`w-12 h-12 rounded-2xl ${siblingStat.student.avatarColor || 'bg-[#5A5A40]'} text-white font-bold text-lg flex items-center justify-center shadow-sm`}
+              >
+                {siblingStat.student.name.charAt(0)}
+              </div>
+              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full" />
+            </div>
+
+            <div className="space-y-0.5 min-w-0">
+              <div className="flex items-center space-x-2">
+                <span className="px-2 py-0.2 bg-[#5A5A40] text-white text-[10px] font-bold rounded-md uppercase">
+                  Đang Giám Sát
+                </span>
+                <h3 className="font-bold text-[#3D3D2D] text-base">{siblingStat.student.name}</h3>
+              </div>
+              <p className="text-xs text-[#8A8A70]">
+                Mục tiêu: <strong>{siblingStat.student.targetSchool}</strong> (Toán: {siblingStat.student.targetScoreMath}đ • Anh: {siblingStat.student.targetScoreEnglish}đ)
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Metrics of Sibling */}
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs">
+            <div>
+              <span className="text-[10px] uppercase font-bold text-[#8A8A70] block">Dự đoán Toán</span>
+              <strong className="text-base font-extrabold text-[#5A5A40]">{siblingStat.avgMath}đ</strong>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-[#8A8A70] block">Dự đoán Anh</span>
+              <strong className="text-base font-extrabold text-[#5A5A40]">{siblingStat.avgEng}đ</strong>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-[#8A8A70] block">Đề thi đã làm</span>
+              <strong className="text-base font-extrabold text-[#3D3D2D]">{siblingStat.totalAttemptsCount} bài</strong>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-[#8A8A70] block">Câu sai chưa sửa</span>
+              <strong className="text-base font-extrabold text-[#E67E22]">{siblingStat.activeMistakesCount} câu</strong>
+            </div>
+
+            <button
+              onClick={() => handleOpenStudentDetail(siblingStat.student)}
+              className="px-4 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl font-bold shadow-xs transition flex items-center space-x-1 cursor-pointer"
+            >
+              <span>Xem hồ sơ 360°</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Navigation Tabs */}
+      <div className="flex bg-[#E8E2D9] p-1.5 rounded-2xl max-w-2xl shadow-2xs text-xs font-bold overflow-x-auto no-scrollbar">
         <button
           onClick={() => setActiveAdminTab('overview')}
           className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
@@ -295,7 +509,19 @@ export const AdminPanel: React.FC = () => {
           }`}
         >
           <BarChart2 className="w-4 h-4" />
-          <span>Tổng quan lớp học</span>
+          <span>Tổng quan học tập</span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab('realtime_pulse')}
+          className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+            activeAdminTab === 'realtime_pulse'
+              ? 'bg-[#5A5A40] text-white shadow-xs'
+              : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+          }`}
+        >
+          <Activity className="w-4 h-4 text-[#8BA888]" />
+          <span>Nhật ký Live Realtime ({realtimeEvents.length})</span>
         </button>
 
         <button
@@ -307,7 +533,7 @@ export const AdminPanel: React.FC = () => {
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Hồ sơ học sinh ({totalStudents})</span>
+          <span>Danh sách học sinh ({totalStudents})</span>
         </button>
 
         <button
@@ -319,7 +545,7 @@ export const AdminPanel: React.FC = () => {
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>Ngân hàng câu hỏi ({questions.length})</span>
+          <span>Ngân hàng câu hỏi</span>
         </button>
 
         <button
@@ -331,12 +557,117 @@ export const AdminPanel: React.FC = () => {
           }`}
         >
           <GraduationCap className="w-4 h-4" />
-          <span>Đề thi tuyển sinh ({exams.length})</span>
+          <span>Đề thi tuyển sinh</span>
         </button>
       </div>
 
       {/* ========================================================================= */}
-      {/* 📊 TAB 1: OVERVIEW CLASS ANALYTICS & WEAKNESS RADAR                       */}
+      {/* ⚡ TAB: REALTIME LIVE PULSE & SIMULATION TESTING                           */}
+      {/* ========================================================================= */}
+      {activeAdminTab === 'realtime_pulse' && (
+        <div className="space-y-6 animate-in fade-in">
+          {/* Live Simulator Trigger Box */}
+          <div className="bg-[#FDFCFB] p-5 sm:p-6 rounded-[2.5rem] border border-[#D9D2C5] shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Zap className="w-4 h-4 text-[#E67E22]" />
+                <h3 className="text-sm font-bold text-[#3D3D2D]">Trình Thử Nghiệm Kết Nối Real-time (Side-by-Side)</h3>
+              </div>
+              <span className="text-[11px] text-[#8A8A70]">Kích hoạt để kiểm tra truyền tin 0ms</span>
+            </div>
+            <p className="text-xs text-[#8A8A70]">
+              Bạn có thể mở một tab phụ với tài khoản của em để làm bài, hoặc bấm các nút mô phỏng bên dưới để thấy thông số và bảng tin cập nhật tức thì:
+            </p>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                onClick={() => handleSimulateStudentExam(9.0)}
+                className="px-3.5 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#5A5A40] transition flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+              >
+                <span>⚡ Em nộp bài thi thử Toán (9.0đ)</span>
+              </button>
+
+              <button
+                onClick={() => handleSimulateStudentExam(8.5)}
+                className="px-3.5 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#5A5A40] transition flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+              >
+                <span>⚡ Em nộp bài thi Tiếng Anh (8.5đ)</span>
+              </button>
+
+              <button
+                onClick={handleSimulateStudentMistake}
+                className="px-3.5 py-2 bg-[#FDF2E9] hover:bg-[#FCE6D2] border border-[#E67E22]/40 rounded-xl text-xs font-bold text-[#D35400] transition flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+              >
+                <span>⚠️ Em làm sai câu Vi-ét</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Chronological Live Feed */}
+          <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 border border-[#EAE7E0] shadow-xs space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED]">
+              <div className="flex items-center space-x-2">
+                <Activity className="w-5 h-5 text-[#8BA888]" />
+                <h3 className="text-base font-bold text-[#3D3D2D]">Dòng Hoạt Động Thời Gian Thực Của Học Sinh</h3>
+              </div>
+              <span className="text-xs text-[#8A8A70] font-medium">Tự động cập nhật không cần tải lại trang</span>
+            </div>
+
+            <div className="space-y-3 max-h-[500px] overflow-y-auto no-scrollbar">
+              {realtimeEvents.map((evt) => (
+                <div
+                  key={evt.id}
+                  className="p-4 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] hover:border-[#D9D2C5] transition flex items-start justify-between gap-3 text-xs"
+                >
+                  <div className="flex items-start space-x-3 min-w-0">
+                    <div
+                      className={`w-9 h-9 rounded-xl ${evt.avatarColor || 'bg-[#5A5A40]'} text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5`}
+                    >
+                      {evt.userName.charAt(0)}
+                    </div>
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-[#3D3D2D]">{evt.userName}</span>
+                        <span
+                          className={`px-2 py-0.2 rounded text-[10px] font-bold ${
+                            evt.type === 'exam_submitted'
+                              ? 'bg-[#EBF2EB] text-[#8BA888]'
+                              : evt.type === 'question_wrong'
+                              ? 'bg-[#FDF2E9] text-[#E67E22]'
+                              : 'bg-[#F5F2ED] text-[#5A5A40]'
+                          }`}
+                        >
+                          {evt.type === 'exam_submitted'
+                            ? 'Nộp bài thi'
+                            : evt.type === 'question_wrong'
+                            ? 'Làm sai'
+                            : 'Học tập'}
+                        </span>
+                      </div>
+                      <p className="font-semibold text-[#5A5A40] leading-snug">{evt.title}</p>
+                      <p className="text-[#6B6B54] leading-relaxed">{evt.detail}</p>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <span className="text-[11px] text-[#8A8A70] block font-mono">
+                      {new Date(evt.timestamp).toLocaleTimeString('vi-VN')}
+                    </span>
+                    {evt.score !== undefined && (
+                      <span className="text-sm font-extrabold text-[#5A5A40] block mt-1">
+                        {evt.score.toFixed(1)}đ
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 📊 TAB: OVERVIEW                                                          */}
       {/* ========================================================================= */}
       {activeAdminTab === 'overview' && (
         <div className="space-y-6 animate-in fade-in">
@@ -388,14 +719,14 @@ export const AdminPanel: React.FC = () => {
             </div>
           </div>
 
-          {/* 2-Column: Class Weakness Matrix (Left) & Grade Distribution & Recent Submissions (Right) */}
+          {/* 2-Column: Class Weakness Matrix & Grade Distribution */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left: Class Weakness Heatmap (7 cols) */}
             <div className="lg:col-span-7 bg-white rounded-[2.5rem] p-6 border border-[#EAE7E0] shadow-xs space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED]">
                 <div>
                   <h3 className="text-base font-bold text-[#3D3D2D]">
-                    Ma Trận Báo Động Lỗ Hổng Kiến Thức Cả Lớp
+                    Ma Trận Báo Động Lỗ Hổng Kiến Thức
                   </h3>
                   <p className="text-xs text-[#8A8A70]">
                     Tỷ lệ chính xác bình quân của cả lớp theo từng dạng bài trọng tâm
@@ -589,7 +920,7 @@ export const AdminPanel: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* 👥 TAB 2: STUDENT ROSTER WITH SEARCH & 360° PROFILE INSPECTOR             */}
+      {/* 👥 TAB: STUDENT ROSTER                                                    */}
       {/* ========================================================================= */}
       {activeAdminTab === 'students' && (
         <div className="space-y-4 animate-in fade-in">
@@ -728,7 +1059,7 @@ export const AdminPanel: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* 📚 TAB 3: QUESTIONS BANK                                                  */}
+      {/* 📚 TAB: QUESTIONS BANK                                                    */}
       {/* ========================================================================= */}
       {activeAdminTab === 'questions' && (
         <div className="space-y-4 animate-in fade-in">
@@ -877,7 +1208,7 @@ export const AdminPanel: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* 🎓 TAB 4: EXAMS LIST                                                      */}
+      {/* 🎓 TAB: EXAMS LIST                                                        */}
       {/* ========================================================================= */}
       {activeAdminTab === 'exams' && (
         <div className="space-y-4 animate-in fade-in">
@@ -926,6 +1257,134 @@ export const AdminPanel: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 🚀 MODAL: REMOTE TASK ASSIGNMENT (GIAO NHIỆM VỤ CHO EM TỪ XA)            */}
+      {/* ========================================================================= */}
+      {showAssignTaskModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] max-w-md w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-xl bg-[#8BA888]/20 flex items-center justify-center text-[#5A5A40]">
+                  <Send className="w-4 h-4 text-[#8BA888]" />
+                </div>
+                <h3 className="font-bold text-[#3D3D2D] text-base">Giao Bài Tập & Nhắc Nhở Từ Xa</h3>
+              </div>
+              <button
+                onClick={() => setShowAssignTaskModal(false)}
+                className="p-1 text-[#8A8A70] hover:text-[#3D3D2D] rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSendRemoteTask} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-bold text-[#5A5A40] mb-1">Giao cho ai:</label>
+                <select
+                  value={taskTargetStudentId}
+                  onChange={(e) => setTaskTargetStudentId(e.target.value)}
+                  className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden font-bold text-[#3D3D2D]"
+                >
+                  {studentUsers.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.name} ({st.targetSchool})
+                    </option>
+                  ))}
+                  <option value="all">📢 Tất cả học sinh trong lớp</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block font-bold text-[#5A5A40] mb-1">Môn học:</label>
+                  <select
+                    value={taskSubject}
+                    onChange={(e) => {
+                      const s = e.target.value as SubjectId;
+                      setTaskSubject(s);
+                      setTaskAssignedExamId(s === 'math' ? 'math_exam_official_01' : 'exam_official_01');
+                    }}
+                    className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden font-bold"
+                  >
+                    <option value="math">📐 Môn Toán</option>
+                    <option value="english">🇬🇧 Môn Tiếng Anh</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-[#5A5A40] mb-1">Chỉ định đề thi:</label>
+                  <select
+                    value={taskAssignedExamId}
+                    onChange={(e) => {
+                      setTaskAssignedExamId(e.target.value);
+                      const found = exams.find((x) => x.id === e.target.value);
+                      if (found) setTaskTitle(found.title);
+                    }}
+                    className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden"
+                  >
+                    {exams
+                      .filter((ex) => (ex.subject || 'english') === taskSubject)
+                      .map((ex) => (
+                        <option key={ex.id} value={ex.id}>
+                          {ex.code} - {ex.title.slice(0, 24)}...
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-[#5A5A40] mb-1">Tiêu đề nhiệm vụ:</label>
+                <input
+                  type="text"
+                  value={taskTitle}
+                  onChange={(e) => setTaskTitle(e.target.value)}
+                  className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden font-bold"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-[#5A5A40] mb-1">Lời nhắn & Dặn dò của bạn:</label>
+                <textarea
+                  rows={2}
+                  value={taskMessage}
+                  onChange={(e) => setTaskMessage(e.target.value)}
+                  placeholder="Ví dụ: Em nhớ căn giờ 60 phút và làm kỹ bài hình tứ giác nội tiếp nhé!"
+                  className="w-full p-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden text-[#3D3D2D]"
+                  required
+                />
+              </div>
+
+              {taskSuccessMsg && (
+                <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center space-x-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Đã phát sóng nhiệm vụ thời gian thực đến học sinh!</span>
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-2 pt-2 border-t border-[#F5F2ED]">
+                <button
+                  type="button"
+                  onClick={() => setShowAssignTaskModal(false)}
+                  className="px-4 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#6B6B54] rounded-xl font-bold transition cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl font-bold shadow-xs transition flex items-center space-x-1 cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Gửi nhiệm vụ ngay</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -1122,9 +1581,7 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* ➕ MODAL: ADD NEW STUDENT                                                 */}
-      {/* ========================================================================= */}
+      {/* ➕ MODAL: ADD NEW STUDENT */}
       {showAddStudentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-[2.5rem] max-w-md w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-4">
@@ -1133,7 +1590,7 @@ export const AdminPanel: React.FC = () => {
                 <div className="w-8 h-8 rounded-xl bg-[#8BA888]/20 flex items-center justify-center text-[#5A5A40]">
                   <UserPlus className="w-4 h-4" />
                 </div>
-                <h3 className="font-bold text-[#3D3D2D] text-base">Thêm Học Sinh Lớp 9 Mới</h3>
+                <h3 className="font-bold text-[#3D3D2D] text-base">Thêm Học Sinh Mới</h3>
               </div>
               <button
                 onClick={() => setShowAddStudentModal(false)}
@@ -1143,7 +1600,33 @@ export const AdminPanel: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleAddStudentSubmit} className="space-y-3.5 text-xs">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newStudentName.trim() || !newStudentEmail.trim()) {
+                  setAddStudentMsg('Vui lòng điền đầy đủ tên và email.');
+                  return;
+                }
+                const res = register({
+                  name: newStudentName.trim(),
+                  email: newStudentEmail.trim().toLowerCase(),
+                  password: newStudentPassword.trim() || '123',
+                  targetSchool: newStudentSchool.trim(),
+                  targetScoreMath: newStudentTargetMath,
+                  targetScoreEnglish: newStudentTargetEng,
+                  targetScore: parseFloat(((newStudentTargetMath + newStudentTargetEng) / 2).toFixed(2)),
+                });
+                if (res.success) {
+                  setShowAddStudentModal(false);
+                  setNewStudentName('');
+                  setNewStudentEmail('');
+                  setAddStudentMsg(null);
+                } else {
+                  setAddStudentMsg(res.message || 'Lỗi khi tạo học sinh');
+                }
+              }}
+              className="space-y-3.5 text-xs"
+            >
               <div>
                 <label className="block font-bold text-[#5A5A40] mb-1">Họ và tên học sinh (*):</label>
                 <input
@@ -1520,6 +2003,11 @@ export const AdminPanel: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Cloud DB & Room Key Modal */}
+      <CloudSyncModal
+        isOpen={showCloudModal}
+        onClose={() => setShowCloudModal(false)}
+      />
     </div>
   );
 };

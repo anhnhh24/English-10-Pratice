@@ -13,6 +13,8 @@ import { QUESTIONS_DATA } from '../data/questionsData';
 import { EXAMS_DATA } from '../data/examsData';
 import { MATH_QUESTIONS_DATA } from '../data/mathQuestionsData';
 import { MATH_EXAMS_DATA } from '../data/mathExamsData';
+import { logAndBroadcastActivity } from '../services/realtimeSyncService';
+import { pushUserDataToOnlineDB, fetchRoomDataFromOnlineDB } from '../services/cloudSyncService';
 
 interface UserScopedData {
   examAttempts: ExamAttempt[];
@@ -107,8 +109,8 @@ interface AppContextType {
 const DEFAULT_USERS: UserAccount[] = [
   {
     id: 'user_student_1',
-    name: 'Nguyễn Hoàng Minh',
-    email: 'hoangminh.lop9@gmail.com',
+    name: 'Nguyễn Hoàng Hà',
+    email: 'hoangha.lop9@gmail.com',
     password: '123',
     role: 'student',
     targetScore: 8.5,
@@ -620,7 +622,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ...customExams,
   ];
 
-  // Sync user data to localStorage on changes
+  // Sync user data to localStorage and Online Cloud DB on changes
   useEffect(() => {
     const userData: UserScopedData = {
       examAttempts,
@@ -630,7 +632,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       customExams,
     };
     localStorage.setItem(getUserDataKey(currentUser.id), JSON.stringify(userData));
+    // Automatically push to Online Cloud DB
+    pushUserDataToOnlineDB(currentUser.id, userData, currentUser);
   }, [examAttempts, practiceSessions, mistakes, bookmarks, customExams, currentUser.id]);
+
+  // Periodic Cloud DB fetch polling for multi-device sync
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        await fetchRoomDataFromOnlineDB();
+      } catch (e) {}
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('edu10_users', JSON.stringify(usersList));
@@ -823,6 +838,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setExamAttempts((prev) => [newAttempt, ...prev]);
 
+    // Automatically log and broadcast activity in real-time
+    logAndBroadcastActivity({
+      userId: currentUser.id,
+      userName: currentUser.name,
+      avatarColor: currentUser.avatarColor,
+      subject: attempt.subject || currentSubject,
+      type: 'exam_submitted',
+      title: `Vừa hoàn thành bài thi ${attempt.subject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}`,
+      detail: `Đạt ${newAttempt.score.toFixed(2)}/10đ (${newAttempt.correctCount}/${newAttempt.totalQuestions} câu đúng) • ${attempt.examTitle}`,
+      score: newAttempt.score,
+      examTitle: attempt.examTitle,
+    });
+
     // Automatically record mistakes
     Object.entries(attempt.userAnswers).forEach(([qId, chosenOpt]) => {
       const q = getQuestionById(qId);
@@ -863,6 +891,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMistakes((prev) => {
       const existing = prev[questionId];
       if (!isCorrect) {
+        if (q) {
+          logAndBroadcastActivity({
+            userId: currentUser.id,
+            userName: currentUser.name,
+            avatarColor: currentUser.avatarColor,
+            subject: qSubj,
+            type: 'question_wrong',
+            title: `Làm sai câu hỏi ${qSubj === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}`,
+            detail: `Chuyên đề: ${q.topicId.replace('math_', '').replace(/_/g, ' ')}`,
+            topicName: q.topicId,
+          });
+        }
+
         return {
           ...prev,
           [questionId]: {
