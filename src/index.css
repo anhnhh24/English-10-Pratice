@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #F5F2ED;
+    color: #4A4A4A;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+}
+
+/* Natural Tones Custom Theme Variables and Utilities */
+:root {
+  --bg-canvas: #F5F2ED;
+  --bg-sidebar: #E8E2D9;
+  --bg-card: #FFFFFF;
+  --bg-card-subtle: #FAF9F6;
+  --bg-container: #F2F0EB;
+  --border-natural: #D9D2C5;
+  --border-subtle: #EAE7E0;
+  
+  --primary-olive: #5A5A40;
+  --primary-olive-dark: #3D3D2D;
+  --primary-olive-light: #6B6B54;
+  --primary-olive-subtle: #ECE8E1;
+
+  --accent-sage: #8BA888;
+  --accent-sage-light: #EBF2EB;
+  --accent-terracotta: #E67E22;
+  --accent-terracotta-light: #FDF2E9;
+  --accent-sand: #E8C07D;
+}

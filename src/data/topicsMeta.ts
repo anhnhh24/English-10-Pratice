@@ -1,0 +1,68 @@
+import { TopicMeta } from '../types';
+
+export const TOPICS_META: TopicMeta[] = [
+  {
+    id: 'grammar',
+    nameVi: 'Ngữ pháp Trọng tâm',
+    iconName: 'BookOpen',
+    color: 'indigo',
+    description: '12 thì cơ bản, câu bị động, câu gián tiếp, câu điều kiện, mệnh đề quan hệ, câu ước...',
+    weightInExam: '35% Đề thi',
+  },
+  {
+    id: 'vocabulary',
+    nameVi: 'Từ vựng & Cụm từ',
+    iconName: 'Sparkles',
+    color: 'emerald',
+    description: 'Từ vựng Unit 1-12 SGK Lớp 9, Phrasal verbs, Collocations, Giới từ thông dụng.',
+    weightInExam: '20% Đề thi',
+  },
+  {
+    id: 'pronunciation',
+    nameVi: 'Phát âm (-s/es, -ed, nguyên âm)',
+    iconName: 'Volume2',
+    color: 'amber',
+    description: 'Quy tắc phát âm đuôi -s/es, -ed và các cặp nguyên âm/phụ âm hay thi.',
+    weightInExam: '5% Đề thi',
+  },
+  {
+    id: 'stress',
+    nameVi: 'Trọng âm từ (2 & 3 âm tiết)',
+    iconName: 'Activity',
+    color: 'rose',
+    description: 'Quy tắc đánh trọng âm danh từ, động từ, tính từ 2 âm tiết và hậu tố 3 âm tiết.',
+    weightInExam: '5% Đề thi',
+  },
+  {
+    id: 'sentence_rewrite',
+    nameVi: 'Viết lại câu & Biến đổi cấu trúc',
+    iconName: 'FileEdit',
+    color: 'blue',
+    description: 'Câu điều kiện, so/such...that, too/enough, although/because, used to, wish.',
+    weightInExam: '15% Đề thi',
+  },
+  {
+    id: 'reading',
+    nameVi: 'Đọc hiểu văn bản (Reading)',
+    iconName: 'AlignLeft',
+    color: 'purple',
+    description: 'Kỹ năng Skimming & Scanning, trả lời câu hỏi chi tiết, tìm từ đồng nghĩa theo ngữ cảnh.',
+    weightInExam: '10% Đề thi',
+  },
+  {
+    id: 'cloze',
+    nameVi: 'Đọc điền từ vào đoạn văn (Cloze)',
+    iconName: 'Layers',
+    color: 'teal',
+    description: 'Chọn từ vựng, liên từ, đại từ quan hệ và cấu trúc ngữ pháp phù hợp điền vào chỗ trống.',
+    weightInExam: '10% Đề thi',
+  },
+  {
+    id: 'error_identification',
+    nameVi: 'Tìm lỗi sai (Error Identification)',
+    iconName: 'AlertCircle',
+    color: 'orange',
+    description: 'Nhận diện lỗi sai về thì, hòa hợp chủ vị, đại từ quan hệ, dạng từ, cấu trúc song hành.',
+    weightInExam: '5% Đề thi',
+  },
+];

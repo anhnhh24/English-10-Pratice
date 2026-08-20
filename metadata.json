@@ -1,0 +1,6 @@
+{
+  "name": "EduEnglish 10 - Luyện Thi Vào Lớp 10",
+  "description": "Nền tảng ôn thi Tiếng Anh vào lớp 10 toàn diện: Lý thuyết, Ngân hàng câu hỏi, Sổ câu sai thông minh, Thi thử chuẩn cấu trúc và Quản trị nội dung.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
