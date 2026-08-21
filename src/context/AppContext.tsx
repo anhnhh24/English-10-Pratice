@@ -605,6 +605,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setPracticeSessions((prev) => [newSession, ...prev]);
 
+    // Log practice activity
+    logAndBroadcastActivity({
+      userId: currentUser.id,
+      userName: currentUser.name,
+      avatarColor: currentUser.avatarColor,
+      subject: session.subject || currentSubject,
+      type: 'practice_completed',
+      title: `Hoàn thành bài luyện tập ${session.subject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}`,
+      detail: `Đúng ${session.correctCount}/${session.totalQuestions} câu • Chuyên đề: ${session.topicId.replace('math_', '').replace(/_/g, ' ')}`,
+      score: session.correctCount,
+      topicName: session.topicId,
+    });
+
     if (session && session.userAnswers && typeof session.userAnswers === 'object') {
       Object.entries(session.userAnswers).forEach(([qId, chosenOpt]) => {
         const q = getQuestionById(qId);
@@ -672,12 +685,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMistakes((prev) => {
       const existing = prev[questionId];
       if (!existing) return prev;
+      const willBeMastered = !existing.mastered;
+
+      if (willBeMastered) {
+        const q = getQuestionById(questionId);
+        logAndBroadcastActivity({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          avatarColor: currentUser.avatarColor,
+          subject: existing.subject || currentSubject,
+          type: 'mistake_mastered',
+          title: `Đã hiểu và thuần thục câu sai ${existing.subject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}`,
+          detail: q ? `Câu hỏi: "${q.content.slice(0, 50)}..."` : 'Đã nắm chắc lời giải',
+          topicName: q?.topicId,
+        });
+      }
+
       return {
         ...prev,
         [questionId]: {
           ...existing,
-          mastered: !existing.mastered,
-          consecutiveCorrect: !existing.mastered ? 2 : 0,
+          mastered: willBeMastered,
+          consecutiveCorrect: willBeMastered ? 2 : 0,
         },
       };
     });

@@ -102,6 +102,8 @@ export const AdminPanel: React.FC = () => {
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeActivityEvent[]>(() => getStoredRealtimeActivities());
   const [liveToast, setLiveToast] = useState<RealtimeActivityEvent | null>(null);
   const [isLiveConnected, setIsLiveConnected] = useState<boolean>(true);
+  const [activityFilterType, setActivityFilterType] = useState<string>('all');
+  const [activityFilterSubject, setActivityFilterSubject] = useState<'all' | 'math' | 'english'>('all');
 
   // Remote Task Assignment State
   const [showAssignTaskModal, setShowAssignTaskModal] = useState<boolean>(false);
@@ -1019,65 +1021,222 @@ export const AdminPanel: React.FC = () => {
           </div>
 
           {/* Chronological Live Feed */}
-          <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 border border-[#EAE7E0] shadow-xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED]">
-              <div className="flex items-center space-x-2">
-                <Activity className="w-5 h-5 text-[#8BA888]" />
-                <h3 className="text-base font-bold text-[#3D3D2D]">Dòng Hoạt Động Thời Gian Thực Của Học Sinh</h3>
-              </div>
-              <span className="text-xs text-[#8A8A70] font-medium">Tự động cập nhật không cần tải lại trang</span>
-            </div>
+          {(() => {
+            const filteredEvents = realtimeEvents.filter((evt) => {
+              if (activityFilterType !== 'all' && evt.type !== activityFilterType) return false;
+              if (activityFilterSubject !== 'all' && evt.subject && evt.subject !== activityFilterSubject) return false;
+              return true;
+            });
 
-            <div className="space-y-3 max-h-[500px] overflow-y-auto no-scrollbar">
-              {realtimeEvents.map((evt) => (
-                <div
-                  key={evt.id}
-                  className="p-4 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] hover:border-[#D9D2C5] transition flex items-start justify-between gap-3 text-xs"
-                >
-                  <div className="flex items-start space-x-3 min-w-0">
-                    <div
-                      className={`w-9 h-9 rounded-xl ${evt.avatarColor || 'bg-[#5A5A40]'} text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5`}
-                    >
-                      {evt.userName.charAt(0)}
-                    </div>
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold text-[#3D3D2D]">{evt.userName}</span>
-                        <span
-                          className={`px-2 py-0.2 rounded text-[10px] font-bold ${
-                            evt.type === 'exam_submitted'
-                              ? 'bg-[#EBF2EB] text-[#8BA888]'
-                              : evt.type === 'question_wrong'
-                              ? 'bg-[#FDF2E9] text-[#E67E22]'
-                              : 'bg-[#F5F2ED] text-[#5A5A40]'
-                          }`}
-                        >
-                          {evt.type === 'exam_submitted'
-                            ? 'Nộp bài thi'
-                            : evt.type === 'question_wrong'
-                            ? 'Làm sai'
-                            : 'Học tập'}
-                        </span>
-                      </div>
-                      <p className="font-semibold text-[#5A5A40] leading-snug">{evt.title}</p>
-                      <p className="text-[#6B6B54] leading-relaxed">{evt.detail}</p>
+            return (
+              <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 border border-[#EAE7E0] shadow-xs space-y-4">
+                {/* Feed Header & Filters */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-[#F5F2ED]">
+                  <div className="flex items-center space-x-2">
+                    <Activity className="w-5 h-5 text-[#8BA888]" />
+                    <div>
+                      <h3 className="text-base font-bold text-[#3D3D2D]">
+                        Dòng Hoạt Động Thời Gian Thực ({filteredEvents.length})
+                      </h3>
+                      <p className="text-[11px] text-[#8A8A70]">Tự động cập nhật không cần tải lại trang</p>
                     </div>
                   </div>
 
-                  <div className="text-right shrink-0">
-                    <span className="text-[11px] text-[#8A8A70] block font-mono">
-                      {new Date(evt.timestamp).toLocaleTimeString('vi-VN')}
-                    </span>
-                    {evt.score !== undefined && (
-                      <span className="text-sm font-extrabold text-[#5A5A40] block mt-1">
-                        {evt.score.toFixed(1)}đ
-                      </span>
-                    )}
+                  {/* Actions */}
+                  <div className="flex items-center space-x-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        const current = getStoredRealtimeActivities();
+                        setRealtimeEvents(current);
+                      }}
+                      className="px-3 py-1.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#5A5A40] border border-[#D9D2C5] rounded-xl text-xs font-bold transition cursor-pointer"
+                    >
+                      🔄 Làm mới
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (confirm('Bạn có muốn xóa toàn bộ lịch sử log hoạt động đã lưu trên máy này?')) {
+                          localStorage.removeItem('edu10_realtime_activities');
+                          setRealtimeEvents([]);
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition cursor-pointer"
+                    >
+                      🗑️ Xóa log
+                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
+
+                {/* Filter Tabs Toolbar */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  {/* Event Type Filter */}
+                  <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] text-xs font-bold shrink-0 flex-wrap gap-1">
+                    <button
+                      onClick={() => setActivityFilterType('all')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                        activityFilterType === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      Tất cả
+                    </button>
+                    <button
+                      onClick={() => setActivityFilterType('exam_submitted')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                        activityFilterType === 'exam_submitted' ? 'bg-emerald-700 text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      📝 Nộp bài thi
+                    </button>
+                    <button
+                      onClick={() => setActivityFilterType('practice_completed')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                        activityFilterType === 'practice_completed' ? 'bg-blue-700 text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      ⚡ Luyện tập
+                    </button>
+                    <button
+                      onClick={() => setActivityFilterType('question_wrong')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                        activityFilterType === 'question_wrong' ? 'bg-amber-600 text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      ⚠️ Làm sai
+                    </button>
+                    <button
+                      onClick={() => setActivityFilterType('mistake_mastered')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                        activityFilterType === 'mistake_mastered' ? 'bg-indigo-700 text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      ✅ Sửa câu sai
+                    </button>
+                    <button
+                      onClick={() => setActivityFilterType('study_start')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                        activityFilterType === 'study_start' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      👤 Đăng nhập
+                    </button>
+                  </div>
+
+                  {/* Subject Filter */}
+                  <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] text-xs font-bold shrink-0">
+                    <button
+                      onClick={() => setActivityFilterSubject('all')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                        activityFilterSubject === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      Tất cả môn
+                    </button>
+                    <button
+                      onClick={() => setActivityFilterSubject('math')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                        activityFilterSubject === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      📐 Môn Toán
+                    </button>
+                    <button
+                      onClick={() => setActivityFilterSubject('english')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                        activityFilterSubject === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      🇬🇧 Tiếng Anh
+                    </button>
+                  </div>
+                </div>
+
+                {/* Event List */}
+                <div className="space-y-3 max-h-[550px] overflow-y-auto no-scrollbar pt-2">
+                  {filteredEvents.length === 0 ? (
+                    <div className="p-10 bg-[#FAF9F6] rounded-3xl border border-[#EAE7E0] text-center space-y-2">
+                      <p className="text-3xl">📡</p>
+                      <h4 className="font-bold text-sm text-[#3D3D2D]">Chưa có hoạt động nào phù hợp với bộ lọc</h4>
+                      <p className="text-xs text-[#8A8A70] max-w-md mx-auto">
+                        Khi em vào làm bài thi, giải câu hỏi hoặc sửa lỗi sai, toàn bộ tiến độ sẽ được đẩy lên đây tức thời không độ trễ.
+                      </p>
+                    </div>
+                  ) : (
+                    filteredEvents.map((evt) => {
+                      const dateObj = new Date(evt.timestamp);
+                      const timeStr = dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                      const isToday = new Date().toDateString() === dateObj.toDateString();
+                      const dateDisplay = isToday ? `Hôm nay ${timeStr}` : `${dateObj.toLocaleDateString('vi-VN')} ${timeStr}`;
+
+                      return (
+                        <div
+                          key={evt.id}
+                          className="p-4 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] hover:border-[#D9D2C5] transition flex items-start justify-between gap-3 text-xs"
+                        >
+                          <div className="flex items-start space-x-3.5 min-w-0">
+                            <div
+                              className={`w-10 h-10 rounded-2xl ${evt.avatarColor || 'bg-[#5A5A40]'} text-white font-extrabold text-sm flex items-center justify-center shrink-0 mt-0.5 shadow-xs`}
+                            >
+                              {evt.userName.charAt(0)}
+                            </div>
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                                <span className="font-bold text-[#3D3D2D]">{evt.userName}</span>
+                                <span
+                                  className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold ${
+                                    evt.type === 'exam_submitted'
+                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                      : evt.type === 'practice_completed'
+                                      ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                      : evt.type === 'question_wrong'
+                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                      : evt.type === 'mistake_mastered'
+                                      ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                                      : 'bg-[#F5F2ED] text-[#5A5A40] border border-[#D9D2C5]'
+                                  }`}
+                                >
+                                  {evt.type === 'exam_submitted'
+                                    ? '📝 Nộp bài thi'
+                                    : evt.type === 'practice_completed'
+                                    ? '⚡ Hoàn thành luyện tập'
+                                    : evt.type === 'question_wrong'
+                                    ? '⚠️ Làm sai câu hỏi'
+                                    : evt.type === 'mistake_mastered'
+                                    ? '✅ Đã sửa câu sai'
+                                    : evt.type === 'study_start'
+                                    ? '👤 Đăng nhập'
+                                    : 'Học tập'}
+                                </span>
+
+                                {evt.subject && (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white text-[#5A5A40] border border-[#D9D2C5]">
+                                    {evt.subject === 'math' ? '📐 Toán' : '🇬🇧 Tiếng Anh'}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="font-bold text-[#3D3D2D] leading-snug">{evt.title}</p>
+                              <p className="text-[#6B6B54] leading-relaxed whitespace-pre-line">{evt.detail}</p>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span className="text-[11px] text-[#8A8A70] block font-mono">
+                              {dateDisplay}
+                            </span>
+                            {evt.score !== undefined && (
+                              <span className="text-sm font-extrabold text-[#1E3A8A] block mt-1">
+                                {typeof evt.score === 'number' && evt.score <= 10 ? `${evt.score.toFixed(1)}đ` : `${evt.score} câu`}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 

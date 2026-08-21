@@ -238,7 +238,17 @@ export interface RealtimeActivityEvent {
   userName: string;
   avatarColor?: string;
   subject?: SubjectId;
-  type: 'exam_submitted' | 'question_wrong' | 'question_correct' | 'study_start' | 'flashcard_mastered' | 'goal_updated' | 'tab_switched';
+  type:
+    | 'exam_submitted'
+    | 'exam_started'
+    | 'practice_completed'
+    | 'question_wrong'
+    | 'question_correct'
+    | 'mistake_mastered'
+    | 'study_start'
+    | 'flashcard_mastered'
+    | 'goal_updated'
+    | 'tab_switched';
   title: string;
   detail: string;
   timestamp: string;
