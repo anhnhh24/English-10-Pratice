@@ -65,10 +65,10 @@ interface AppContextType {
   // Questions (combined english + math + custom)
   questions: Question[];
   getQuestionById: (id: string) => Question | undefined;
-  addQuestion: (q: Omit<Question, 'id'>) => Question;
+  addQuestion: (q: (Omit<Question, 'id'> & { id?: string }) | Question) => Question;
   updateQuestion: (id: string, q: Partial<Question>) => void;
   deleteQuestion: (id: string) => void;
-  bulkImportQuestions: (newQuestions: (Question | Omit<Question, 'id'>)[]) => number;
+  bulkImportQuestions: (newQuestions: (Question | (Omit<Question, 'id'> & { id?: string }))[]) => number;
 
   // Exams (combined official + math + user-created / DB-synced)
   exams: Exam[];
@@ -222,6 +222,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [bookmarks, setBookmarks] = useState<string[]>(() => loadUserData(currentUser.id).bookmarks || []);
   const [customExams, setCustomExams] = useState<Exam[]>(() => loadUserData(currentUser.id).customExams || []);
 
+  // Global custom exams created on this device (so all user accounts can see/run them)
+  const [globalCustomExams, setGlobalCustomExams] = useState<Exam[]>(() => {
+    const saved = localStorage.getItem('edu10_global_custom_exams');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   // Online DB Exams
   const [dbExams, setDbExams] = useState<Exam[]>([]);
 
@@ -238,12 +244,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ...customQuestions,
   ];
 
-  // Base Exam Bank (English + Math + DB-synced / Custom exams)
+  // Base Exam Bank (English + Math + Global Custom + User Custom + DB-synced)
   // De-duplicate exams by ID
   const allExamsMap = new Map<string, Exam>();
   [
     ...EXAMS_DATA.map((e) => ({ ...e, subject: 'english' as SubjectId })),
     ...MATH_EXAMS_DATA.map((e) => ({ ...e, subject: 'math' as SubjectId })),
+    ...globalCustomExams,
     ...customExams,
     ...dbExams,
   ].forEach((e) => {
@@ -467,13 +474,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Questions
   const getQuestionById = (id: string) => allQuestions.find((q) => q.id === id);
 
-  const addQuestion = (q: Omit<Question, 'id'>): Question => {
+  const addQuestion = (q: (Omit<Question, 'id'> & { id?: string }) | Question): Question => {
     const newQ: Question = {
       ...q,
       subject: q.subject || currentSubject,
-      id: `q_custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: q.id || `q_custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     };
-    setCustomQuestions((prev) => [newQ, ...prev]);
+    setCustomQuestions((prev) => {
+      const existing = prev.filter((item) => item.id !== newQ.id);
+      return [newQ, ...existing];
+    });
     // Save to Firebase Realtime DB
     saveQuestionToOnlineDB(newQ).catch((err) => console.warn('DB Question save error:', err));
     return newQ;
@@ -498,7 +508,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteQuestionFromOnlineDB(id).catch((err) => console.warn('DB Question delete error:', err));
   };
 
-  const bulkImportQuestions = (newQuestions: (Question | Omit<Question, 'id'>)[]): number => {
+  const bulkImportQuestions = (newQuestions: (Question | (Omit<Question, 'id'> & { id?: string }))[]): number => {
     const formatted: Question[] = newQuestions.map((q: any, idx) => ({
       ...q,
       subject: q.subject || currentSubject,
@@ -531,6 +541,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const filtered = prev.filter((item) => item.id !== newExam.id);
       return [newExam, ...filtered];
     });
+    setGlobalCustomExams((prev) => {
+      const filtered = prev.filter((item) => item.id !== newExam.id);
+      const updated = [newExam, ...filtered];
+      localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
+      return updated;
+    });
     // Immediately persist to Firebase Realtime Database
     saveExamToOnlineDB(newExam).catch((err) => console.warn('DB Exam save error:', err));
     return newExam;
@@ -545,10 +561,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return updated;
     });
+    setGlobalCustomExams((prev) => {
+      const updated = prev.map((item) => (item.id === id ? { ...item, ...e } : item));
+      localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const deleteExam = (id: string) => {
     setCustomExams((prev) => prev.filter((item) => item.id !== id));
+    setGlobalCustomExams((prev) => {
+      const updated = prev.filter((item) => item.id !== id);
+      localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
+      return updated;
+    });
     setDbExams((prev) => prev.filter((item) => item.id !== id));
     // Delete from Firebase DB
     deleteExamFromOnlineDB(id).catch((err) => console.warn('DB Exam delete error:', err));
