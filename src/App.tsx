@@ -90,6 +90,16 @@ const AppContent: React.FC = () => {
 
   const isMath = currentSubject === 'math';
 
+  // Tự động reset trạng thái điều hướng khi chuyển môn để không bị nhảy đề hoặc thực hiện hành động cũ
+  React.useEffect(() => {
+    setActiveExamId(isMath ? 'math_exam_official_01' : 'exam_official_01');
+    setActivePracticeTopicId(isMath ? 'math_pt_bac_hai_viet' : 'grammar');
+    // Nếu đang trong màn hình làm bài thi hoặc luyện đề, tự động quay về trang chủ môn học mới
+    if (['mock_exam', 'topic_practice', 'quick_blitz'].includes(activeTab)) {
+      setActiveTab('dashboard');
+    }
+  }, [currentSubject]);
+
   // ═════════════════════════════════════════════════════════════════
   // 🛡️ DEDICATED ADMIN PORTAL (Trang Quản Trị & Giám Sát Riêng Biệt)
   // ═════════════════════════════════════════════════════════════════

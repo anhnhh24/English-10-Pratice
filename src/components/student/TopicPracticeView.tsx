@@ -53,15 +53,6 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
   const [questionCount, setQuestionCount] = useState<number>(10);
 
-  // Update selected topic when subject changes
-  useEffect(() => {
-    if (initialTopicId) {
-      setSelectedTopic(initialTopicId as TopicId);
-    } else {
-      setSelectedTopic(currentSubject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar');
-    }
-  }, [currentSubject, initialTopicId]);
-
   // Active practice session states
   const [isPracticing, setIsPracticing] = useState<boolean>(false);
   const [practiceQuestions, setPracticeQuestions] = useState<Question[]>([]);
@@ -70,6 +61,20 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
   const [checkedQuestions, setCheckedQuestions] = useState<Record<string, boolean>>({});
   const [isFinished, setIsFinished] = useState<boolean>(false);
   const [startTime, setStartTime] = useState<number>(Date.now());
+
+  // Update selected topic & reset practice state when subject changes
+  useEffect(() => {
+    setIsPracticing(false);
+    setIsFinished(false);
+    setUserAnswers({});
+    setCheckedQuestions({});
+    setCurrentIdx(0);
+    if (initialTopicId) {
+      setSelectedTopic(initialTopicId as TopicId);
+    } else {
+      setSelectedTopic(currentSubject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar');
+    }
+  }, [currentSubject, initialTopicId]);
 
   // AI Topic Generator States
   const [showAiModal, setShowAiModal] = useState<boolean>(false);

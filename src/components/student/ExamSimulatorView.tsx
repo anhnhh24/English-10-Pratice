@@ -72,6 +72,13 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   const exam = exams.find((e) => e.id === selectedExamId) || subjectExams[0] || exams[0];
 
   useEffect(() => {
+    setStage('intro');
+    setCompletedAttempt(null);
+    setUserAnswers({});
+    setFlaggedIds([]);
+    setCurrentIdx(0);
+    setAiEvaluation(null);
+    setAiError(null);
     if (examId && subjectExams.some((e) => e.id === examId)) {
       setSelectedExamId(examId);
     } else if (subjectExams.length > 0) {
