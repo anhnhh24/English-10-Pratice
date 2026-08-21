@@ -214,20 +214,44 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
             </select>
           </div>
 
-          <div className="flex justify-end space-x-2 pt-2 border-t border-[#F5F2ED]">
+          {/* Danger Zone: Clean Cache Button */}
+          <div className="pt-2 border-t border-[#F5F2ED] flex items-center justify-between">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#6B6B54] rounded-xl font-bold transition cursor-pointer"
+              onClick={() => {
+                if (confirm('Bạn có chắc muốn xóa sạch toàn bộ bộ nhớ đệm (Cache) trên trình duyệt này và tải lại sạch 100% từ Database Online?')) {
+                  const keysToRemove = [
+                    'edu10_custom_questions',
+                    'edu10_global_custom_exams',
+                    'edu10_userdata_user_student_1',
+                    'edu10_userdata_user_admin_1',
+                    'edu10_realtime_activities',
+                    'edu10_remote_tasks',
+                  ];
+                  keysToRemove.forEach((k) => localStorage.removeItem(k));
+                  window.location.reload();
+                }
+              }}
+              className="text-[11px] text-red-600 hover:text-red-700 font-bold underline cursor-pointer"
             >
-              Đóng
+              🧹 Xóa cache trên máy & Tải lại sạch từ DB
             </button>
-            <button
-              type="submit"
-              className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl font-bold shadow-xs transition cursor-pointer"
-            >
-              Lưu cài đặt
-            </button>
+
+            <div className="flex space-x-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#6B6B54] rounded-xl font-bold transition cursor-pointer"
+              >
+                Đóng
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl font-bold shadow-xs transition cursor-pointer"
+              >
+                Lưu cài đặt
+              </button>
+            </div>
           </div>
         </form>
       </div>

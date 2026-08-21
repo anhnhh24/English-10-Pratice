@@ -27,6 +27,8 @@ import {
   subscribeToStudentData,
   subscribeToRoomData,
   clearOnlineStudentData,
+  syncDeletedIdToOnlineDB,
+  subscribeToDeletedIdsFromOnlineDB,
 } from '../services/cloudSyncService';
 import {
   setCookie,
@@ -258,15 +260,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Base Question Bank (English + Math + Custom)
+  // Deleted ID Blacklists (for deleting both custom and built-in/hardcoded exams/questions permanently)
+  const [deletedExamIds, setDeletedExamIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('edu10_deleted_exam_ids');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [deletedQuestionIds, setDeletedQuestionIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('edu10_deleted_question_ids');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Base Question Bank (English + Math + Custom) - Filtered by deleted blacklist
+  const deletedQSet = new Set(deletedQuestionIds);
   const allQuestions: Question[] = [
     ...QUESTIONS_DATA.map((q) => ({ ...q, subject: 'english' as SubjectId })),
     ...MATH_QUESTIONS_DATA.map((q) => ({ ...q, subject: 'math' as SubjectId })),
     ...customQuestions,
-  ];
+  ].filter((q) => !deletedQSet.has(q.id));
 
-  // Base Exam Bank (English + Math + Global Custom + User Custom + DB-synced)
-  // De-duplicate exams by ID
+  // Base Exam Bank (English + Math + Global Custom + User Custom + DB-synced) - Filtered by deleted blacklist
+  const deletedESet = new Set(deletedExamIds);
   const allExamsMap = new Map<string, Exam>();
   [
     ...EXAMS_DATA.map((e) => ({ ...e, subject: 'english' as SubjectId })),
@@ -275,11 +297,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ...customExams,
     ...dbExams,
   ].forEach((e) => {
-    allExamsMap.set(e.id, e);
+    if (!deletedESet.has(e.id)) {
+      allExamsMap.set(e.id, e);
+    }
   });
   const allExams: Exam[] = Array.from(allExamsMap.values());
 
-  // Subscribe to Firebase DB in real-time for Exams, Questions, and Student Data
+  // Subscribe to Firebase DB in real-time for Exams, Questions, Deleted IDs, and Student Data
   useEffect(() => {
     // 1. Subscribe to Exams on DB
     const unsubExams = subscribeToExamsFromOnlineDB((cloudExams) => {
@@ -290,11 +314,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 2. Subscribe to Custom Questions on DB
     const unsubQuestions = subscribeToQuestionsFromOnlineDB((cloudQuestions) => {
-      if (cloudQuestions && Array.isArray(cloudQuestions) && cloudQuestions.length > 0) {
-        setCustomQuestions((prev) => {
-          const existingIds = new Set(cloudQuestions.map((q) => q.id));
-          const localOnly = prev.filter((p) => !existingIds.has(p.id));
-          return [...cloudQuestions, ...localOnly];
+      if (cloudQuestions && Array.isArray(cloudQuestions)) {
+        setCustomQuestions(cloudQuestions);
+        try {
+          localStorage.setItem('edu10_custom_questions', JSON.stringify(cloudQuestions));
+        } catch (_) {}
+      }
+    });
+
+    // 3. Subscribe to Deleted IDs on DB
+    const unsubDeleted = subscribeToDeletedIdsFromOnlineDB((delData) => {
+      if (delData.deletedExamIds && delData.deletedExamIds.length > 0) {
+        setDeletedExamIds((prev) => {
+          const merged = Array.from(new Set([...prev, ...delData.deletedExamIds]));
+          try {
+            localStorage.setItem('edu10_deleted_exam_ids', JSON.stringify(merged));
+          } catch (_) {}
+          return merged;
+        });
+      }
+      if (delData.deletedQuestionIds && delData.deletedQuestionIds.length > 0) {
+        setDeletedQuestionIds((prev) => {
+          const merged = Array.from(new Set([...prev, ...delData.deletedQuestionIds]));
+          try {
+            localStorage.setItem('edu10_deleted_question_ids', JSON.stringify(merged));
+          } catch (_) {}
+          return merged;
         });
       }
     });
@@ -302,6 +347,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       unsubExams();
       unsubQuestions();
+      unsubDeleted();
     };
   }, []);
 
@@ -398,8 +444,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsub();
   }, [currentUser.id]);
 
-  // Sync user data to localStorage and Online Cloud DB on changes
+  // Flag to avoid pushing initial empty/stale state over cloud DB right on initial mount
+  const hasMountedRef = useRef(false);
+
+  // Sync user data to localStorage and Online Cloud DB on user changes
   useEffect(() => {
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
     const userData: UserScopedData = {
       examAttempts,
       practiceSessions,
@@ -591,11 +644,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteQuestion = (id: string) => {
-    setCustomQuestions((prev) => prev.filter((item) => item.id !== id));
+    // 1. Add to deleted blacklist permanently so it never comes back
+    setDeletedQuestionIds((prev) => {
+      const next = Array.from(new Set([...prev, id]));
+      try {
+        localStorage.setItem('edu10_deleted_question_ids', JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+    // 2. Remove from local state
+    setCustomQuestions((prev) => {
+      const updated = prev.filter((item) => item.id !== id);
+      try {
+        localStorage.setItem('edu10_custom_questions', JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
+    });
     removeMistake(id);
     setBookmarks((prev) => prev.filter((bId) => bId !== id));
-    // Delete from Firebase DB
+    // 3. Delete & Sync to Firebase Realtime DB
     deleteQuestionFromOnlineDB(id).catch((err) => console.warn('DB Question delete error:', err));
+    syncDeletedIdToOnlineDB('question', id).catch(() => {});
     dispatchGlobalSync('QUESTIONS_UPDATED');
   };
 
@@ -663,6 +732,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteExam = (id: string) => {
+    // 1. Add to deleted blacklist permanently so it never comes back
+    setDeletedExamIds((prev) => {
+      const next = Array.from(new Set([...prev, id]));
+      try {
+        localStorage.setItem('edu10_deleted_exam_ids', JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+    // 2. Remove from local states
     setCustomExams((prev) => prev.filter((item) => item.id !== id));
     setGlobalCustomExams((prev) => {
       const updated = prev.filter((item) => item.id !== id);
@@ -670,9 +748,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
     setDbExams((prev) => prev.filter((item) => item.id !== id));
-    // Delete from Firebase DB
+    // 3. Delete & Sync to Firebase Realtime DB
     deleteExamFromOnlineDB(id).catch((err) => console.warn('DB Exam delete error:', err));
-    // Clean up any assigned tasks referencing this deleted exam
+    syncDeletedIdToOnlineDB('exam', id).catch(() => {});
+    // 4. Clean up any assigned tasks referencing this deleted exam
     deleteRemoteTasksByExamId(id);
     dispatchGlobalSync('EXAMS_UPDATED');
   };

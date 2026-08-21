@@ -374,3 +374,42 @@ export function subscribeToConnectionStatus(callback: (connected: boolean) => vo
   return () => off(connRef, 'value', handler);
 }
 
+/**
+ * Save a deleted ID (exam or question) to Firebase so all devices synchronize deletions
+ */
+export async function syncDeletedIdToOnlineDB(type: 'exam' | 'question', id: string): Promise<void> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return;
+  try {
+    const delRef = ref(database, `rooms/${settings.roomCode}/deleted/${type}s/${id}`);
+    await set(delRef, { deletedAt: new Date().toISOString() });
+  } catch (err) {
+    console.warn('syncDeletedIdToOnlineDB error:', err);
+  }
+}
+
+/**
+ * Subscribe to deleted exam and question IDs from Firebase Realtime DB
+ */
+export function subscribeToDeletedIdsFromOnlineDB(
+  callback: (data: { deletedExamIds: string[]; deletedQuestionIds: string[] }) => void
+): () => void {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return () => {};
+
+  const delRef = ref(database, `rooms/${settings.roomCode}/deleted`);
+  const handler = (snapshot: DataSnapshot) => {
+    if (snapshot.exists()) {
+      const val = snapshot.val() || {};
+      const deletedExamIds = val.exams ? Object.keys(val.exams) : [];
+      const deletedQuestionIds = val.questions ? Object.keys(val.questions) : [];
+      callback({ deletedExamIds, deletedQuestionIds });
+    } else {
+      callback({ deletedExamIds: [], deletedQuestionIds: [] });
+    }
+  };
+
+  onValue(delRef, handler);
+  return () => off(delRef, 'value', handler);
+}
+
