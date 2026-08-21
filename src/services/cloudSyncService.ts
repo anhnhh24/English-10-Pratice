@@ -51,6 +51,13 @@ export function saveCloudDBSettings(settings: Partial<CloudDBSettings>): CloudDB
   return updated;
 }
 
+/**
+ * Helper to strip undefined values so Firebase Realtime Database SDK never throws 'contains undefined'
+ */
+function cleanForFirebase<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj, (_, value) => (value === undefined ? null : value)));
+}
+
 // ═════════════════════════════════════════════════════════════
 // 1. STUDENT PROGRESS & ATTEMPTS DB SYNC
 // ═════════════════════════════════════════════════════════════
@@ -68,13 +75,13 @@ export async function pushUserDataToOnlineDB(
     return { success: false, message: 'Cloud DB chưa được kích hoạt' };
   }
 
-  const payload = {
+  const payload = cleanForFirebase({
     userId,
     userProfile: userProfile || null,
     userData,
     updatedAt: new Date().toISOString(),
     deviceInfo: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 80) : 'Web App',
-  };
+  });
 
   try {
     const dbRef = ref(database, `rooms/${settings.roomCode}/students/${userId}`);
@@ -105,15 +112,15 @@ export async function saveExamAttemptToOnlineDB(
   try {
     // 1. Save to global room attempts list
     const attemptRef = ref(database, `rooms/${settings.roomCode}/examAttempts/${attempt.id}`);
-    await set(attemptRef, {
+    await set(attemptRef, cleanForFirebase({
       ...attempt,
       userId,
       savedAt: new Date().toISOString(),
-    });
+    }));
 
     // 2. Also save to user specific attempts map
     const userAttemptRef = ref(database, `rooms/${settings.roomCode}/students/${userId}/userData/examAttemptsMap/${attempt.id}`);
-    await set(userAttemptRef, attempt);
+    await set(userAttemptRef, cleanForFirebase(attempt));
 
     return { success: true, message: 'Đã lưu lịch sử làm bài vào DB thành công' };
   } catch (err: any) {
@@ -207,10 +214,10 @@ export async function saveExamToOnlineDB(exam: Exam): Promise<{ success: boolean
 
   try {
     const examRef = ref(database, `rooms/${settings.roomCode}/exams/${exam.id}`);
-    await set(examRef, {
+    await set(examRef, cleanForFirebase({
       ...exam,
       updatedAt: new Date().toISOString(),
-    });
+    }));
     return { success: true, message: 'Đã lưu đề thi lên DB thành công' };
   } catch (err: any) {
     console.error('Firebase saveExam error:', err);
@@ -278,10 +285,10 @@ export async function saveQuestionToOnlineDB(question: Question): Promise<{ succ
 
   try {
     const qRef = ref(database, `rooms/${settings.roomCode}/questions/${question.id}`);
-    await set(qRef, {
+    await set(qRef, cleanForFirebase({
       ...question,
       updatedAt: new Date().toISOString(),
-    });
+    }));
     return { success: true, message: 'Đã lưu câu hỏi lên DB' };
   } catch (err: any) {
     console.error('Firebase saveQuestion error:', err);
@@ -306,10 +313,10 @@ export async function saveQuestionsToOnlineDB(questions: Question[]): Promise<{ 
     const updates: Record<string, any> = {};
     const timestamp = new Date().toISOString();
     questions.forEach((q) => {
-      updates[`rooms/${settings.roomCode}/questions/${q.id}`] = {
+      updates[`rooms/${settings.roomCode}/questions/${q.id}`] = cleanForFirebase({
         ...q,
         updatedAt: timestamp,
-      };
+      });
     });
     await update(ref(database), updates);
     return { success: true, message: `Đã lưu ${questions.length} câu hỏi lên DB thành công` };

@@ -326,13 +326,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 2. Subscribe to Custom Questions on DB
+    // 2. Subscribe to Custom Questions on DB (Merge with local questions to prevent data loss)
     const unsubQuestions = subscribeToQuestionsFromOnlineDB((cloudQuestions) => {
       if (cloudQuestions && Array.isArray(cloudQuestions)) {
-        setCustomQuestions(cloudQuestions);
-        try {
-          localStorage.setItem('edu10_custom_questions', JSON.stringify(cloudQuestions));
-        } catch (_) {}
+        setCustomQuestions((prevLocal) => {
+          const mergedMap = new Map<string, Question>();
+          // Retain all locally stored questions first
+          try {
+            const raw = localStorage.getItem('edu10_custom_questions');
+            if (raw) {
+              const fromStorage: Question[] = JSON.parse(raw);
+              fromStorage.forEach((q) => mergedMap.set(q.id, q));
+            }
+          } catch (_) {}
+          prevLocal.forEach((q) => mergedMap.set(q.id, q));
+          // Merge incoming cloud questions
+          cloudQuestions.forEach((q) => mergedMap.set(q.id, q));
+
+          const merged = Array.from(mergedMap.values());
+          try {
+            localStorage.setItem('edu10_custom_questions', JSON.stringify(merged));
+          } catch (_) {}
+          return merged;
+        });
       }
     });
 
