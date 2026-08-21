@@ -135,6 +135,7 @@ export const AdminPanel: React.FC = () => {
   // Question Management States
   const [searchQuestionQuery, setSearchQuestionQuery] = useState<string>('');
   const [selectedQuestionTopic, setSelectedQuestionTopic] = useState<string>('all');
+  const [questionSubjectFilter, setQuestionSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
   const [showQModal, setShowQModal] = useState<boolean>(false);
   const [editingQ, setEditingQ] = useState<Question | null>(null);
 
@@ -162,6 +163,8 @@ export const AdminPanel: React.FC = () => {
   const [examDesc, setExamDesc] = useState<string>('');
   const [examTime, setExamTime] = useState<number>(60);
   const [selectedQIds, setSelectedQIds] = useState<string[]>([]);
+  const [examSubjectFilter, setExamSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
+  const [searchExamQuery, setSearchExamQuery] = useState<string>('');
 
   // ── AI Tạo Đề Modal ──────────────────────────────────────────
   const [showAiCreateModal, setShowAiCreateModal] = useState<boolean>(false);
@@ -197,6 +200,43 @@ export const AdminPanel: React.FC = () => {
       setAiCreateError(e.message || 'Lỗi không xác định');
     } finally {
       setAiCreateLoading(false);
+    }
+  };
+
+  // ── AI Soạn Câu Hỏi Tự Động Modal ─────────────────────────────
+  const [showAiQModal, setShowAiQModal] = useState<boolean>(false);
+  const [aiQSubject, setAiQSubject] = useState<SubjectId>('math');
+  const [aiQTopicId, setAiQTopicId] = useState<string>('math_pt_bac_hai_viet');
+  const [aiQCount, setAiQCount] = useState<number>(3);
+  const [aiQDiff, setAiQDiff] = useState<'standard' | 'advanced' | 'challenge'>('standard');
+  const [aiQPrompt, setAiQPrompt] = useState<string>('');
+  const [aiQLoading, setAiQLoading] = useState<boolean>(false);
+  const [aiQProgress, setAiQProgress] = useState<string>('');
+  const [aiQSuccessMsg, setAiQSuccessMsg] = useState<string>('');
+  const [aiQError, setAiQError] = useState<string>('');
+
+  const handleAiGenerateQuestions = async () => {
+    setAiQLoading(true);
+    setAiQError('');
+    setAiQSuccessMsg('');
+    try {
+      const apiKey = getStoredApiKey();
+      const config: ExamGenerationConfig = {
+        subject: aiQSubject,
+        totalQuestions: aiQCount,
+        difficulty: aiQDiff,
+        timeLimitMinutes: 30,
+        focusTopics: [aiQTopicId as TopicId],
+        customPrompt: aiQPrompt,
+        title: `Bộ câu hỏi ${aiQSubject === 'math' ? 'Toán' : 'Anh'}`,
+      };
+      const result = await generateExamWithAI(apiKey, config, setAiQProgress);
+      result.questions.forEach((q) => addQuestion(q));
+      setAiQSuccessMsg(`Đã tạo thành công ${result.questions.length} câu hỏi mới môn ${aiQSubject === 'math' ? 'Toán' : 'Tiếng Anh'} và lưu vào ngân hàng câu hỏi!`);
+    } catch (e: any) {
+      setAiQError(e.message || 'Lỗi không xác định khi tạo câu hỏi');
+    } finally {
+      setAiQLoading(false);
     }
   };
 
@@ -329,17 +369,134 @@ export const AdminPanel: React.FC = () => {
   // Class Overview Stats
   const totalStudents = studentUsers.length;
   const totalSubmissions = allStudentStats.reduce((s, st) => s + st.totalAttemptsCount, 0);
+
+  const mathStudentStats = allStudentStats.filter((st) => st.mathAttempts.length > 0);
   const classAvgMath =
-    allStudentStats.length > 0
-      ? parseFloat((allStudentStats.reduce((s, st) => s + st.avgMath, 0) / allStudentStats.length).toFixed(2))
-      : 8.3;
+    mathStudentStats.length > 0
+      ? parseFloat((mathStudentStats.reduce((s, st) => s + st.avgMath, 0) / mathStudentStats.length).toFixed(1))
+      : 0;
+
+  const engStudentStats = allStudentStats.filter((st) => st.engAttempts.length > 0);
   const classAvgEng =
-    allStudentStats.length > 0
-      ? parseFloat((allStudentStats.reduce((s, st) => s + st.avgEng, 0) / allStudentStats.length).toFixed(2))
-      : 8.4;
+    engStudentStats.length > 0
+      ? parseFloat((engStudentStats.reduce((s, st) => s + st.avgEng, 0) / engStudentStats.length).toFixed(1))
+      : 0;
+
   const targetReachCount = allStudentStats.filter((st) => st.isTargetReached).length;
-  const targetReachPercent = Math.round((targetReachCount / (totalStudents || 1)) * 100);
+  const targetReachPercent = totalStudents > 0 ? Math.round((targetReachCount / totalStudents) * 100) : 0;
   const totalClassMistakes = allStudentStats.reduce((s, st) => s + st.activeMistakesCount, 0);
+
+  // Real Topic Performance Computation across all students
+  const computeTopicRealStats = (topicId: string) => {
+    let totalQuestionsAnswered = 0;
+    let totalQuestionsCorrect = 0;
+    let activeMistakesInTopic = 0;
+
+    // Collect questions belonging to this topic
+    const topicQIds = new Set(questions.filter((q) => q.topicId === topicId).map((q) => q.id));
+
+    studentUsers.forEach((stu) => {
+      const uData = getUserScopedData(stu.id);
+
+      // 1. Check Exam Attempts
+      (uData.examAttempts || []).forEach((att) => {
+        if (att.userAnswers) {
+          Object.entries(att.userAnswers).forEach(([qId, userChoice]) => {
+            const q = getQuestionById(qId);
+            if (q && q.topicId === topicId) {
+              totalQuestionsAnswered++;
+              if (userChoice === q.correctOption) {
+                totalQuestionsCorrect++;
+              }
+            } else if (topicQIds.has(qId)) {
+              totalQuestionsAnswered++;
+              const questionObj = getQuestionById(qId);
+              if (questionObj && userChoice === questionObj.correctOption) {
+                totalQuestionsCorrect++;
+              }
+            }
+          });
+        }
+      });
+
+      // 2. Check Practice Sessions
+      (uData.practiceSessions || []).forEach((sess) => {
+        if (sess.topicId === topicId) {
+          totalQuestionsAnswered += sess.totalQuestions || 0;
+          totalQuestionsCorrect += sess.correctCount || 0;
+        } else if (sess.userAnswers) {
+          Object.entries(sess.userAnswers).forEach(([qId, userChoice]) => {
+            const q = getQuestionById(qId);
+            if (q && q.topicId === topicId) {
+              totalQuestionsAnswered++;
+              if (userChoice === q.correctOption) {
+                totalQuestionsCorrect++;
+              }
+            }
+          });
+        }
+      });
+
+      // 3. Check Mistakes
+      Object.values(uData.mistakes || {}).forEach((m: any) => {
+        if (!m.mastered) {
+          const q = getQuestionById(m.questionId);
+          if (q && q.topicId === topicId) {
+            activeMistakesInTopic++;
+          }
+        }
+      });
+    });
+
+    const hasData = totalQuestionsAnswered > 0;
+    const accuracy = hasData ? Math.round((totalQuestionsCorrect / totalQuestionsAnswered) * 100) : null;
+    const isDanger = hasData ? (accuracy! < 70 || activeMistakesInTopic > 0) : activeMistakesInTopic > 0;
+
+    return {
+      totalQuestionsAnswered,
+      totalQuestionsCorrect,
+      activeMistakesInTopic,
+      accuracy,
+      isDanger,
+      hasData,
+    };
+  };
+
+  // Real Grade Distribution across all students
+  const totalEvaluated = studentUsers.length || 1;
+  const studentsWithExams = studentUsers.filter((stu) => (getUserScopedData(stu.id).examAttempts || []).length > 0);
+
+  const gradeTiers = {
+    excellent: studentsWithExams.filter((stu) => {
+      const atts = getUserScopedData(stu.id).examAttempts || [];
+      const avg = atts.reduce((s, a) => s + a.score, 0) / atts.length;
+      return avg >= 9.0;
+    }),
+    good: studentsWithExams.filter((stu) => {
+      const atts = getUserScopedData(stu.id).examAttempts || [];
+      const avg = atts.reduce((s, a) => s + a.score, 0) / atts.length;
+      return avg >= 8.0 && avg < 9.0;
+    }),
+    fair: studentsWithExams.filter((stu) => {
+      const atts = getUserScopedData(stu.id).examAttempts || [];
+      const avg = atts.reduce((s, a) => s + a.score, 0) / atts.length;
+      return avg >= 6.5 && avg < 8.0;
+    }),
+    average: studentsWithExams.filter((stu) => {
+      const atts = getUserScopedData(stu.id).examAttempts || [];
+      const avg = atts.reduce((s, a) => s + a.score, 0) / atts.length;
+      return avg < 6.5;
+    }),
+    unattempted: studentUsers.filter((stu) => (getUserScopedData(stu.id).examAttempts || []).length === 0),
+  };
+
+  const gradeDistribution = {
+    excellent: { count: gradeTiers.excellent.length, percent: Math.round((gradeTiers.excellent.length / totalEvaluated) * 100) },
+    good: { count: gradeTiers.good.length, percent: Math.round((gradeTiers.good.length / totalEvaluated) * 100) },
+    fair: { count: gradeTiers.fair.length, percent: Math.round((gradeTiers.fair.length / totalEvaluated) * 100) },
+    average: { count: gradeTiers.average.length, percent: Math.round((gradeTiers.average.length / totalEvaluated) * 100) },
+    unattempted: { count: gradeTiers.unattempted.length, percent: Math.round((gradeTiers.unattempted.length / totalEvaluated) * 100) },
+  };
 
   // Sibling Focus Stat
   const siblingStat = allStudentStats.find((s) => s.student.id === siblingId) || allStudentStats[0];
@@ -574,12 +731,36 @@ export const AdminPanel: React.FC = () => {
 
         <div className="flex flex-wrap gap-2 shrink-0">
           <button
+            onClick={() => setShowAiCreateModal(true)}
+            className="px-3.5 py-2.5 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-md border border-blue-400/40"
+          >
+            <Wand2 className="w-4 h-4 text-amber-300" />
+            <span>🤖 AI Tạo Đề Mới</span>
+          </button>
+
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="px-3.5 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-md border border-amber-400/40"
+          >
+            <Upload className="w-4 h-4 text-amber-200" />
+            <span>📄 Upload & Trích Xuất</span>
+          </button>
+
+          <button
+            onClick={() => setShowAiQModal(true)}
+            className="px-3.5 py-2.5 bg-white/20 hover:bg-white/30 text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs border border-white/20"
+          >
+            <Sparkles className="w-4 h-4 text-yellow-300" />
+            <span>✨ AI Soạn Câu Hỏi</span>
+          </button>
+
+          <button
             onClick={() => setShowCloudModal(true)}
-            className="px-3.5 py-2.5 bg-white/20 hover:bg-white/30 text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs"
+            className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs border border-white/15"
             title="Cài đặt mã phòng & đồng bộ Online DB"
           >
             <Database className="w-4 h-4 text-[#8BA888]" />
-            <span>DB Online & Mã Phòng</span>
+            <span>DB Online</span>
           </button>
 
           <button
@@ -587,12 +768,12 @@ export const AdminPanel: React.FC = () => {
             className="px-4 py-2.5 bg-[#8BA888] hover:bg-[#789675] text-white rounded-2xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
           >
             <Send className="w-4 h-4" />
-            <span>Giao bài từ xa cho em</span>
+            <span>Giao bài từ xa</span>
           </button>
 
           <button
             onClick={() => setShowAddStudentModal(true)}
-            className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
+            className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
           >
             <UserPlus className="w-4 h-4" />
             <span>Thêm học sinh</span>
@@ -948,7 +1129,7 @@ export const AdminPanel: React.FC = () => {
                 <div className="flex space-x-1 bg-[#FAF9F6] p-1 rounded-xl border border-[#D9D2C5] text-[11px] font-bold">
                   <button
                     onClick={() => setSelectedSubjectFilter('all')}
-                    className={`px-2 py-0.5 rounded-lg transition ${
+                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
                       selectedSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
                     }`}
                   >
@@ -956,7 +1137,7 @@ export const AdminPanel: React.FC = () => {
                   </button>
                   <button
                     onClick={() => setSelectedSubjectFilter('math')}
-                    className={`px-2 py-0.5 rounded-lg transition ${
+                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
                       selectedSubjectFilter === 'math' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
                     }`}
                   >
@@ -964,7 +1145,7 @@ export const AdminPanel: React.FC = () => {
                   </button>
                   <button
                     onClick={() => setSelectedSubjectFilter('english')}
-                    className={`px-2 py-0.5 rounded-lg transition ${
+                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
                       selectedSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
                     }`}
                   >
@@ -980,9 +1161,8 @@ export const AdminPanel: React.FC = () => {
                     <span className="text-[11px] font-bold text-[#5A5A40] uppercase tracking-wider block">
                       📐 Chuyên đề Môn Toán 9 Vào 10:
                     </span>
-                    {MATH_TOPICS_META.slice(0, 5).map((t, idx) => {
-                      const mockAcc = idx === 0 ? 90 : idx === 1 ? 85 : idx === 3 ? 68 : idx === 4 ? 72 : 62;
-                      const isDanger = mockAcc < 70;
+                    {MATH_TOPICS_META.map((t) => {
+                      const topicStat = computeTopicRealStats(t.id);
                       return (
                         <div
                           key={t.id}
@@ -991,21 +1171,33 @@ export const AdminPanel: React.FC = () => {
                           <div className="flex items-center space-x-2 min-w-0 flex-1 pr-3">
                             <span
                               className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                                isDanger ? 'bg-[#E67E22] animate-ping' : 'bg-[#8BA888]'
+                                topicStat.hasData
+                                  ? topicStat.isDanger
+                                    ? 'bg-[#E67E22] animate-ping'
+                                    : 'bg-[#8BA888]'
+                                  : 'bg-[#C5C0B5]'
                               }`}
                             />
                             <span className="font-bold text-[#3D3D2D] truncate">{t.nameVi}</span>
                           </div>
                           <div className="flex items-center space-x-3 shrink-0">
-                            <div className="w-24 bg-[#E8E2D9] h-2 rounded-full overflow-hidden hidden sm:block">
-                              <div
-                                className={`h-full rounded-full ${isDanger ? 'bg-[#E67E22]' : 'bg-[#8BA888]'}`}
-                                style={{ width: `${mockAcc}%` }}
-                              />
-                            </div>
-                            <span className={`font-extrabold ${isDanger ? 'text-[#E67E22]' : 'text-[#5A5A40]'}`}>
-                              {mockAcc}% {isDanger && '⚠️ Cần ôn'}
-                            </span>
+                            {topicStat.hasData ? (
+                              <>
+                                <div className="w-24 bg-[#E8E2D9] h-2 rounded-full overflow-hidden hidden sm:block">
+                                  <div
+                                    className={`h-full rounded-full ${topicStat.isDanger ? 'bg-[#E67E22]' : 'bg-[#8BA888]'}`}
+                                    style={{ width: `${topicStat.accuracy}%` }}
+                                  />
+                                </div>
+                                <span className={`font-extrabold ${topicStat.isDanger ? 'text-[#E67E22]' : 'text-[#5A5A40]'}`}>
+                                  {topicStat.accuracy}% {topicStat.isDanger && '⚠️ Cần ôn'}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-[11px] text-[#8A8A70] italic">
+                                Chưa có bài làm
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
@@ -1018,9 +1210,8 @@ export const AdminPanel: React.FC = () => {
                     <span className="text-[11px] font-bold text-[#5A5A40] uppercase tracking-wider block">
                       🇬🇧 Chuyên đề Môn Tiếng Anh 9 Vào 10:
                     </span>
-                    {TOPICS_META.slice(0, 5).map((t, idx) => {
-                      const mockAcc = idx === 0 ? 88 : idx === 1 ? 82 : idx === 4 ? 65 : idx === 5 ? 69 : 78;
-                      const isDanger = mockAcc < 70;
+                    {TOPICS_META.map((t) => {
+                      const topicStat = computeTopicRealStats(t.id);
                       return (
                         <div
                           key={t.id}
@@ -1029,21 +1220,33 @@ export const AdminPanel: React.FC = () => {
                           <div className="flex items-center space-x-2 min-w-0 flex-1 pr-3">
                             <span
                               className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                                isDanger ? 'bg-[#E67E22] animate-ping' : 'bg-[#8BA888]'
+                                topicStat.hasData
+                                  ? topicStat.isDanger
+                                    ? 'bg-[#E67E22] animate-ping'
+                                    : 'bg-[#8BA888]'
+                                  : 'bg-[#C5C0B5]'
                               }`}
                             />
                             <span className="font-bold text-[#3D3D2D] truncate">{t.nameVi}</span>
                           </div>
                           <div className="flex items-center space-x-3 shrink-0">
-                            <div className="w-24 bg-[#E8E2D9] h-2 rounded-full overflow-hidden hidden sm:block">
-                              <div
-                                className={`h-full rounded-full ${isDanger ? 'bg-[#E67E22]' : 'bg-[#8BA888]'}`}
-                                style={{ width: `${mockAcc}%` }}
-                              />
-                            </div>
-                            <span className={`font-extrabold ${isDanger ? 'text-[#E67E22]' : 'text-[#5A5A40]'}`}>
-                              {mockAcc}% {isDanger && '⚠️ Cần ôn'}
-                            </span>
+                            {topicStat.hasData ? (
+                              <>
+                                <div className="w-24 bg-[#E8E2D9] h-2 rounded-full overflow-hidden hidden sm:block">
+                                  <div
+                                    className={`h-full rounded-full ${topicStat.isDanger ? 'bg-[#E67E22]' : 'bg-[#8BA888]'}`}
+                                    style={{ width: `${topicStat.accuracy}%` }}
+                                  />
+                                </div>
+                                <span className={`font-extrabold ${topicStat.isDanger ? 'text-[#E67E22]' : 'text-[#5A5A40]'}`}>
+                                  {topicStat.accuracy}% {topicStat.isDanger && '⚠️ Cần ôn'}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-[11px] text-[#8A8A70] italic">
+                                Chưa có bài làm
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
@@ -1057,38 +1260,63 @@ export const AdminPanel: React.FC = () => {
             <div className="lg:col-span-5 space-y-4">
               {/* Grade Tier Chart */}
               <div className="bg-white rounded-[2.5rem] p-6 border border-[#EAE7E0] shadow-xs space-y-3.5">
-                <h3 className="text-base font-bold text-[#3D3D2D]">Phổ Điểm Tuyển Sinh Cả Lớp</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-bold text-[#3D3D2D]">Phổ Điểm Tuyển Sinh Cả Lớp</h3>
+                  <span className="text-[11px] text-[#8A8A70]">Theo điểm thi thực tế</span>
+                </div>
 
                 <div className="space-y-2.5 text-xs">
                   <div>
                     <div className="flex justify-between font-bold text-[#3D3D2D] mb-1">
-                      <span className="text-emerald-700">Xuất sắc (9.0 - 10.0)</span>
-                      <span>2 em (40%)</span>
+                      <span className="text-emerald-700">Xuất sắc (9.0 - 10.0đ)</span>
+                      <span>{gradeDistribution.excellent.count} em ({gradeDistribution.excellent.percent}%)</span>
                     </div>
                     <div className="w-full bg-[#FAF9F6] h-2 rounded-full border border-[#EAE7E0] overflow-hidden">
-                      <div className="bg-emerald-600 h-full rounded-full" style={{ width: '40%' }} />
+                      <div className="bg-emerald-600 h-full rounded-full transition-all duration-500" style={{ width: `${gradeDistribution.excellent.percent}%` }} />
                     </div>
                   </div>
 
                   <div>
                     <div className="flex justify-between font-bold text-[#3D3D2D] mb-1">
-                      <span className="text-[#5A5A40]">Giỏi (8.0 - 8.9)</span>
-                      <span>2 em (40%)</span>
+                      <span className="text-[#5A5A40]">Giỏi (8.0 - 8.9đ)</span>
+                      <span>{gradeDistribution.good.count} em ({gradeDistribution.good.percent}%)</span>
                     </div>
                     <div className="w-full bg-[#FAF9F6] h-2 rounded-full border border-[#EAE7E0] overflow-hidden">
-                      <div className="bg-[#5A5A40] h-full rounded-full" style={{ width: '40%' }} />
+                      <div className="bg-[#5A5A40] h-full rounded-full transition-all duration-500" style={{ width: `${gradeDistribution.good.percent}%` }} />
                     </div>
                   </div>
 
                   <div>
                     <div className="flex justify-between font-bold text-[#3D3D2D] mb-1">
-                      <span className="text-[#E67E22]">Khá (6.5 - 7.9)</span>
-                      <span>1 em (20%)</span>
+                      <span className="text-[#E67E22]">Khá (6.5 - 7.9đ)</span>
+                      <span>{gradeDistribution.fair.count} em ({gradeDistribution.fair.percent}%)</span>
                     </div>
                     <div className="w-full bg-[#FAF9F6] h-2 rounded-full border border-[#EAE7E0] overflow-hidden">
-                      <div className="bg-[#E67E22] h-full rounded-full" style={{ width: '20%' }} />
+                      <div className="bg-[#E67E22] h-full rounded-full transition-all duration-500" style={{ width: `${gradeDistribution.fair.percent}%` }} />
                     </div>
                   </div>
+
+                  <div>
+                    <div className="flex justify-between font-bold text-[#3D3D2D] mb-1">
+                      <span className="text-red-700">Cần cố gắng (&lt; 6.5đ)</span>
+                      <span>{gradeDistribution.average.count} em ({gradeDistribution.average.percent}%)</span>
+                    </div>
+                    <div className="w-full bg-[#FAF9F6] h-2 rounded-full border border-[#EAE7E0] overflow-hidden">
+                      <div className="bg-red-500 h-full rounded-full transition-all duration-500" style={{ width: `${gradeDistribution.average.percent}%` }} />
+                    </div>
+                  </div>
+
+                  {gradeDistribution.unattempted.count > 0 && (
+                    <div>
+                      <div className="flex justify-between font-bold text-[#8A8A70] mb-1">
+                        <span>Chưa thi thử lần nào</span>
+                        <span>{gradeDistribution.unattempted.count} em ({gradeDistribution.unattempted.percent}%)</span>
+                      </div>
+                      <div className="w-full bg-[#FAF9F6] h-2 rounded-full border border-[#EAE7E0] overflow-hidden">
+                        <div className="bg-[#C5C0B5] h-full rounded-full transition-all duration-500" style={{ width: `${gradeDistribution.unattempted.percent}%` }} />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1274,273 +1502,400 @@ export const AdminPanel: React.FC = () => {
       {/* ========================================================================= */}
       {/* 📚 TAB: QUESTIONS BANK                                                    */}
       {/* ========================================================================= */}
-      {activeAdminTab === 'questions' && (
-        <div className="space-y-4 animate-in fade-in">
-          <div className="bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-sm flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-1 items-center space-x-3 min-w-[280px]">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-[#8A8A70] absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  value={searchQuestionQuery}
-                  onChange={(e) => setSearchQuestionQuery(e.target.value)}
-                  placeholder="Tìm nội dung câu hỏi, đáp án, giải thích..."
-                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:ring-1 focus:ring-[#5A5A40]"
-                />
+      {activeAdminTab === 'questions' && (() => {
+        const mathQCount = questions.filter((q) => q.subject === 'math').length;
+        const engQCount = questions.filter((q) => (q.subject || 'english') === 'english').length;
+
+        const filteredQuestions = questions.filter((q) => {
+          if (questionSubjectFilter === 'math' && q.subject !== 'math') return false;
+          if (questionSubjectFilter === 'english' && (q.subject || 'english') !== 'english') return false;
+          if (selectedQuestionTopic !== 'all' && q.topicId !== selectedQuestionTopic) return false;
+          if (
+            searchQuestionQuery &&
+            !q.content.toLowerCase().includes(searchQuestionQuery.toLowerCase()) &&
+            !q.explanation.toLowerCase().includes(searchQuestionQuery.toLowerCase())
+          ) {
+            return false;
+          }
+          return true;
+        });
+
+        return (
+          <div className="space-y-4 animate-in fade-in">
+            {/* Header Toolbar */}
+            <div className="bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+              {/* Subject Tabs */}
+              <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] text-xs font-bold shrink-0">
+                <button
+                  onClick={() => setQuestionSubjectFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                    questionSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                  }`}
+                >
+                  Tất cả ({questions.length})
+                </button>
+                <button
+                  onClick={() => setQuestionSubjectFilter('math')}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                    questionSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
+                  }`}
+                >
+                  <span>📐 Toán ({mathQCount})</span>
+                </button>
+                <button
+                  onClick={() => setQuestionSubjectFilter('english')}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                    questionSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                  }`}
+                >
+                  <span>🇬🇧 Tiếng Anh ({engQCount})</span>
+                </button>
               </div>
 
-              <select
-                value={selectedQuestionTopic}
-                onChange={(e) => setSelectedQuestionTopic(e.target.value)}
-                className="px-3 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl text-[#4A4A4A] outline-hidden cursor-pointer"
-              >
-                <option value="all">Tất cả chuyên đề ({questions.length})</option>
-                <optgroup label="📐 Môn Toán">
-                  {MATH_TOPICS_META.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.nameVi}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="🇬🇧 Môn Tiếng Anh">
-                  {TOPICS_META.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.nameVi}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
+              {/* Search & Topic Selector */}
+              <div className="flex flex-1 items-center space-x-2 min-w-0">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-[#8A8A70] absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={searchQuestionQuery}
+                    onChange={(e) => setSearchQuestionQuery(e.target.value)}
+                    placeholder="Tìm câu hỏi, công thức, từ vựng..."
+                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:ring-1 focus:ring-[#5A5A40]"
+                  />
+                </div>
+
+                <select
+                  value={selectedQuestionTopic}
+                  onChange={(e) => setSelectedQuestionTopic(e.target.value)}
+                  className="px-3 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl text-[#4A4A4A] outline-hidden cursor-pointer"
+                >
+                  <option value="all">Tất cả chuyên đề</option>
+                  {(questionSubjectFilter === 'all' || questionSubjectFilter === 'math') && (
+                    <optgroup label="📐 Môn Toán">
+                      {MATH_TOPICS_META.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.nameVi}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {(questionSubjectFilter === 'all' || questionSubjectFilter === 'english') && (
+                    <optgroup label="🇬🇧 Môn Tiếng Anh">
+                      {TOPICS_META.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.nameVi}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center space-x-2 shrink-0">
+                <button
+                  onClick={() => setShowAiQModal(true)}
+                  className="px-3.5 py-2 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:opacity-90 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                  <span>✨ AI Soạn Câu Hỏi</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setEditingQ(null);
+                    setQSubject(questionSubjectFilter === 'math' ? 'math' : 'english');
+                    setTopicId(questionSubjectFilter === 'math' ? 'math_can_thuc' : 'grammar');
+                    setContent('');
+                    setOpt0('A. ');
+                    setOpt1('B. ');
+                    setOpt2('C. ');
+                    setOpt3('D. ');
+                    setCorrectOption(0);
+                    setExplanation('');
+                    setShowQModal(true);
+                  }}
+                  className="px-3.5 py-2 bg-[#8BA888] hover:bg-[#789675] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Thêm thủ công</span>
+                </button>
+              </div>
             </div>
 
-            <button
-              onClick={() => {
-                setEditingQ(null);
-                setQSubject('math');
-                setTopicId('math_can_thuc');
-                setContent('');
-                setOpt0('A. ');
-                setOpt1('B. ');
-                setOpt2('C. ');
-                setOpt3('D. ');
-                setCorrectOption(0);
-                setExplanation('');
-                setShowQModal(true);
-              }}
-              className="px-4 py-2 bg-[#8BA888] hover:bg-[#789675] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Thêm câu hỏi mới</span>
-            </button>
-          </div>
-
-          {/* Question List */}
-          <div className="space-y-3">
-            {questions
-              .filter((q) => {
-                if (selectedQuestionTopic !== 'all' && q.topicId !== selectedQuestionTopic) return false;
-                if (
-                  searchQuestionQuery &&
-                  !q.content.toLowerCase().includes(searchQuestionQuery.toLowerCase()) &&
-                  !q.explanation.toLowerCase().includes(searchQuestionQuery.toLowerCase())
-                ) {
-                  return false;
-                }
-                return true;
-              })
-              .map((q, idx) => (
-                <div
-                  key={q.id}
-                  className="p-5 bg-white rounded-[2rem] border border-[#EAE7E0] shadow-sm hover:border-[#D9D2C5] transition space-y-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="px-2.5 py-0.5 bg-[#F5F2ED] text-[#5A5A40] text-xs font-bold rounded-lg border border-[#D9D2C5]">
-                        #{idx + 1} • {q.subject === 'math' ? '📐 Toán' : '🇬🇧 Anh'} • {q.topicId.replace('math_', '').replace(/_/g, ' ')}
-                      </span>
-                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-[#F5F2ED] text-[#6B6B54] uppercase">
-                        {q.difficulty}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center space-x-1">
-                      <button
-                        onClick={() => {
-                          setEditingQ(q);
-                          setQSubject(q.subject || 'english');
-                          setTopicId(q.topicId);
-                          setContent(q.content);
-                          setOpt0(q.options[0] || '');
-                          setOpt1(q.options[1] || '');
-                          setOpt2(q.options[2] || '');
-                          setOpt3(q.options[3] || '');
-                          setCorrectOption(q.correctOption);
-                          setExplanation(q.explanation);
-                          setShowQModal(true);
-                        }}
-                        className="p-1.5 text-[#8A8A70] hover:text-[#5A5A40] rounded-lg hover:bg-[#FAF9F6] transition cursor-pointer"
-                        title="Chỉnh sửa"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm('Bạn có chắc muốn xóa câu hỏi này?')) deleteQuestion(q.id);
-                        }}
-                        className="p-1.5 text-[#8A8A70] hover:text-red-600 rounded-lg hover:bg-red-50 transition cursor-pointer"
-                        title="Xóa"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="text-xs sm:text-sm font-bold text-[#3D3D2D] whitespace-pre-line">{q.content}</div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    {q.options.map((opt, oIdx) => (
-                      <div
-                        key={oIdx}
-                        className={`p-2 rounded-xl border whitespace-pre-line ${
-                          oIdx === q.correctOption
-                            ? 'bg-[#EBF2EB] border-[#8BA888] text-[#3D3D2D] font-bold'
-                            : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#6B6B54]'
-                        }`}
-                      >
-                        {opt}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="text-[11px] text-[#8A8A70] pt-1 whitespace-pre-line">
-                    <strong>Lời giải:</strong> {q.explanation}
-                  </div>
+            {/* Question List */}
+            <div className="space-y-3">
+              {filteredQuestions.length === 0 ? (
+                <div className="p-8 text-center bg-white rounded-3xl border border-[#EAE7E0] text-xs text-[#8A8A70]">
+                  Không tìm thấy câu hỏi nào phù hợp với bộ lọc.
                 </div>
-              ))}
+              ) : (
+                filteredQuestions.map((q, idx) => (
+                  <div
+                    key={q.id}
+                    className="p-5 bg-white rounded-[2rem] border border-[#EAE7E0] shadow-sm hover:border-[#D9D2C5] transition space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                        <span className="px-2.5 py-0.5 bg-[#F5F2ED] text-[#5A5A40] text-xs font-bold rounded-lg border border-[#D9D2C5]">
+                          #{idx + 1} • {q.subject === 'math' ? '📐 Toán' : '🇬🇧 Anh'} • {q.topicId.replace('math_', '').replace(/_/g, ' ')}
+                        </span>
+                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-[#F5F2ED] text-[#6B6B54] uppercase">
+                          {q.difficulty}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center space-x-1">
+                        <button
+                          onClick={() => {
+                            setEditingQ(q);
+                            setQSubject(q.subject || 'english');
+                            setTopicId(q.topicId);
+                            setContent(q.content);
+                            setOpt0(q.options[0] || '');
+                            setOpt1(q.options[1] || '');
+                            setOpt2(q.options[2] || '');
+                            setOpt3(q.options[3] || '');
+                            setCorrectOption(q.correctOption);
+                            setExplanation(q.explanation);
+                            setShowQModal(true);
+                          }}
+                          className="p-1.5 text-[#8A8A70] hover:text-[#5A5A40] rounded-lg hover:bg-[#FAF9F6] transition cursor-pointer"
+                          title="Chỉnh sửa"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('Bạn có chắc muốn xóa câu hỏi này?')) deleteQuestion(q.id);
+                          }}
+                          className="p-1.5 text-[#8A8A70] hover:text-red-600 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                          title="Xóa"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="text-xs sm:text-sm font-bold text-[#3D3D2D] whitespace-pre-line">{q.content}</div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                      {q.options.map((opt, oIdx) => (
+                        <div
+                          key={oIdx}
+                          className={`p-2 rounded-xl border whitespace-pre-line ${
+                            oIdx === q.correctOption
+                              ? 'bg-[#EBF2EB] border-[#8BA888] text-[#3D3D2D] font-bold'
+                              : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#6B6B54]'
+                          }`}
+                        >
+                          {opt}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="text-[11px] text-[#8A8A70] pt-1 whitespace-pre-line">
+                      <strong>Lời giải:</strong> {q.explanation}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* 🎓 TAB: EXAMS LIST                                                        */}
       {/* ========================================================================= */}
-      {activeAdminTab === 'exams' && (
-        <div className="space-y-4 animate-in fade-in">
-          {/* Header */}
-          <div className="flex flex-wrap justify-between items-center bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-sm gap-2">
-            <h3 className="text-sm font-bold text-[#3D3D2D]">Danh sách Đề thi Tuyển sinh ({exams.length})</h3>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setShowAiCreateModal(true)}
-                className="px-4 py-2 bg-gradient-to-r from-[#1E3A8A] to-[#2563EB] hover:opacity-90 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
-              >
-                <Wand2 className="w-4 h-4" />
-                <span>🤖 AI Tạo Đề Mới</span>
-              </button>
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
-              >
-                <Upload className="w-4 h-4" />
-                <span>📄 Upload & Trích Xuất</span>
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedQIds(questions.slice(0, 12).map((q) => q.id));
-                  setShowExamModal(true);
-                }}
-                className="px-4 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Tạo đề thủ công</span>
-              </button>
-            </div>
-          </div>
+      {activeAdminTab === 'exams' && (() => {
+        const mathExamsCount = exams.filter((e) => e.subject === 'math').length;
+        const engExamsCount = exams.filter((e) => (e.subject || 'english') === 'english').length;
 
-          {/* 2 Feature Card Banners */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* AI Create Card */}
-            <div className="bg-gradient-to-br from-[#1E3A8A] to-[#3B82F6] text-white p-5 rounded-[2rem] shadow-md space-y-3">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center">
-                  <Wand2 className="w-5 h-5 text-amber-300" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm">🤖 AI Tạo Đề Nhanh</h4>
-                  <p className="text-[11px] text-blue-100">Gemini AI biên soạn đề chuẩn kèm lời giải chi tiết</p>
-                </div>
+        const filteredExams = exams.filter((ex) => {
+          if (examSubjectFilter === 'math' && ex.subject !== 'math') return false;
+          if (examSubjectFilter === 'english' && (ex.subject || 'english') !== 'english') return false;
+          if (
+            searchExamQuery &&
+            !ex.title.toLowerCase().includes(searchExamQuery.toLowerCase()) &&
+            !ex.code.toLowerCase().includes(searchExamQuery.toLowerCase())
+          ) {
+            return false;
+          }
+          return true;
+        });
+
+        return (
+          <div className="space-y-4 animate-in fade-in">
+            {/* Header Toolbar */}
+            <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-sm gap-3">
+              {/* Subject Tabs */}
+              <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] text-xs font-bold shrink-0">
+                <button
+                  onClick={() => setExamSubjectFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                    examSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                  }`}
+                >
+                  Tất cả ({exams.length})
+                </button>
+                <button
+                  onClick={() => setExamSubjectFilter('math')}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                    examSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
+                  }`}
+                >
+                  <span>📐 Đề Toán ({mathExamsCount})</span>
+                </button>
+                <button
+                  onClick={() => setExamSubjectFilter('english')}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                    examSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                  }`}
+                >
+                  <span>🇬🇧 Đề Tiếng Anh ({engExamsCount})</span>
+                </button>
               </div>
-              <ul className="text-[11px] text-blue-100 space-y-1 pl-1">
-                <li>✓ Chọn môn (Toán / Tiếng Anh), số câu, độ khó</li>
-                <li>✓ Nhập yêu cầu trọng tâm riêng (tuỳ chỉnh)</li>
-                <li>✓ Tự động lưu đề + câu hỏi vào hệ thống</li>
-              </ul>
-              <button
-                onClick={() => setShowAiCreateModal(true)}
-                className="w-full py-2 bg-white text-[#1E3A8A] font-bold text-xs rounded-xl hover:bg-blue-50 transition cursor-pointer"
-              >
-                Tạo đề với AI →
-              </button>
-            </div>
 
-            {/* Upload Extract Card */}
-            <div className="bg-gradient-to-br from-amber-600 to-orange-500 text-white p-5 rounded-[2rem] shadow-md space-y-3">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-amber-200" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm">📄 Upload Đề & AI Extract</h4>
-                  <p className="text-[11px] text-orange-100">Upload file đề, AI tự đọc và import câu hỏi</p>
-                </div>
+              {/* Search Bar */}
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="w-4 h-4 text-[#8A8A70] absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={searchExamQuery}
+                  onChange={(e) => setSearchExamQuery(e.target.value)}
+                  placeholder="Tìm theo tên đề, mã đề thi..."
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:ring-1 focus:ring-[#5A5A40]"
+                />
               </div>
-              <ul className="text-[11px] text-orange-100 space-y-1 pl-1">
-                <li>✓ Hỗ trợ file .txt, .md hoặc dán văn bản trực tiếp</li>
-                <li>✓ AI trích xuất câu hỏi trắc nghiệm tự động</li>
-                <li>✓ Import vào hệ thống & giao bài cho em ngay</li>
-              </ul>
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="w-full py-2 bg-white text-orange-700 font-bold text-xs rounded-xl hover:bg-orange-50 transition cursor-pointer"
-              >
-                Upload đề thi →
-              </button>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-2 shrink-0">
+                <button
+                  onClick={() => setShowAiCreateModal(true)}
+                  className="px-3.5 py-2 bg-gradient-to-r from-[#1E3A8A] to-[#2563EB] hover:opacity-90 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
+                >
+                  <Wand2 className="w-4 h-4 text-amber-300" />
+                  <span>🤖 AI Tạo Đề Mới</span>
+                </button>
+                <button
+                  onClick={() => setShowUploadModal(true)}
+                  className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>📄 Upload & Trích Xuất</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedQIds(questions.slice(0, 12).map((q) => q.id));
+                    setShowExamModal(true);
+                  }}
+                  className="px-3.5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Tạo thủ công</span>
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {exams.map((ex) => (
-              <div
-                key={ex.id}
-                className="bg-white p-6 rounded-[2.5rem] border border-[#EAE7E0] shadow-sm space-y-3"
-              >
-                <div className="flex justify-between items-center">
-                  <span className="px-2.5 py-1 bg-[#F5F2ED] text-[#5A5A40] font-bold text-xs rounded-xl border border-[#D9D2C5]">
-                    {ex.subject === 'math' ? '📐 Toán' : '🇬🇧 Anh'} • {ex.code}
-                  </span>
-                  <span className="text-xs text-[#8A8A70]">{ex.timeLimitMinutes} phút</span>
+            {/* 2 Feature Card Banners */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* AI Create Card */}
+              <div className="bg-gradient-to-br from-[#1E3A8A] to-[#3B82F6] text-white p-5 rounded-[2rem] shadow-md space-y-3">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center">
+                    <Wand2 className="w-5 h-5 text-amber-300" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm">🤖 AI Tạo Đề Tuyển Sinh Tự Động</h4>
+                    <p className="text-[11px] text-blue-100">Gemini AI biên soạn đề chuẩn Toán & Tiếng Anh</p>
+                  </div>
                 </div>
+                <ul className="text-[11px] text-blue-100 space-y-1 pl-1">
+                  <li>✓ Chọn môn học (Toán học / Tiếng Anh), số lượng câu, độ khó</li>
+                  <li>✓ Nhập yêu cầu chuyên đề trọng tâm theo ý muốn</li>
+                  <li>✓ Tự động lưu đề thi và import câu hỏi vào hệ thống</li>
+                </ul>
+                <button
+                  onClick={() => setShowAiCreateModal(true)}
+                  className="w-full py-2 bg-white text-[#1E3A8A] font-bold text-xs rounded-xl hover:bg-blue-50 transition cursor-pointer"
+                >
+                  Tạo đề với AI ngay →
+                </button>
+              </div>
 
-                <h4 className="font-bold text-base text-[#3D3D2D]">{ex.title}</h4>
-                <p className="text-xs text-[#8A8A70] line-clamp-2">{ex.description}</p>
+              {/* Upload Extract Card */}
+              <div className="bg-gradient-to-br from-amber-600 to-orange-500 text-white p-5 rounded-[2rem] shadow-md space-y-3">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center">
+                    <FileText className="w-5 h-5 text-amber-200" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm">📄 Upload Đề Thi & AI Trích Xuất</h4>
+                    <p className="text-[11px] text-orange-100">Tự động đọc file Word (.docx), PDF, ảnh chụp OCR</p>
+                  </div>
+                </div>
+                <ul className="text-[11px] text-orange-100 space-y-1 pl-1">
+                  <li>✓ Hỗ trợ file PDF, Word, ảnh chụp đề thi hoặc dán text</li>
+                  <li>✓ AI tự động nhận diện câu hỏi, 4 đáp án và tạo lời giải</li>
+                  <li>✓ Lưu thành đề thi hoàn chỉnh và có thể giao cho em ngay</li>
+                </ul>
+                <button
+                  onClick={() => setShowUploadModal(true)}
+                  className="w-full py-2 bg-white text-orange-700 font-bold text-xs rounded-xl hover:bg-orange-50 transition cursor-pointer"
+                >
+                  Upload đề thi ngay →
+                </button>
+              </div>
+            </div>
 
-                <div className="pt-3 border-t border-[#F5F2ED] flex justify-between items-center text-xs">
-                  <span className="text-[#8A8A70]">
-                    Số câu: <strong>{ex.questionIds.length} câu</strong>
-                  </span>
-                  <button
-                    onClick={() => {
-                      if (confirm('Xóa đề thi này khỏi hệ thống?')) deleteExam(ex.id);
-                    }}
-                    className="text-red-500 hover:underline text-xs font-semibold cursor-pointer"
+            {/* Exam Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredExams.length === 0 ? (
+                <div className="col-span-2 p-8 text-center bg-white rounded-3xl border border-[#EAE7E0] text-xs text-[#8A8A70]">
+                  Không tìm thấy đề thi nào phù hợp với bộ lọc.
+                </div>
+              ) : (
+                filteredExams.map((ex) => (
+                  <div
+                    key={ex.id}
+                    className="bg-white p-6 rounded-[2.5rem] border border-[#EAE7E0] shadow-sm space-y-3"
                   >
-                    Xóa đề
-                  </button>
-                </div>
-              </div>
-            ))}
+                    <div className="flex justify-between items-center">
+                      <span className={`px-2.5 py-1 font-bold text-xs rounded-xl border ${
+                        ex.subject === 'math'
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                          : 'bg-[#F5F2ED] text-[#5A5A40] border-[#D9D2C5]'
+                      }`}>
+                        {ex.subject === 'math' ? '📐 Môn Toán' : '🇬🇧 Môn Tiếng Anh'} • {ex.code}
+                      </span>
+                      <span className="text-xs text-[#8A8A70]">{ex.timeLimitMinutes} phút</span>
+                    </div>
+
+                    <h4 className="font-bold text-base text-[#3D3D2D]">{ex.title}</h4>
+                    <p className="text-xs text-[#8A8A70] line-clamp-2">{ex.description}</p>
+
+                    <div className="pt-3 border-t border-[#F5F2ED] flex justify-between items-center text-xs">
+                      <span className="text-[#8A8A70]">
+                        Số câu: <strong>{ex.questionIds.length} câu</strong>
+                      </span>
+                      <button
+                        onClick={() => {
+                          if (confirm('Xóa đề thi này khỏi hệ thống?')) deleteExam(ex.id);
+                        }}
+                        className="text-red-500 hover:underline text-xs font-semibold cursor-pointer"
+                      >
+                        Xóa đề
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* 🚀 MODAL: REMOTE TASK ASSIGNMENT (GIAO NHIỆM VỤ CHO EM TỪ XA)            */}
@@ -2303,6 +2658,187 @@ export const AdminPanel: React.FC = () => {
         isOpen={showCloudModal}
         onClose={() => setShowCloudModal(false)}
       />
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* ✨ MODAL: AI SOẠN CÂU HỎI TỰ ĐỘNG                           */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {showAiQModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-[2.5rem] max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-5 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
+              <div className="flex items-center space-x-2">
+                <div className="w-9 h-9 rounded-2xl bg-indigo-100 flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-indigo-700" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#3D3D2D] text-base">✨ AI Soạn Câu Hỏi Tự Động</h3>
+                  <p className="text-[11px] text-[#8A8A70]">Gemini AI tạo câu hỏi chuẩn 4 đáp án & lời giải chi tiết</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAiQModal(false);
+                  setAiQSuccessMsg('');
+                  setAiQError('');
+                }}
+                className="text-[#8A8A70] hover:text-red-500 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {aiQSuccessMsg ? (
+              <div className="text-center space-y-4 py-4">
+                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
+                  <span className="text-3xl">✅</span>
+                </div>
+                <h4 className="font-bold text-[#3D3D2D] text-lg">Soạn câu hỏi thành công!</h4>
+                <p className="text-sm text-[#5A5A40]">{aiQSuccessMsg}</p>
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={() => {
+                      setAiQSuccessMsg('');
+                      setAiQPrompt('');
+                    }}
+                    className="px-5 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 cursor-pointer"
+                  >
+                    Soạn tiếp
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowAiQModal(false);
+                      setAiQSuccessMsg('');
+                      setActiveAdminTab('questions');
+                    }}
+                    className="px-5 py-2 bg-[#F5F2ED] text-[#3D3D2D] rounded-xl text-sm font-bold hover:bg-[#EAE7E0] cursor-pointer"
+                  >
+                    Xem ngân hàng câu hỏi
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Subject */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Môn học</label>
+                  <div className="flex gap-2">
+                    {(['math', 'english'] as SubjectId[]).map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => {
+                          setAiQSubject(s);
+                          setAiQTopicId(s === 'math' ? 'math_pt_bac_hai_viet' : 'grammar');
+                        }}
+                        className={`flex-1 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                          aiQSubject === s
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-[#F5F2ED] text-[#5A5A40] border-[#EAE7E0]'
+                        }`}
+                      >
+                        {s === 'math' ? '📐 Môn Toán' : '🇬🇧 Môn Tiếng Anh'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Chuyên đề */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Chuyên đề mục tiêu</label>
+                  <select
+                    value={aiQTopicId}
+                    onChange={(e) => setAiQTopicId(e.target.value)}
+                    className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm text-[#3D3D2D] focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+                  >
+                    {aiQSubject === 'math'
+                      ? MATH_TOPICS_META.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            📐 {t.nameVi}
+                          </option>
+                        ))
+                      : TOPICS_META.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            🇬🇧 {t.nameVi}
+                          </option>
+                        ))}
+                  </select>
+                </div>
+
+                {/* Số lượng & Độ khó */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Số lượng câu</label>
+                    <select
+                      value={aiQCount}
+                      onChange={(e) => setAiQCount(Number(e.target.value))}
+                      className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm text-[#3D3D2D] focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+                    >
+                      {[1, 3, 5, 10].map((n) => (
+                        <option key={n} value={n}>
+                          {n} câu hỏi
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Độ khó</label>
+                    <select
+                      value={aiQDiff}
+                      onChange={(e) => setAiQDiff(e.target.value as any)}
+                      className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm text-[#3D3D2D] focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+                    >
+                      <option value="standard">Cơ bản (7 - 8đ)</option>
+                      <option value="advanced">Khá - Giỏi (8 - 8.5đ)</option>
+                      <option value="challenge">Phân loại (9 - 10đ)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Custom Prompt */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">
+                    Yêu cầu nội dung cụ thể (tuỳ chọn)
+                  </label>
+                  <textarea
+                    value={aiQPrompt}
+                    onChange={(e) => setAiQPrompt(e.target.value)}
+                    rows={3}
+                    placeholder={
+                      aiQSubject === 'math'
+                        ? 'Ví dụ: Soạn câu hỏi tìm m để phương trình x² - 2mx + m² - 1 = 0 có 2 nghiệm x₁, x₂ thỏa mãn x₁² + x₂² = 6...'
+                        : 'Ví dụ: Soạn câu hỏi phân biệt thì Quá khứ đơn vs Hiện tại hoàn thành có bẫy về mốc thời gian since/for...'
+                    }
+                    className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-indigo-400 focus:outline-none placeholder:text-[#C5C0B5]"
+                  />
+                </div>
+
+                {/* Error */}
+                {aiQError && (
+                  <div className="bg-red-50 text-red-700 text-xs font-medium p-3 rounded-xl border border-red-200">
+                    ⚠️ {aiQError}
+                  </div>
+                )}
+
+                {/* Progress */}
+                {aiQLoading && (
+                  <div className="bg-indigo-50 text-indigo-700 text-xs font-medium p-3 rounded-xl border border-indigo-200 flex items-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                    <span>{aiQProgress || 'AI đang soạn câu hỏi và lời giải chi tiết...'}</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleAiGenerateQuestions}
+                  disabled={aiQLoading}
+                  className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-sm rounded-2xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
+                >
+                  {aiQLoading ? '⏳ Đang soạn câu hỏi...' : `🚀 AI Soạn ${aiQCount} Câu Hỏi Ngay`}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* 🤖 MODAL: AI TẠO ĐỀ NHANH                                  */}
