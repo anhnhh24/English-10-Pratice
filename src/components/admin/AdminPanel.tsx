@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { TOPICS_META } from '../../data/topicsMeta';
 import { MATH_TOPICS_META } from '../../data/mathTopicsMeta';
-import { DifficultyLevel, Question, TopicId, SubTopicId, Exam, UserAccount, SubjectId, RealtimeActivityEvent, MistakeItem } from '../../types';
+import { DifficultyLevel, Question, TopicId, SubTopicId, Exam, ExamAttempt, UserAccount, SubjectId, RealtimeActivityEvent, MistakeItem } from '../../types';
 import {
   getStoredRealtimeActivities,
   subscribeToRealtimeActivities,
@@ -10,6 +10,7 @@ import {
   logAndBroadcastActivity,
   sendRemotePing,
 } from '../../services/realtimeSyncService';
+import { ScorePill, SubjectBadge, EmptyState } from '../common';
 import {
   ShieldCheck,
   Plus,
@@ -51,8 +52,15 @@ import {
   Cloud,
   Upload,
   Wand2,
+  Filter,
+  CheckCircle,
+  XCircle,
+  HelpCircle,
+  Printer,
+  Share2,
 } from 'lucide-react';
 import { CloudSyncModal } from '../modals/CloudSyncModal';
+import { formatDateVi, formatRelativeTime, formatTimeLimit, formatTopicTitle } from '../../utils/formatters';
 import {
   generateExamWithAI,
   extractQuestionsFromText,
@@ -86,17 +94,29 @@ export const AdminPanel: React.FC = () => {
     deleteExam,
   } = useApp();
 
-  const [activeAdminTab, setActiveAdminTab] = useState<'overview' | 'realtime_pulse' | 'students' | 'questions' | 'exams'>('overview');
+  const [activeAdminTab, setActiveAdminTab] = useState<'overview' | 'realtime_pulse' | 'students' | 'submissions' | 'questions' | 'exams'>('overview');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
   const [searchStudentQuery, setSearchStudentQuery] = useState<string>('');
   const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<UserAccount | null>(null);
+
+  // Exam preview & origin filter states
+  const [selectedExamForPreview, setSelectedExamForPreview] = useState<Exam | null>(null);
+  const [examOriginFilter, setExamOriginFilter] = useState<'all' | 'ai' | 'upload' | 'official'>('all');
+
+  // Submissions Tab Filter States
+  const [submissionSearchQuery, setSubmissionSearchQuery] = useState<string>('');
+  const [submissionSubjectFilter, setSubmissionSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
+  const [submissionStudentFilter, setSubmissionStudentFilter] = useState<string>('all');
 
   // Detailed Exam Attempt Review State (Admin xem chi tiết bài làm của học sinh)
   const [selectedAttemptForReview, setSelectedAttemptForReview] = useState<{
     attempt: ExamAttempt;
     studentName: string;
+    studentId?: string;
   } | null>(null);
   const [attemptQuestionFilter, setAttemptQuestionFilter] = useState<'all' | 'wrong' | 'correct'>('all');
+  const [attemptTeacherNote, setAttemptTeacherNote] = useState<string>('');
+  const [attemptTeacherNoteSaved, setAttemptTeacherNoteSaved] = useState<boolean>(false);
 
   // Real-time Activities State
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeActivityEvent[]>(() => getStoredRealtimeActivities());
@@ -520,6 +540,54 @@ export const AdminPanel: React.FC = () => {
     return matchName || matchEmail || matchSchool;
   });
 
+  // All Exam Submissions / Attempts across all students
+  const allSubmissions = studentUsers.flatMap((stu) => {
+    const data = getUserScopedData(stu.id) || {};
+    const attempts = data.examAttempts || [];
+    return attempts.map((att: ExamAttempt) => ({
+      ...att,
+      studentId: stu.id,
+      studentName: stu.name,
+      studentEmail: stu.email,
+      studentAvatar: stu.avatarColor,
+      targetSchool: stu.targetSchool,
+    }));
+  }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // Filtered Submissions
+  const filteredSubmissions = allSubmissions.filter((sub) => {
+    if (submissionStudentFilter !== 'all' && sub.studentId !== submissionStudentFilter) return false;
+    if (submissionSubjectFilter === 'math' && sub.subject !== 'math') return false;
+    if (submissionSubjectFilter === 'english' && (sub.subject || 'english') !== 'english') return false;
+    if (submissionSearchQuery) {
+      const q = submissionSearchQuery.toLowerCase();
+      const matchExam = (sub.examTitle || '').toLowerCase().includes(q);
+      const matchStudent = (sub.studentName || '').toLowerCase().includes(q);
+      if (!matchExam && !matchStudent) return false;
+    }
+    return true;
+  });
+
+  const handleOpenAttemptReview = (att: any, studentName?: string, studentId?: string) => {
+    setSelectedAttemptForReview({
+      attempt: att,
+      studentName: studentName || att.studentName || 'Học sinh',
+      studentId: studentId || att.studentId || att.userId,
+    });
+    setAttemptQuestionFilter('all');
+    if (studentId || att.studentId) {
+      setAttemptTeacherNote(getTeacherNote(studentId || att.studentId) || '');
+    }
+    setAttemptTeacherNoteSaved(false);
+  };
+
+  const handleSaveAttemptTeacherNote = () => {
+    if (!selectedAttemptForReview?.studentId) return;
+    saveTeacherNote(selectedAttemptForReview.studentId, attemptTeacherNote);
+    setAttemptTeacherNoteSaved(true);
+    setTimeout(() => setAttemptTeacherNoteSaved(false), 2500);
+  };
+
   // Inspector handlers
   const handleOpenStudentDetail = (stu: UserAccount) => {
     setSelectedStudentForDetail(stu);
@@ -861,46 +929,58 @@ export const AdminPanel: React.FC = () => {
       )}
 
       {/* 3. Navigation Tabs */}
-      <div className="flex bg-[#E8E2D9] p-1.5 rounded-2xl max-w-2xl shadow-2xs text-xs font-bold overflow-x-auto no-scrollbar">
+      <div className="flex bg-[#E8E2D9] p-1.5 rounded-2xl max-w-4xl shadow-2xs text-xs font-bold overflow-x-auto no-scrollbar gap-1">
         <button
           onClick={() => setActiveAdminTab('overview')}
-          className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+          className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
             activeAdminTab === 'overview'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
           }`}
         >
           <BarChart2 className="w-4 h-4" />
-          <span>Tổng quan học tập</span>
+          <span>Tổng quan</span>
         </button>
 
         <button
-          onClick={() => setActiveAdminTab('realtime_pulse')}
-          className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
-            activeAdminTab === 'realtime_pulse'
+          onClick={() => setActiveAdminTab('submissions')}
+          className={`py-2 px-3.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+            activeAdminTab === 'submissions'
+              ? 'bg-[#1E3A8A] text-white shadow-xs'
+              : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+          }`}
+        >
+          <FileText className="w-4 h-4 text-blue-300" />
+          <span>📝 Bài làm học sinh ({allSubmissions.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab('exams')}
+          className={`py-2 px-3.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+            activeAdminTab === 'exams'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
           }`}
         >
-          <Activity className="w-4 h-4 text-[#8BA888]" />
-          <span>Nhật ký Live Realtime ({realtimeEvents.length})</span>
+          <GraduationCap className="w-4 h-4 text-amber-300" />
+          <span>Quản lý đề thi ({exams.length})</span>
         </button>
 
         <button
           onClick={() => setActiveAdminTab('students')}
-          className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+          className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
             activeAdminTab === 'students'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
           }`}
         >
           <Users className="w-4 h-4" />
-          <span>Danh sách học sinh ({totalStudents})</span>
+          <span>Học sinh ({totalStudents})</span>
         </button>
 
         <button
           onClick={() => setActiveAdminTab('questions')}
-          className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+          className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
             activeAdminTab === 'questions'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
@@ -911,15 +991,15 @@ export const AdminPanel: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveAdminTab('exams')}
-          className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
-            activeAdminTab === 'exams'
+          onClick={() => setActiveAdminTab('realtime_pulse')}
+          className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+            activeAdminTab === 'realtime_pulse'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
           }`}
         >
-          <GraduationCap className="w-4 h-4" />
-          <span>Đề thi tuyển sinh</span>
+          <Activity className="w-4 h-4 text-[#8BA888]" />
+          <span>Nhật ký Live ({realtimeEvents.length})</span>
         </button>
       </div>
 
@@ -1541,6 +1621,199 @@ export const AdminPanel: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
+      {/* 📝 TAB: STUDENT EXAM SUBMISSIONS (BÀI LÀM HỌC SINH CHI TIẾT)             */}
+      {/* ========================================================================= */}
+      {activeAdminTab === 'submissions' && (
+        <div className="space-y-5 animate-in fade-in">
+          {/* Top Stat Overview Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+            <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
+              <div className="flex items-center space-x-1.5 text-xs text-[#8A8A70] font-bold">
+                <FileText className="w-4 h-4 text-[#1E3A8A]" />
+                <span>Tổng bài thi đã nộp</span>
+              </div>
+              <p className="text-2xl font-extrabold text-[#3D3D2D]">{allSubmissions.length} <span className="text-xs font-normal text-[#8A8A70]">bài</span></p>
+              <p className="text-[11px] text-[#8A8A70]">Tất cả học sinh trong hệ thống</p>
+            </div>
+
+            <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
+              <div className="flex items-center space-x-1.5 text-xs text-blue-700 font-bold">
+                <span>📐 Điểm TB Môn Toán</span>
+              </div>
+              <p className="text-2xl font-extrabold text-[#1E3A8A]">
+                {allSubmissions.filter(s => s.subject === 'math').length > 0
+                  ? (allSubmissions.filter(s => s.subject === 'math').reduce((acc, c) => acc + c.score, 0) / allSubmissions.filter(s => s.subject === 'math').length).toFixed(2)
+                  : '--'}
+                <span className="text-xs font-normal text-[#8A8A70]"> / 10đ</span>
+              </p>
+              <p className="text-[11px] text-[#8A8A70]">{allSubmissions.filter(s => s.subject === 'math').length} bài thi Toán</p>
+            </div>
+
+            <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
+              <div className="flex items-center space-x-1.5 text-xs text-emerald-700 font-bold">
+                <span>🇬🇧 Điểm TB Tiếng Anh</span>
+              </div>
+              <p className="text-2xl font-extrabold text-emerald-700">
+                {allSubmissions.filter(s => (s.subject || 'english') === 'english').length > 0
+                  ? (allSubmissions.filter(s => (s.subject || 'english') === 'english').reduce((acc, c) => acc + c.score, 0) / allSubmissions.filter(s => (s.subject || 'english') === 'english').length).toFixed(2)
+                  : '--'}
+                <span className="text-xs font-normal text-[#8A8A70]"> / 10đ</span>
+              </p>
+              <p className="text-[11px] text-[#8A8A70]">{allSubmissions.filter(s => (s.subject || 'english') === 'english').length} bài thi Tiếng Anh</p>
+            </div>
+
+            <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
+              <div className="flex items-center space-x-1.5 text-xs text-amber-700 font-bold">
+                <Target className="w-4 h-4 text-amber-600" />
+                <span>Em Nguyễn Hoàng Hà</span>
+              </div>
+              <p className="text-2xl font-extrabold text-[#3D3D2D]">
+                {allSubmissions.filter(s => s.studentId === siblingStat?.student?.id || s.studentName?.toLowerCase().includes('hà')).length} <span className="text-xs font-normal text-[#8A8A70]">bài</span>
+              </p>
+              <p className="text-[11px] text-[#8A8A70]">
+                Điểm gần nhất: {allSubmissions.find(s => s.studentId === siblingStat?.student?.id || s.studentName?.toLowerCase().includes('hà'))?.score ?? '--'}đ
+              </p>
+            </div>
+          </div>
+
+          {/* Filter & Search Toolbar */}
+          <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+            {/* Student Filter Dropdown */}
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-[#8A8A70] shrink-0">Học sinh:</span>
+              <select
+                value={submissionStudentFilter}
+                onChange={(e) => setSubmissionStudentFilter(e.target.value)}
+                className="px-3 py-1.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#3D3D2D] outline-hidden cursor-pointer"
+              >
+                <option value="all">Tất cả học sinh ({studentUsers.length})</option>
+                {studentUsers.map((stu) => (
+                  <option key={stu.id} value={stu.id}>
+                    {stu.name} {stu.id === siblingStat?.student?.id ? '(Em bạn)' : ''} ({stu.targetSchool || 'THPT'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Subject Filter Tabs */}
+            <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] text-xs font-bold shrink-0">
+              <button
+                onClick={() => setSubmissionSubjectFilter('all')}
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                  submissionSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                }`}
+              >
+                Tất cả môn
+              </button>
+              <button
+                onClick={() => setSubmissionSubjectFilter('math')}
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                  submissionSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
+                }`}
+              >
+                <span>📐 Toán ({allSubmissions.filter(s => s.subject === 'math').length})</span>
+              </button>
+              <button
+                onClick={() => setSubmissionSubjectFilter('english')}
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                  submissionSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                }`}
+              >
+                <span>🇬🇧 Tiếng Anh ({allSubmissions.filter(s => (s.subject || 'english') === 'english').length})</span>
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="w-4 h-4 text-[#8A8A70] absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={submissionSearchQuery}
+                onChange={(e) => setSubmissionSearchQuery(e.target.value)}
+                placeholder="Tìm theo tên đề thi, tên học sinh..."
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:ring-1 focus:ring-[#5A5A40]"
+              />
+            </div>
+          </div>
+
+          {/* Submissions List */}
+          {filteredSubmissions.length === 0 ? (
+            <EmptyState
+              title="Chưa có bài thi nào được nộp"
+              description="Khi học sinh hoàn thành các đề thi thử, toàn bộ kết quả, đáp án chi tiết và thời gian làm bài sẽ hiển thị đầy đủ tại đây."
+              actionLabel="⚡ Mô phỏng nộp bài thi thử"
+              onAction={() => handleSimulateStudentExam(9.0)}
+            />
+          ) : (
+            <div className="space-y-3">
+              {filteredSubmissions.map((sub, idx) => {
+                const accuracy = sub.totalQuestions > 0 ? Math.round((sub.correctCount / sub.totalQuestions) * 100) : 0;
+                return (
+                  <div
+                    key={`${sub.id}_${idx}`}
+                    className="bg-white p-5 sm:p-6 rounded-[2.5rem] border border-[#EAE7E0] shadow-xs hover:border-[#D9D2C5] transition flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+                  >
+                    {/* Left: Student & Exam Info */}
+                    <div className="flex items-start space-x-3.5 min-w-0">
+                      <div className={`w-11 h-11 rounded-2xl ${sub.studentAvatar || 'bg-[#5A5A40]'} text-white font-extrabold text-base flex items-center justify-center shrink-0 shadow-xs`}>
+                        {sub.studentName.charAt(0)}
+                      </div>
+
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                          <h4 className="font-extrabold text-sm text-[#3D3D2D]">{sub.studentName}</h4>
+                          <span className="text-[11px] text-[#8A8A70]">({sub.targetSchool || 'THPT'})</span>
+                          <SubjectBadge subject={sub.subject || 'english'} size="sm" />
+                        </div>
+
+                        <p className="text-xs font-bold text-[#5A5A40] truncate max-w-lg">
+                          📄 {sub.examTitle}
+                        </p>
+
+                        <div className="flex items-center space-x-3 text-[11px] text-[#8A8A70] flex-wrap gap-y-0.5">
+                          <span className="flex items-center space-x-1">
+                            <Calendar className="w-3 h-3" />
+                            <span>{formatDateVi(sub.date)}</span>
+                          </span>
+                          <span className="flex items-center space-x-1">
+                            <Clock className="w-3 h-3" />
+                            <span>{Math.floor((sub.timeSpentSeconds || 0) / 60)} phút {(sub.timeSpentSeconds || 0) % 60} giây</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Scores & Action Button */}
+                    <div className="flex items-center justify-between md:justify-end w-full md:w-auto gap-4 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-[#F5F2ED]">
+                      {/* Metric Pills */}
+                      <div className="text-right space-y-0.5">
+                        <div className="flex items-center space-x-2 justify-end">
+                          <span className="text-xs font-bold text-[#8A8A70]">Đúng {sub.correctCount}/{sub.totalQuestions} ({accuracy}%)</span>
+                          <ScorePill score={sub.score} size="md" />
+                        </div>
+                        <span className="text-[10px] text-[#8A8A70] block">
+                          Sai: {sub.incorrectCount} câu • Bỏ qua: {sub.unattemptedCount || 0} câu
+                        </span>
+                      </div>
+
+                      {/* Review Details Button */}
+                      <button
+                        onClick={() => handleOpenAttemptReview(sub, sub.studentName, sub.studentId)}
+                        className="px-4 py-2.5 bg-[#1E3A8A] hover:bg-[#1E40AF] text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs shrink-0"
+                      >
+                        <Eye className="w-4 h-4" />
+                        <span>Xem bài làm</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================================= */}
       {/* 👥 TAB: STUDENT ROSTER                                                    */}
       {/* ========================================================================= */}
       {activeAdminTab === 'students' && (
@@ -1887,15 +2160,28 @@ export const AdminPanel: React.FC = () => {
       })()}
 
       {/* ========================================================================= */}
-      {/* 🎓 TAB: EXAMS LIST                                                        */}
+      {/* 🎓 TAB: EXAMS LIST (QUẢN LÝ ĐỀ THI AI & ĐỀ THI CHUẨN)                    */}
       {/* ========================================================================= */}
       {activeAdminTab === 'exams' && (() => {
         const mathExamsCount = exams.filter((e) => e.subject === 'math').length;
         const engExamsCount = exams.filter((e) => (e.subject || 'english') === 'english').length;
+        const aiExamsCount = exams.filter((e) => e.id.startsWith('exam_ai_') || e.title.includes('AI') || e.title.includes('Generator')).length;
+        const uploadExamsCount = exams.filter((e) => e.id.startsWith('admin_upload_') || e.title.includes('Upload')).length;
+        const officialExamsCount = exams.filter((e) => !e.id.startsWith('exam_ai_') && !e.id.startsWith('admin_upload_')).length;
 
         const filteredExams = exams.filter((ex) => {
+          // Subject Filter
           if (examSubjectFilter === 'math' && ex.subject !== 'math') return false;
           if (examSubjectFilter === 'english' && (ex.subject || 'english') !== 'english') return false;
+
+          // Origin Filter
+          const isAi = ex.id.startsWith('exam_ai_') || ex.title.includes('AI') || ex.title.includes('Generator');
+          const isUpload = ex.id.startsWith('admin_upload_') || ex.title.includes('Upload');
+          if (examOriginFilter === 'ai' && !isAi) return false;
+          if (examOriginFilter === 'upload' && !isUpload) return false;
+          if (examOriginFilter === 'official' && (isAi || isUpload)) return false;
+
+          // Search Query
           if (
             searchExamQuery &&
             !ex.title.toLowerCase().includes(searchExamQuery.toLowerCase()) &&
@@ -1905,6 +2191,19 @@ export const AdminPanel: React.FC = () => {
           }
           return true;
         });
+
+        // Handler to export exam as JSON
+        const handleExportExamJson = (ex: Exam) => {
+          const examQuestions = ex.questionIds.map((qId) => getQuestionById(qId)).filter(Boolean);
+          const exportData = { exam: ex, questions: examQuestions, exportedAt: new Date().toISOString() };
+          const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `de_thi_${ex.code || ex.id}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
 
         return (
           <div className="space-y-4 animate-in fade-in">
@@ -1926,7 +2225,7 @@ export const AdminPanel: React.FC = () => {
                     examSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
                   }`}
                 >
-                  <span>📐 Đề Toán ({mathExamsCount})</span>
+                  <span>📐 Toán ({mathExamsCount})</span>
                 </button>
                 <button
                   onClick={() => setExamSubjectFilter('english')}
@@ -1934,12 +2233,50 @@ export const AdminPanel: React.FC = () => {
                     examSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
                   }`}
                 >
-                  <span>🇬🇧 Đề Tiếng Anh ({engExamsCount})</span>
+                  <span>🇬🇧 Tiếng Anh ({engExamsCount})</span>
+                </button>
+              </div>
+
+              {/* Origin Sub-Filter */}
+              <div className="flex items-center space-x-1 bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] text-xs font-bold shrink-0">
+                <button
+                  onClick={() => setExamOriginFilter('all')}
+                  className={`px-2.5 py-1 rounded-xl transition cursor-pointer ${
+                    examOriginFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                  }`}
+                >
+                  Tất cả nguồn
+                </button>
+                <button
+                  onClick={() => setExamOriginFilter('ai')}
+                  className={`px-2.5 py-1 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                    examOriginFilter === 'ai' ? 'bg-blue-600 text-white' : 'text-blue-700 hover:bg-blue-50'
+                  }`}
+                >
+                  <Wand2 className="w-3 h-3" />
+                  <span>Đề AI ({aiExamsCount})</span>
+                </button>
+                <button
+                  onClick={() => setExamOriginFilter('upload')}
+                  className={`px-2.5 py-1 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                    examOriginFilter === 'upload' ? 'bg-amber-600 text-white' : 'text-amber-700 hover:bg-amber-50'
+                  }`}
+                >
+                  <Upload className="w-3 h-3" />
+                  <span>Đề Upload ({uploadExamsCount})</span>
+                </button>
+                <button
+                  onClick={() => setExamOriginFilter('official')}
+                  className={`px-2.5 py-1 rounded-xl transition cursor-pointer ${
+                    examOriginFilter === 'official' ? 'bg-emerald-700 text-white' : 'text-emerald-700 hover:bg-emerald-50'
+                  }`}
+                >
+                  Chuẩn Sở ({officialExamsCount})
                 </button>
               </div>
 
               {/* Search Bar */}
-              <div className="relative flex-1 min-w-[200px]">
+              <div className="relative flex-1 min-w-[180px]">
                 <Search className="w-4 h-4 text-[#8A8A70] absolute left-3 top-2.5" />
                 <input
                   type="text"
@@ -1979,7 +2316,7 @@ export const AdminPanel: React.FC = () => {
               </div>
             </div>
 
-            {/* 2 Feature Card Banners */}
+            {/* 2 Feature Quick Banners */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* AI Create Card */}
               <div className="bg-gradient-to-br from-[#1E3A8A] to-[#3B82F6] text-white p-5 rounded-[2rem] shadow-md space-y-3">
@@ -1988,12 +2325,12 @@ export const AdminPanel: React.FC = () => {
                     <Wand2 className="w-5 h-5 text-amber-300" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm">🤖 AI Tạo Đề Tuyển Sinh Tự Động</h4>
-                    <p className="text-[11px] text-blue-100">Gemini AI biên soạn đề chuẩn Toán & Tiếng Anh</p>
+                    <h4 className="font-bold text-sm">🤖 AI Biên Soạn Đề Tuyển Sinh Vào 10</h4>
+                    <p className="text-[11px] text-blue-100">Tự động soạn đề Toán & Tiếng Anh bám sát cấu trúc Sở GD&ĐT</p>
                   </div>
                 </div>
                 <ul className="text-[11px] text-blue-100 space-y-1 pl-1">
-                  <li>✓ Chọn môn học (Toán học / Tiếng Anh), số lượng câu, độ khó</li>
+                  <li>✓ Tùy chỉnh môn học, ma trận kiến thức, thời gian thi và số lượng câu</li>
                   <li>✓ Nhập yêu cầu chuyên đề trọng tâm theo ý muốn</li>
                   <li>✓ Tự động lưu đề thi và import câu hỏi vào hệ thống</li>
                 </ul>
@@ -2012,7 +2349,7 @@ export const AdminPanel: React.FC = () => {
                     <FileText className="w-5 h-5 text-amber-200" />
                   </div>
                   <div>
-                    <h4 className="font-bold text-sm">📄 Upload Đề Thi & AI Trích Xuất</h4>
+                    <h4 className="font-bold text-sm">📄 Upload Đề Thi & AI Trích Xuất File</h4>
                     <p className="text-[11px] text-orange-100">Tự động đọc file Word (.docx), PDF, ảnh chụp OCR</p>
                   </div>
                 </div>
@@ -2037,40 +2374,113 @@ export const AdminPanel: React.FC = () => {
                   Không tìm thấy đề thi nào phù hợp với bộ lọc.
                 </div>
               ) : (
-                filteredExams.map((ex) => (
-                  <div
-                    key={ex.id}
-                    className="bg-white p-6 rounded-[2.5rem] border border-[#EAE7E0] shadow-sm space-y-3"
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className={`px-2.5 py-1 font-bold text-xs rounded-xl border ${
-                        ex.subject === 'math'
-                          ? 'bg-blue-50 text-blue-700 border-blue-200'
-                          : 'bg-[#F5F2ED] text-[#5A5A40] border-[#D9D2C5]'
-                      }`}>
-                        {ex.subject === 'math' ? '📐 Môn Toán' : '🇬🇧 Môn Tiếng Anh'} • {ex.code}
-                      </span>
-                      <span className="text-xs text-[#8A8A70]">{ex.timeLimitMinutes} phút</span>
-                    </div>
+                filteredExams.map((ex) => {
+                  const isAiExam = ex.id.startsWith('exam_ai_') || ex.title.includes('AI') || ex.title.includes('Generator');
+                  const isUploadExam = ex.id.startsWith('admin_upload_') || ex.title.includes('Upload');
+                  const isMathExam = ex.subject === 'math';
 
-                    <h4 className="font-bold text-base text-[#3D3D2D]">{ex.title}</h4>
-                    <p className="text-xs text-[#8A8A70] line-clamp-2">{ex.description}</p>
+                  return (
+                    <div
+                      key={ex.id}
+                      className={`bg-white p-6 rounded-[2.5rem] border shadow-sm space-y-3 transition hover:shadow-md ${
+                        isAiExam
+                          ? 'border-blue-200 hover:border-blue-400'
+                          : isUploadExam
+                          ? 'border-amber-200 hover:border-amber-400'
+                          : 'border-[#EAE7E0] hover:border-[#D9D2C5]'
+                      }`}
+                    >
+                      {/* Top Badges */}
+                      <div className="flex justify-between items-center flex-wrap gap-2">
+                        <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                          <SubjectBadge subject={ex.subject || 'english'} size="sm" />
+                          <span className="px-2 py-0.5 bg-[#FAF9F6] text-[#5A5A40] text-[10px] font-mono font-bold rounded-lg border border-[#EAE7E0]">
+                            {ex.code || ex.id}
+                          </span>
+                          {isAiExam ? (
+                            <span className="px-2 py-0.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[10px] font-bold rounded-full flex items-center space-x-1 shadow-2xs">
+                              <Sparkles className="w-2.5 h-2.5 text-yellow-300" />
+                              <span>AI Tạo Đề</span>
+                            </span>
+                          ) : isUploadExam ? (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full border border-amber-300 flex items-center space-x-1">
+                              <FileText className="w-2.5 h-2.5" />
+                              <span>Trích Xuất File</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full border border-emerald-300">
+                              Chuẩn Sở GD&ĐT
+                            </span>
+                          )}
+                        </div>
 
-                    <div className="pt-3 border-t border-[#F5F2ED] flex justify-between items-center text-xs">
-                      <span className="text-[#8A8A70]">
-                        Số câu: <strong>{ex.questionIds.length} câu</strong>
-                      </span>
-                      <button
-                        onClick={() => {
-                          if (confirm('Xóa đề thi này khỏi hệ thống?')) deleteExam(ex.id);
-                        }}
-                        className="text-red-500 hover:underline text-xs font-semibold cursor-pointer"
-                      >
-                        Xóa đề
-                      </button>
+                        <div className="flex items-center space-x-1 text-xs text-[#8A8A70]">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{ex.timeLimitMinutes} phút</span>
+                        </div>
+                      </div>
+
+                      {/* Title & Description */}
+                      <h4 className="font-bold text-base text-[#3D3D2D] leading-snug">{ex.title}</h4>
+                      <p className="text-xs text-[#8A8A70] line-clamp-2">{ex.description || 'Đề thi trắc nghiệm tuyển sinh vào lớp 10 THPT.'}</p>
+
+                      {/* Question Count & Actions */}
+                      <div className="pt-3 border-t border-[#F5F2ED] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                        <span className="text-[#8A8A70]">
+                          Số lượng: <strong className="text-[#3D3D2D]">{ex.questionIds.length} câu hỏi</strong>
+                        </span>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                          {/* Preview Exam Button */}
+                          <button
+                            onClick={() => setSelectedExamForPreview(ex)}
+                            className="px-3 py-1.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] text-[#5A5A40] rounded-xl font-bold transition flex items-center space-x-1 cursor-pointer text-xs"
+                            title="Xem trước toàn bộ câu hỏi và đáp án"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Xem đề</span>
+                          </button>
+
+                          {/* Assign to student Button */}
+                          <button
+                            onClick={() => {
+                              setTaskAssignedExamId(ex.id);
+                              setTaskTitle(ex.title);
+                              setTaskSubject(ex.subject || 'math');
+                              setShowAssignTaskModal(true);
+                            }}
+                            className="px-3 py-1.5 bg-[#1E3A8A] hover:bg-[#1E40AF] text-white rounded-xl font-bold transition flex items-center space-x-1 cursor-pointer text-xs shadow-2xs"
+                            title="Giao đề thi này cho học sinh làm bài"
+                          >
+                            <Send className="w-3 h-3" />
+                            <span>Giao bài</span>
+                          </button>
+
+                          {/* Export JSON Button */}
+                          <button
+                            onClick={() => handleExportExamJson(ex)}
+                            className="p-1.5 text-[#8A8A70] hover:text-[#3D3D2D] rounded-lg hover:bg-[#FAF9F6] transition cursor-pointer"
+                            title="Tải file JSON đề thi"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Delete Exam Button */}
+                          <button
+                            onClick={() => {
+                              if (confirm(`Bạn có chắc muốn xóa đề thi "${ex.title}"?`)) deleteExam(ex.id);
+                            }}
+                            className="p-1.5 text-red-500 hover:text-red-700 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                            title="Xóa đề thi khỏi hệ thống"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -3568,6 +3978,178 @@ export const AdminPanel: React.FC = () => {
                   className="px-5 py-2.5 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition cursor-pointer"
                 >
                   Đóng cửa sổ bài làm
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ========================================================================= */}
+      {/* 👁️ MODAL: EXAM PREVIEW & FULL QUESTION MATRIX (XEM TRƯỚC ĐỀ THI AI/CHUẨN) */}
+      {/* ========================================================================= */}
+      {selectedExamForPreview && (() => {
+        const previewQuestions: Question[] = selectedExamForPreview.questionIds
+          .map((qId) => getQuestionById(qId))
+          .filter(Boolean) as Question[];
+
+        const isAi = selectedExamForPreview.id.startsWith('exam_ai_') || selectedExamForPreview.title.includes('AI');
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-[#FAF9F6] rounded-[2.5rem] max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-[#D9D2C5] overflow-hidden">
+              {/* Modal Header */}
+              <div className="p-5 sm:p-6 bg-white border-b border-[#EAE7E0] flex items-center justify-between shrink-0">
+                <div className="flex items-center space-x-3 min-w-0">
+                  <div className={`w-10 h-10 rounded-2xl ${isAi ? 'bg-blue-600 text-white' : 'bg-[#5A5A40] text-white'} flex items-center justify-center shrink-0 shadow-xs`}>
+                    {isAi ? <Wand2 className="w-5 h-5 text-amber-300" /> : <GraduationCap className="w-5 h-5" />}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                      <SubjectBadge subject={selectedExamForPreview.subject || 'english'} size="sm" />
+                      <span className="px-2 py-0.5 bg-[#FAF9F6] text-[#5A5A40] text-[10px] font-mono font-bold rounded-lg border border-[#EAE7E0]">
+                        {selectedExamForPreview.code || selectedExamForPreview.id}
+                      </span>
+                      {isAi && (
+                        <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-full">
+                          AI Generator
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="font-extrabold text-base sm:text-lg text-[#3D3D2D] truncate">
+                      {selectedExamForPreview.title}
+                    </h3>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2 shrink-0">
+                  <button
+                    onClick={() => {
+                      const ex = selectedExamForPreview;
+                      setTaskAssignedExamId(ex.id);
+                      setTaskTitle(ex.title);
+                      setTaskSubject(ex.subject || 'math');
+                      setSelectedExamForPreview(null);
+                      setShowAssignTaskModal(true);
+                    }}
+                    className="px-3 py-1.5 bg-[#1E3A8A] hover:bg-[#1E40AF] text-white text-xs font-bold rounded-xl flex items-center space-x-1 transition cursor-pointer shadow-xs"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Giao đề này</span>
+                  </button>
+                  <button
+                    onClick={() => setSelectedExamForPreview(null)}
+                    className="p-1.5 text-[#8A8A70] hover:text-[#3D3D2D] rounded-xl hover:bg-[#FAF9F6] transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Meta Summary Bar */}
+              <div className="bg-[#FAF9F6] px-6 py-3 border-b border-[#EAE7E0] flex flex-wrap items-center justify-between gap-2 text-xs text-[#5A5A40]">
+                <div className="flex items-center space-x-4">
+                  <span>⏱️ Thời gian: <strong>{selectedExamForPreview.timeLimitMinutes} phút</strong></span>
+                  <span>📝 Số lượng: <strong>{previewQuestions.length} câu hỏi</strong></span>
+                  <span>🎯 Mục tiêu: <strong>{selectedExamForPreview.targetProvince || 'Toàn quốc'}</strong></span>
+                </div>
+                <span className="text-[11px] text-[#8A8A70]">
+                  {selectedExamForPreview.description || 'Đề thi trắc nghiệm tuyển sinh vào 10'}
+                </span>
+              </div>
+
+              {/* Questions List */}
+              <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+                {previewQuestions.length === 0 ? (
+                  <div className="p-8 text-center bg-white rounded-3xl border border-[#EAE7E0] text-xs text-[#8A8A70]">
+                    Đề thi này chưa có câu hỏi nào được liên kết.
+                  </div>
+                ) : (
+                  previewQuestions.map((q, idx) => (
+                    <div
+                      key={q.id || idx}
+                      className="bg-white p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-3"
+                    >
+                      <div className="flex items-center justify-between pb-2 border-b border-[#F5F2ED]">
+                        <div className="flex items-center space-x-2">
+                          <span className="px-2.5 py-0.5 bg-[#5A5A40] text-white text-xs font-extrabold rounded-lg">
+                            Câu {idx + 1}
+                          </span>
+                          <span className="px-2 py-0.5 bg-[#FAF9F6] text-[#5A5A40] text-[10px] font-bold rounded-lg border border-[#EAE7E0]">
+                            {q.topicId || 'Chuyên đề ôn thi'}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-[#8A8A70]">
+                          Độ khó: {q.difficulty === 'easy' ? 'Nhận biết' : q.difficulty === 'medium' ? 'Thông hiểu' : 'Vận dụng'}
+                        </span>
+                      </div>
+
+                      {q.passage && (
+                        <div className="p-3 bg-[#FAF9F6] rounded-xl border border-[#EAE7E0] text-xs text-[#5A5A40] italic leading-relaxed">
+                          {q.passage}
+                        </div>
+                      )}
+
+                      <div className="text-sm font-semibold text-[#3D3D2D] leading-relaxed">
+                        {q.content}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                        {q.options.map((opt, optIdx) => {
+                          const isCorrect = optIdx === q.correctOption;
+                          return (
+                            <div
+                              key={optIdx}
+                              className={`p-3 rounded-2xl border text-xs flex items-center justify-between ${
+                                isCorrect
+                                  ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-bold'
+                                  : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#3D3D2D]'
+                              }`}
+                            >
+                              <span>{opt}</span>
+                              {isCorrect && (
+                                <span className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[10px] font-bold shrink-0 ml-2">
+                                  ✓ Đáp án đúng
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="p-3.5 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] text-xs space-y-1.5">
+                        <div className="font-bold text-[#5A5A40] flex items-center space-x-1">
+                          <span>💡 Lời giải & Phương pháp:</span>
+                        </div>
+                        <p className="text-[#3D3D2D] leading-relaxed pl-3 border-l-2 border-[#5A5A40]">
+                          {q.explanation}
+                        </p>
+                        {q.grammarRule && (
+                          <p className="text-[11px] text-[#5A5A40]">
+                            <strong>📐 Định lý:</strong> {q.grammarRule}
+                          </p>
+                        )}
+                        {q.commonMistakeTip && (
+                          <p className="text-[11px] text-[#E67E22]">
+                            <strong>⚠️ Lưu ý bẫy:</strong> {q.commonMistakeTip}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 bg-white border-t border-[#EAE7E0] flex justify-between items-center shrink-0">
+                <span className="text-xs text-[#8A8A70]">
+                  Tổng số: <strong>{previewQuestions.length} câu hỏi</strong> trong đề thi
+                </span>
+                <button
+                  onClick={() => setSelectedExamForPreview(null)}
+                  className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  Đóng xem trước
                 </button>
               </div>
             </div>
