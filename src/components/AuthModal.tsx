@@ -183,41 +183,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         )}
 
-        {/* 1-Click Quick Demo Login (Only in Login mode) */}
-        {mode === 'login' && (
-          <div className="space-y-2 pt-1">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#8A8A70]">
-              Hoặc đăng nhập nhanh 1-Click:
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {usersList.map((u) => (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => handleQuickLogin(u.id)}
-                  className="p-2.5 bg-white hover:bg-[#F5F2ED] border border-[#EAE7E0] hover:border-[#5A5A40] rounded-2xl text-left transition cursor-pointer space-y-0.5 group"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-[#3D3D2D] truncate group-hover:text-[#5A5A40]">
-                      {u.name.split(' ')[0]} {u.name.split(' ').slice(-1)[0]}
-                    </span>
-                    <span
-                      className={`text-[9px] px-1.5 py-0.2 rounded-md font-extrabold ${
-                        u.role === 'admin'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-indigo-100 text-indigo-700'
-                      }`}
-                    >
-                      {u.role === 'admin' ? 'Admin' : `${u.targetScore}đ`}
-                    </span>
-                  </div>
-                  <p className="text-[9px] text-[#8A8A70] truncate">{u.email}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Forms */}
         {mode === 'login' ? (
           <form onSubmit={handleLoginSubmit} className="space-y-3 pt-1">
@@ -230,22 +195,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="hoangminh.lop9@gmail.com"
+                placeholder="Nhập email tài khoản..."
+                autoComplete="username"
                 className="w-full px-3.5 py-2.5 bg-white border border-[#D9D2C5] rounded-2xl text-xs text-[#3D3D2D] focus:ring-1 focus:ring-[#5A5A40] outline-hidden"
+                required
               />
             </div>
 
             <div className="space-y-1">
               <label className="text-xs font-bold text-[#4A4A4A] flex items-center space-x-1.5">
                 <Lock className="w-3.5 h-3.5 text-[#8A8A70]" />
-                <span>Mật khẩu (mặc định: 123)</span>
+                <span>Mật khẩu</span>
               </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••"
+                placeholder="Nhập mật khẩu..."
+                autoComplete="current-password"
                 className="w-full px-3.5 py-2.5 bg-white border border-[#D9D2C5] rounded-2xl text-xs text-[#3D3D2D] focus:ring-1 focus:ring-[#5A5A40] outline-hidden"
+                required
               />
             </div>
 

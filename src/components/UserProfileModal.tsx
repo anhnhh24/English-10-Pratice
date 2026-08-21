@@ -230,60 +230,42 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           </button>
         </form>
 
-        {/* Switch User List & Logout */}
+        {/* Account Actions */}
         <div className="pt-2 border-t border-[#D9D2C5] space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="font-bold text-[#8A8A70] uppercase text-[10px] tracking-wider">
-              Chuyển đổi tài khoản:
+              Tài khoản & Phiên đăng nhập:
             </span>
-            <button
-              onClick={() => {
-                onClose();
-                onOpenAuthModal();
-              }}
-              className="text-[#E67E22] hover:underline font-bold text-[11px] cursor-pointer"
-            >
-              + Đăng ký / Đăng nhập khác
-            </button>
           </div>
 
-          <div className="space-y-1.5">
-            {usersList.map((u) => {
-              const isCurrent = u.id === currentUser.id;
-              return (
-                <button
-                  key={u.id}
-                  onClick={() => {
-                    if (!isCurrent) {
-                      switchUser(u.id);
-                      onClose();
-                    }
-                  }}
-                  className={`w-full flex items-center justify-between p-2.5 rounded-2xl border text-xs font-semibold transition cursor-pointer ${
-                    isCurrent
-                      ? 'bg-[#E8E2D9] border-[#5A5A40] text-[#3D3D2D] font-bold'
-                      : 'bg-white border-[#EAE7E0] text-[#6B6B54] hover:bg-[#FAF9F6]'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2.5 truncate">
-                    <div
-                      className={`w-6 h-6 rounded-lg ${
-                        u.avatarColor || 'bg-[#5A5A40]'
-                      } text-white flex items-center justify-center text-[10px] font-bold`}
-                    >
-                      {u.name.charAt(0)}
-                    </div>
-                    <span className="truncate">{u.name}</span>
-                  </div>
-                  {isCurrent && (
-                    <span className="text-[10px] px-2 py-0.5 bg-[#5A5A40] text-white rounded-full font-bold">
-                      Đang dùng
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+          <div className="p-3 bg-white rounded-2xl border border-[#EAE7E0] flex items-center justify-between">
+            <div className="flex items-center space-x-2.5 truncate">
+              <div
+                className={`w-8 h-8 rounded-xl ${
+                  currentUser.avatarColor || 'bg-[#5A5A40]'
+                } text-white flex items-center justify-center text-xs font-bold`}
+              >
+                {currentUser.name.charAt(0)}
+              </div>
+              <div className="truncate">
+                <p className="text-xs font-bold text-[#3D3D2D] truncate">{currentUser.name}</p>
+                <p className="text-[10px] text-[#8A8A70] truncate">{currentUser.email}</p>
+              </div>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 bg-[#5A5A40] text-white rounded-full font-bold">
+              {currentUser.role === 'admin' ? 'Quản trị' : 'Học sinh'}
+            </span>
           </div>
+
+          <button
+            onClick={() => {
+              onClose();
+              onOpenAuthModal();
+            }}
+            className="w-full py-2.5 bg-[#F5F2ED] hover:bg-[#EAE7E0] text-[#3D3D2D] font-bold text-xs rounded-xl border border-[#D9D2C5] transition cursor-pointer flex items-center justify-center space-x-2"
+          >
+            <span>🔐 Đăng nhập tài khoản khác</span>
+          </button>
 
           <div className="grid grid-cols-2 gap-2 mt-2">
             <button

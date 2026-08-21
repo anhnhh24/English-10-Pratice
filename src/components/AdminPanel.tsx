@@ -79,6 +79,7 @@ export const AdminPanel: React.FC = () => {
     getTeacherNote,
     questions,
     exams,
+    getQuestionById,
     addQuestion,
     updateQuestion,
     deleteQuestion,
@@ -90,6 +91,13 @@ export const AdminPanel: React.FC = () => {
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
   const [searchStudentQuery, setSearchStudentQuery] = useState<string>('');
   const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<UserAccount | null>(null);
+
+  // Detailed Exam Attempt Review State (Admin xem chi tiết bài làm của học sinh)
+  const [selectedAttemptForReview, setSelectedAttemptForReview] = useState<{
+    attempt: ExamAttempt;
+    studentName: string;
+  } | null>(null);
+  const [attemptQuestionFilter, setAttemptQuestionFilter] = useState<'all' | 'wrong' | 'correct'>('all');
 
   // Real-time Activities State
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeActivityEvent[]>(() => getStoredRealtimeActivities());
@@ -1755,12 +1763,12 @@ export const AdminPanel: React.FC = () => {
                   {getUserScopedData(selectedStudentForDetail.id).examAttempts.map((att, idx) => (
                     <div
                       key={idx}
-                      className="p-3.5 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] flex items-center justify-between text-xs"
+                      className="p-3.5 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] hover:border-[#D9D2C5] transition flex items-center justify-between text-xs gap-3"
                     >
-                      <div className="space-y-0.5">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-bold text-[#3D3D2D]">{att.examTitle}</span>
-                          <span className="px-2 py-0.2 bg-white rounded text-[10px] font-bold text-[#5A5A40] border border-[#D9D2C5]">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                          <span className="font-bold text-[#3D3D2D] truncate">{att.examTitle}</span>
+                          <span className="px-2 py-0.5 bg-white rounded-lg text-[10px] font-bold text-[#5A5A40] border border-[#D9D2C5]">
                             {att.subject === 'math' ? '📐 Môn Toán' : '🇬🇧 Môn Tiếng Anh'}
                           </span>
                         </div>
@@ -1769,11 +1777,25 @@ export const AdminPanel: React.FC = () => {
                         </p>
                       </div>
 
-                      <div className="text-right">
-                        <span className="text-base font-extrabold text-[#5A5A40]">{att.score.toFixed(2)}đ</span>
-                        <span className="text-[10px] text-[#8BA888] block font-semibold">
-                          {att.correctCount}/{att.totalQuestions} câu đúng
-                        </span>
+                      <div className="flex items-center space-x-3 shrink-0">
+                        <div className="text-right">
+                          <span className="text-base font-extrabold text-[#5A5A40]">{att.score.toFixed(2)}đ</span>
+                          <span className="text-[10px] text-[#8BA888] block font-semibold">
+                            {att.correctCount}/{att.totalQuestions} câu đúng
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setSelectedAttemptForReview({
+                              attempt: att,
+                              studentName: selectedStudentForDetail.name,
+                            });
+                          }}
+                          className="px-3 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Xem chi tiết</span>
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -2546,6 +2568,297 @@ export const AdminPanel: React.FC = () => {
           </div>
         </div>
       )}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* 🔍 MODAL: XEM CHI TIẾT BÀI LÀM CỦA HỌC SINH                 */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {selectedAttemptForReview && (() => {
+        const { attempt, studentName } = selectedAttemptForReview;
+        const examObj = exams.find((e) => e.id === attempt.examId);
+
+        // Collect question list
+        let reviewQuestions: Question[] = [];
+        if (examObj && examObj.questionIds && examObj.questionIds.length > 0) {
+          reviewQuestions = examObj.questionIds
+            .map((qId) => getQuestionById(qId))
+            .filter((q): q is Question => Boolean(q));
+        }
+
+        // If not found in examObj, look up from attempt.userAnswers keys
+        if (reviewQuestions.length === 0 && attempt.userAnswers) {
+          reviewQuestions = Object.keys(attempt.userAnswers)
+            .map((qId) => getQuestionById(qId))
+            .filter((q): q is Question => Boolean(q));
+        }
+
+        // If still empty, try questions filtered by subject
+        if (reviewQuestions.length === 0) {
+          reviewQuestions = questions.filter((q) => q.subject === attempt.subject).slice(0, attempt.totalQuestions || 10);
+        }
+
+        const totalQ = attempt.totalQuestions || reviewQuestions.length || 1;
+        const correctQ = attempt.correctCount || 0;
+        const wrongQ = attempt.incorrectCount || (totalQ - correctQ);
+        const accuracy = Math.round((correctQ / totalQ) * 100);
+
+        // Filter questions according to active tab
+        const filteredList = reviewQuestions.filter((q) => {
+          const userChoice = attempt.userAnswers?.[q.id];
+          const isCorrect = userChoice !== undefined && userChoice === q.correctOption;
+          if (attemptQuestionFilter === 'wrong') return !isCorrect;
+          if (attemptQuestionFilter === 'correct') return isCorrect;
+          return true;
+        });
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/50 backdrop-blur-xs animate-in fade-in">
+            <div className="bg-[#FAF9F6] rounded-[2.5rem] max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-[#D9D2C5] overflow-hidden">
+              {/* Modal Header */}
+              <div className="p-5 sm:p-6 bg-white border-b border-[#EAE7E0] flex items-center justify-between shrink-0">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-10 h-10 rounded-2xl ${attempt.subject === 'math' ? 'bg-[#1E3A8A]' : 'bg-[#5A5A40]'} text-white flex items-center justify-center font-bold text-base shadow-sm`}>
+                    {attempt.subject === 'math' ? '📐' : '🇬🇧'}
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2 flex-wrap">
+                      <h3 className="font-bold text-[#3D3D2D] text-base sm:text-lg">{attempt.examTitle}</h3>
+                      <span className="px-2.5 py-0.5 bg-[#F5F2ED] text-[#5A5A40] font-extrabold text-[11px] rounded-full border border-[#D9D2C5]">
+                        {attempt.subject === 'math' ? 'Toán 9 Vào 10' : 'Tiếng Anh 9 Vào 10'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#8A8A70]">
+                      Học sinh: <strong className="text-[#3D3D2D]">{studentName}</strong> • Nộp bài lúc {new Date(attempt.date).toLocaleString('vi-VN')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedAttemptForReview(null)}
+                  className="p-2 rounded-xl bg-[#F5F2ED] hover:bg-[#EAE7E0] text-[#5A5A40] hover:text-red-500 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Stats Score Ribbon */}
+              <div className="bg-[#FAF9F6] p-4 sm:p-5 border-b border-[#EAE7E0] shrink-0">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3.5 bg-white rounded-2xl border border-[#EAE7E0] shadow-2xs space-y-0.5">
+                    <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Điểm số đạt được</span>
+                    <p className="text-xl sm:text-2xl font-black text-[#5A5A40]">{attempt.score.toFixed(2)} <span className="text-xs font-bold text-[#8A8A70]">/ 10đ</span></p>
+                  </div>
+                  <div className="p-3.5 bg-white rounded-2xl border border-[#EAE7E0] shadow-2xs space-y-0.5">
+                    <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Độ chính xác</span>
+                    <p className="text-xl sm:text-2xl font-black text-emerald-700">{accuracy}% <span className="text-xs font-bold text-emerald-600">({correctQ}/{totalQ} câu)</span></p>
+                  </div>
+                  <div className="p-3.5 bg-white rounded-2xl border border-[#EAE7E0] shadow-2xs space-y-0.5">
+                    <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Số câu sai / bỏ qua</span>
+                    <p className="text-xl sm:text-2xl font-black text-red-600">{wrongQ} <span className="text-xs font-bold text-red-500">câu</span></p>
+                  </div>
+                  <div className="p-3.5 bg-white rounded-2xl border border-[#EAE7E0] shadow-2xs space-y-0.5">
+                    <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Thời gian hoàn thành</span>
+                    <p className="text-xl sm:text-2xl font-black text-[#E67E22]">
+                      {Math.floor((attempt.timeSpentSeconds || 1800) / 60)} <span className="text-xs font-bold text-[#E67E22]">phút</span> {(attempt.timeSpentSeconds || 0) % 60}s
+                    </p>
+                  </div>
+                </div>
+
+                {/* Filter Selector */}
+                <div className="flex bg-[#E8E2D9] p-1 rounded-2xl mt-3 max-w-md">
+                  <button
+                    onClick={() => setAttemptQuestionFilter('all')}
+                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      attemptQuestionFilter === 'all'
+                        ? 'bg-white text-[#3D3D2D] shadow-xs'
+                        : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+                    }`}
+                  >
+                    Tất cả ({reviewQuestions.length})
+                  </button>
+                  <button
+                    onClick={() => setAttemptQuestionFilter('wrong')}
+                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center space-x-1 ${
+                      attemptQuestionFilter === 'wrong'
+                        ? 'bg-red-500 text-white shadow-xs'
+                        : 'text-red-700 hover:text-red-900'
+                    }`}
+                  >
+                    <span>❌ Làm sai ({wrongQ})</span>
+                  </button>
+                  <button
+                    onClick={() => setAttemptQuestionFilter('correct')}
+                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center space-x-1 ${
+                      attemptQuestionFilter === 'correct'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-emerald-700 hover:text-emerald-900'
+                    }`}
+                  >
+                    <span>✅ Làm đúng ({correctQ})</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Question Review Scrollable Content */}
+              <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+                {filteredList.length === 0 ? (
+                  <div className="p-8 text-center bg-white rounded-3xl border border-[#EAE7E0] text-xs text-[#8A8A70]">
+                    Không có câu hỏi nào trong danh mục này.
+                  </div>
+                ) : (
+                  filteredList.map((q, qIndex) => {
+                    const studentChoice = attempt.userAnswers?.[q.id];
+                    const isAnswered = studentChoice !== undefined && studentChoice !== -1;
+                    const isCorrect = isAnswered && studentChoice === q.correctOption;
+
+                    return (
+                      <div
+                        key={q.id || qIndex}
+                        className={`p-5 rounded-[2rem] border transition space-y-3.5 bg-white ${
+                          isCorrect
+                            ? 'border-emerald-200 shadow-xs'
+                            : isAnswered
+                            ? 'border-red-200 shadow-xs'
+                            : 'border-amber-200 shadow-xs'
+                        }`}
+                      >
+                        {/* Question Header */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#F5F2ED]">
+                          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                            <span className="font-extrabold text-sm text-[#3D3D2D]">
+                              Câu {qIndex + 1}
+                            </span>
+                            <span className="px-2.5 py-0.5 bg-[#FAF9F6] text-[#5A5A40] font-bold text-[10px] rounded-lg border border-[#EAE7E0]">
+                              {q.topicId || 'Chuyên đề ôn thi'}
+                            </span>
+                            <span className="px-2 py-0.5 bg-[#FAF9F6] text-[#8A8A70] text-[10px] rounded-lg">
+                              Độ khó: {q.difficulty === 'easy' ? 'Cơ bản' : q.difficulty === 'medium' ? 'Trung bình' : q.difficulty === 'hard' ? 'Khá' : 'Phân loại'}
+                            </span>
+                          </div>
+
+                          <div>
+                            {isCorrect ? (
+                              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 font-extrabold text-xs rounded-xl flex items-center space-x-1 border border-emerald-300">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Đúng (+{(10 / totalQ).toFixed(2)}đ)</span>
+                              </span>
+                            ) : isAnswered ? (
+                              <span className="px-3 py-1 bg-red-100 text-red-800 font-extrabold text-xs rounded-xl flex items-center space-x-1 border border-red-300">
+                                <X className="w-3.5 h-3.5 text-red-600" />
+                                <span>Sai (0đ)</span>
+                              </span>
+                            ) : (
+                              <span className="px-3 py-1 bg-amber-100 text-amber-800 font-extrabold text-xs rounded-xl flex items-center space-x-1 border border-amber-300">
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                                <span>Chưa làm</span>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Passage if any */}
+                        {q.passage && (
+                          <div className="p-3.5 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] text-xs text-[#5A5A40] italic leading-relaxed">
+                            {q.passage}
+                          </div>
+                        )}
+
+                        {/* Question Content */}
+                        <div className="text-sm font-semibold text-[#3D3D2D] leading-relaxed">
+                          {q.content}
+                        </div>
+
+                        {/* Options A, B, C, D */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                          {q.options.map((opt, optIdx) => {
+                            const isSelectedByStudent = studentChoice === optIdx;
+                            const isCorrectOpt = q.correctOption === optIdx;
+
+                            let optStyle = 'bg-[#FAF9F6] border-[#EAE7E0] text-[#3D3D2D]';
+                            let badge = null;
+
+                            if (isSelectedByStudent && isCorrectOpt) {
+                              optStyle = 'bg-emerald-50 border-emerald-400 text-emerald-900 font-bold ring-2 ring-emerald-300/50';
+                              badge = (
+                                <span className="px-2 py-0.5 bg-emerald-600 text-white rounded-md text-[10px] font-extrabold flex items-center space-x-1">
+                                  <Check className="w-3 h-3" />
+                                  <span>Lựa chọn của em (Chính xác)</span>
+                                </span>
+                              );
+                            } else if (isSelectedByStudent && !isCorrectOpt) {
+                              optStyle = 'bg-red-50 border-red-400 text-red-900 font-bold ring-2 ring-red-300/50';
+                              badge = (
+                                <span className="px-2 py-0.5 bg-red-600 text-white rounded-md text-[10px] font-extrabold flex items-center space-x-1">
+                                  <X className="w-3 h-3" />
+                                  <span>Lựa chọn của em (Sai)</span>
+                                </span>
+                              );
+                            } else if (isCorrectOpt) {
+                              optStyle = 'bg-emerald-50/70 border-emerald-300 text-emerald-900 font-semibold';
+                              badge = (
+                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-extrabold">
+                                  ✓ Đáp án đúng
+                                </span>
+                              );
+                            }
+
+                            return (
+                              <div
+                                key={optIdx}
+                                className={`p-3 rounded-2xl border text-xs transition space-y-1 ${optStyle}`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="leading-snug">{opt}</span>
+                                </div>
+                                {badge && <div className="pt-0.5">{badge}</div>}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Detailed Step-by-Step Explanation Box */}
+                        <div className="p-4 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] space-y-2 text-xs">
+                          <div className="flex items-center space-x-1.5 text-[#5A5A40] font-bold">
+                            <span>💡</span>
+                            <span>Lời giải chi tiết & Phương pháp giải:</span>
+                          </div>
+                          <p className="text-[#3D3D2D] leading-relaxed whitespace-pre-line pl-4 border-l-2 border-[#5A5A40]">
+                            {q.explanation || 'Không có lời giải chi tiết cho câu hỏi này.'}
+                          </p>
+
+                          {q.grammarRule && (
+                            <div className="pt-2 border-t border-[#EAE7E0] flex items-start space-x-2 text-[#5A5A40]">
+                              <span className="font-bold shrink-0">📐 Định lý / Quy tắc:</span>
+                              <span className="font-medium text-[#3D3D2D]">{q.grammarRule}</span>
+                            </div>
+                          )}
+
+                          {q.commonMistakeTip && (
+                            <div className="pt-1.5 flex items-start space-x-2 text-[#E67E22]">
+                              <span className="font-bold shrink-0">⚠️ Cảnh báo bẫy:</span>
+                              <span className="font-medium">{q.commonMistakeTip}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 bg-white border-t border-[#EAE7E0] flex justify-between items-center shrink-0">
+                <span className="text-xs text-[#8A8A70]">
+                  Đang xem bài làm của <strong>{studentName}</strong> ({filteredList.length}/{reviewQuestions.length} câu)
+                </span>
+                <button
+                  onClick={() => setSelectedAttemptForReview(null)}
+                  className="px-5 py-2.5 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  Đóng cửa sổ bài làm
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
