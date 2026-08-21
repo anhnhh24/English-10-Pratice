@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
-import { VOCABULARY_DATA, VOCAB_TOPICS } from '../data/vocabData';
-import { MATH_FORMULA_CARDS } from '../data/mathFormulaCards';
+import { useApp } from '../../context/AppContext';
+import { VOCABULARY_DATA, VOCAB_TOPICS } from '../../data/vocabData';
+import { MATH_FORMULA_CARDS } from '../../data/mathFormulaCards';
 import {
   Sparkles,
   Volume2,
@@ -14,7 +14,7 @@ import {
   Lightbulb,
   AlertTriangle,
 } from 'lucide-react';
-import { VocabularyWord, MathFormulaCard } from '../types';
+import { VocabularyWord, MathFormulaCard } from '../../types';
 
 export const VocabFlashcardsView: React.FC = () => {
   const { currentSubject } = useApp();

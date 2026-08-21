@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { TOPICS_META } from '../data/topicsMeta';
-import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
-import { Question, MistakeItem } from '../types';
+import { useApp } from '../../context/AppContext';
+import { TOPICS_META } from '../../data/topicsMeta';
+import { MATH_TOPICS_META } from '../../data/mathTopicsMeta';
+import { Question, MistakeItem } from '../../types';
 import {
   BookMarked,
   RotateCcw,

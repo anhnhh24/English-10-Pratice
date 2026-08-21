@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { Question } from '../types';
+import { useApp } from '../../context/AppContext';
+import { Question } from '../../types';
 import { Zap, Clock, CheckCircle2, RotateCcw, Award, ChevronRight, Bookmark } from 'lucide-react';
 import confetti from 'canvas-confetti';
 

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
-import { TOPICS_META } from '../data/topicsMeta';
-import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
-import { Question, TopicId } from '../types';
+import { useApp } from '../../context/AppContext';
+import { TOPICS_META } from '../../data/topicsMeta';
+import { MATH_TOPICS_META } from '../../data/mathTopicsMeta';
+import { Question, TopicId } from '../../types';
 import {
   generateExamWithAI,
   getStoredApiKey,
-} from '../services/aiExamService';
+} from '../../services/aiExamService';
 import {
   CheckCircle2,
   XCircle,

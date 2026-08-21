@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
-import { Exam, Question } from '../types';
-import { TOPICS_META } from '../data/topicsMeta';
-import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
+import { useApp } from '../../context/AppContext';
+import { Exam, Question } from '../../types';
+import { TOPICS_META } from '../../data/topicsMeta';
+import { MATH_TOPICS_META } from '../../data/mathTopicsMeta';
 import {
   getLocalExamEvaluation,
   generateExamEvaluationWithAI,
   getStoredApiKey,
   ExamEvaluationReport,
-} from '../services/aiExamService';
-import { logAndBroadcastActivity } from '../services/realtimeSyncService';
+} from '../../services/aiExamService';
+import { logAndBroadcastActivity } from '../../services/realtimeSyncService';
 import confetti from 'canvas-confetti';
 import {
   Clock,

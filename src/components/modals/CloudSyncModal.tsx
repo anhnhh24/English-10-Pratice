@@ -4,7 +4,7 @@ import {
   saveCloudDBSettings,
   fetchRoomDataFromOnlineDB,
   CloudDBSettings,
-} from '../services/cloudSyncService';
+} from '../../services/cloudSyncService';
 import {
   Cloud,
   Database,

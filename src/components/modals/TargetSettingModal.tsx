@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../../context/AppContext';
 import { Target, School, Sparkles, Check, X } from 'lucide-react';
 
 interface TargetSettingModalProps {

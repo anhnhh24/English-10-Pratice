@@ -1,9 +1,9 @@
 import React from 'react';
-import { useApp } from '../context/AppContext';
-import { TOPICS_META } from '../data/topicsMeta';
-import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
-import { MistakeItem } from '../types';
-import { getStoredRemoteTasks } from '../services/realtimeSyncService';
+import { useApp } from '../../context/AppContext';
+import { TOPICS_META } from '../../data/topicsMeta';
+import { MATH_TOPICS_META } from '../../data/mathTopicsMeta';
+import { MistakeItem } from '../../types';
+import { getStoredRemoteTasks } from '../../services/realtimeSyncService';
 import {
   GraduationCap,
   BookMarked,

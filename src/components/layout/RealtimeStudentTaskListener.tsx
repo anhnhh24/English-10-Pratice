@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
-import { RemoteTaskAssignment, RemotePing } from '../types';
+import { useApp } from '../../context/AppContext';
+import { RemoteTaskAssignment, RemotePing } from '../../types';
 import {
   subscribeToRemoteTasks,
   markRemoteTaskCompleted,
   subscribeToRemotePings,
-} from '../services/realtimeSyncService';
+} from '../../services/realtimeSyncService';
 import { Bell, Sparkles, ArrowRight, X, GraduationCap, MessageSquare, AlertTriangle, HeartHandshake } from 'lucide-react';
 
 interface RealtimeStudentTaskListenerProps {

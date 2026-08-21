@@ -1,24 +1,64 @@
 import React, { useState, lazy, Suspense } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
-import { Navbar, TabType } from './components/Navbar';
-import { Dashboard } from './components/Dashboard';
-import { TargetSettingModal } from './components/TargetSettingModal';
-import { AuthModal } from './components/AuthModal';
-import { UserProfileModal } from './components/UserProfileModal';
-import { RealtimeStudentTaskListener } from './components/RealtimeStudentTaskListener';
+import { Navbar, TabType } from './components/layout/Navbar';
+import { RealtimeStudentTaskListener } from './components/layout/RealtimeStudentTaskListener';
+import { Dashboard } from './components/student/Dashboard';
+import { TargetSettingModal } from './components/modals/TargetSettingModal';
+import { AuthModal } from './components/modals/AuthModal';
+import { UserProfileModal } from './components/modals/UserProfileModal';
 
 // Lazy loading heavy view components for optimal bundle splitting
-const AiExamGeneratorView = lazy(() => import('./components/AiExamGeneratorView').then(m => ({ default: m.AiExamGeneratorView })));
-const ExamSimulatorView = lazy(() => import('./components/ExamSimulatorView').then(m => ({ default: m.ExamSimulatorView })));
-const MistakeNotebookView = lazy(() => import('./components/MistakeNotebookView').then(m => ({ default: m.MistakeNotebookView })));
-const LessonsView = lazy(() => import('./components/LessonsView').then(m => ({ default: m.LessonsView })));
-const TopicPracticeView = lazy(() => import('./components/TopicPracticeView').then(m => ({ default: m.TopicPracticeView })));
-const QuickBlitzView = lazy(() => import('./components/QuickBlitzView').then(m => ({ default: m.QuickBlitzView })));
-const VocabFlashcardsView = lazy(() => import('./components/VocabFlashcardsView').then(m => ({ default: m.VocabFlashcardsView })));
-const AnalyticsView = lazy(() => import('./components/AnalyticsView').then(m => ({ default: m.AnalyticsView })));
-const BookmarksView = lazy(() => import('./components/BookmarksView').then(m => ({ default: m.BookmarksView })));
-const AdminPanel = lazy(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
-const StudyPathView = lazy(() => import('./components/StudyPathView').then(m => ({ default: m.StudyPathView })));
+const AiExamGeneratorView = lazy(() =>
+  import('./components/student/AiExamGeneratorView').then((m) => ({
+    default: m.AiExamGeneratorView,
+  }))
+);
+const ExamSimulatorView = lazy(() =>
+  import('./components/student/ExamSimulatorView').then((m) => ({
+    default: m.ExamSimulatorView,
+  }))
+);
+const MistakeNotebookView = lazy(() =>
+  import('./components/student/MistakeNotebookView').then((m) => ({
+    default: m.MistakeNotebookView,
+  }))
+);
+const LessonsView = lazy(() =>
+  import('./components/student/LessonsView').then((m) => ({ default: m.LessonsView }))
+);
+const TopicPracticeView = lazy(() =>
+  import('./components/student/TopicPracticeView').then((m) => ({
+    default: m.TopicPracticeView,
+  }))
+);
+const QuickBlitzView = lazy(() =>
+  import('./components/student/QuickBlitzView').then((m) => ({
+    default: m.QuickBlitzView,
+  }))
+);
+const VocabFlashcardsView = lazy(() =>
+  import('./components/student/VocabFlashcardsView').then((m) => ({
+    default: m.VocabFlashcardsView,
+  }))
+);
+const AnalyticsView = lazy(() =>
+  import('./components/student/AnalyticsView').then((m) => ({
+    default: m.AnalyticsView,
+  }))
+);
+const BookmarksView = lazy(() =>
+  import('./components/student/BookmarksView').then((m) => ({
+    default: m.BookmarksView,
+  }))
+);
+const AdminPanel = lazy(() =>
+  import('./components/admin/AdminPanel').then((m) => ({ default: m.AdminPanel }))
+);
+const StudyPathView = lazy(() =>
+  import('./components/student/StudyPathView').then((m) => ({
+    default: m.StudyPathView,
+  }))
+);
 
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center p-12 w-full min-h-[300px]">

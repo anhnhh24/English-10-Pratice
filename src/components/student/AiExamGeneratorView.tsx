@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
-import { TopicId, SubjectId } from '../types';
-import { TOPICS_META } from '../data/topicsMeta';
-import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
+import { useApp } from '../../context/AppContext';
+import { TopicId, SubjectId } from '../../types';
+import { TOPICS_META } from '../../data/topicsMeta';
+import { MATH_TOPICS_META } from '../../data/mathTopicsMeta';
 import {
   testGeminiApiKey,
   generateExamWithAI,
@@ -12,7 +12,7 @@ import {
   AVAILABLE_MODELS,
   ExamGenerationConfig,
   GeneratedExamResult,
-} from '../services/aiExamService';
+} from '../../services/aiExamService';
 import {
   Sparkles,
   Key,

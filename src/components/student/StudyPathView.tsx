@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { STUDY_MILESTONES_DATA, INITIAL_DAILY_MISSIONS } from '../data/studyPathData';
-import { MATH_ESSAY_PROBLEMS } from '../data/mathEssayData';
-import { DailyMission, MathEssayProblem } from '../types';
+import { useApp } from '../../context/AppContext';
+import { STUDY_MILESTONES_DATA, INITIAL_DAILY_MISSIONS } from '../../data/studyPathData';
+import { MATH_ESSAY_PROBLEMS } from '../../data/mathEssayData';
+import { DailyMission, MathEssayProblem } from '../../types';
 import {
   Compass,
   CheckCircle2,

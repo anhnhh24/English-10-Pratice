@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
-import { TOPICS_META } from '../data/topicsMeta';
-import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
-import { DifficultyLevel, Question, TopicId, SubTopicId, Exam, UserAccount, SubjectId, RealtimeActivityEvent, MistakeItem } from '../types';
+import { useApp } from '../../context/AppContext';
+import { TOPICS_META } from '../../data/topicsMeta';
+import { MATH_TOPICS_META } from '../../data/mathTopicsMeta';
+import { DifficultyLevel, Question, TopicId, SubTopicId, Exam, UserAccount, SubjectId, RealtimeActivityEvent, MistakeItem } from '../../types';
 import {
   getStoredRealtimeActivities,
   subscribeToRealtimeActivities,
   broadcastRemoteTask,
   logAndBroadcastActivity,
   sendRemotePing,
-} from '../services/realtimeSyncService';
+} from '../../services/realtimeSyncService';
 import {
   ShieldCheck,
   Plus,
@@ -52,19 +52,19 @@ import {
   Upload,
   Wand2,
 } from 'lucide-react';
-import { CloudSyncModal } from './CloudSyncModal';
+import { CloudSyncModal } from '../modals/CloudSyncModal';
 import {
   generateExamWithAI,
   extractQuestionsFromText,
   getStoredApiKey,
   ExamGenerationConfig,
-} from '../services/aiExamService';
+} from '../../services/aiExamService';
 import {
   readFileAsText,
   detectFileType,
   formatFileSize,
   getFileIcon,
-} from '../services/fileReaderService';
+} from '../../services/fileReaderService';
 
 export const AdminPanel: React.FC = () => {
   const {

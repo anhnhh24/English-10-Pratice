@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
-import { LESSONS_DATA } from '../data/lessonsData';
-import { MATH_LESSONS_DATA } from '../data/mathLessonsData';
-import { TOPICS_META } from '../data/topicsMeta';
-import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
+import { useApp } from '../../context/AppContext';
+import { LESSONS_DATA } from '../../data/lessonsData';
+import { MATH_LESSONS_DATA } from '../../data/mathLessonsData';
+import { TOPICS_META } from '../../data/topicsMeta';
+import { MATH_TOPICS_META } from '../../data/mathTopicsMeta';
 import {
   BookOpen,
   Zap,
