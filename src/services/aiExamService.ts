@@ -25,7 +25,22 @@ export const AVAILABLE_MODELS = [
 ];
 
 export const getStoredApiKey = (): string => {
-  return localStorage.getItem('edu10_gemini_api_key') || '';
+  const envKey = (
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
+    (typeof import.meta !== 'undefined' && import.meta.env?.GEMINI_API_KEY) ||
+    ''
+  ).trim();
+  const localKey = (localStorage.getItem('edu10_gemini_api_key') || '').trim();
+  return envKey || localKey;
+};
+
+export const isApiKeyFromEnv = (): boolean => {
+  const envKey = (
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
+    (typeof import.meta !== 'undefined' && import.meta.env?.GEMINI_API_KEY) ||
+    ''
+  ).trim();
+  return Boolean(envKey);
 };
 
 export const setStoredApiKey = (key: string): void => {
