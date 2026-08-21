@@ -844,7 +844,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       strongestTopics: strongestTopics.length > 0 ? strongestTopics : defaultStrongest,
       recentAttempts: filteredAttempts.slice(0, 5),
     };
-  }, [examAttempts, practiceSessions, mistakes, currentSubject, questions]);
+  }, [examAttempts, practiceSessions, mistakes, currentSubject, allQuestions]);
 
   const getUserScopedData = (userId: string): UserScopedData => {
     try {
