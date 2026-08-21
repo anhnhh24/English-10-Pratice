@@ -718,10 +718,11 @@ export const AdminPanel: React.FC = () => {
       )}
 
       {/* 1. Header Banner */}
-      <div className="bg-[#5A5A40] text-white p-6 sm:p-8 rounded-[2rem] shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="space-y-1.5 max-w-2xl">
-          <div className="flex items-center space-x-2">
-            <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
+      <div className="bg-[#5A5A40] text-white p-6 sm:p-8 rounded-[2.5rem] shadow-sm space-y-6">
+        {/* Top Info Row */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center space-x-2.5 flex-wrap gap-y-1.5">
+            <div className="inline-flex items-center space-x-1.5 px-3.5 py-1 bg-white/15 backdrop-blur-xs rounded-full text-xs font-semibold text-[#E8E2D9] border border-white/10">
               <Radio className="w-3.5 h-3.5 text-[#8BA888] animate-pulse" />
               <span>Giám Sát Thời Gian Thực (Real-time Live Sync)</span>
             </div>
@@ -729,62 +730,74 @@ export const AdminPanel: React.FC = () => {
               ● Live 0ms
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+
+          <div className="text-xs text-[#D9D2C5] flex items-center space-x-1.5">
+            <span>Học sinh trọng tâm:</span>
+            <strong className="text-white bg-white/15 px-2.5 py-0.5 rounded-lg">
+              {siblingStat ? siblingStat.student.name : 'Nguyễn Hoàng Hà'}
+            </strong>
+          </div>
+        </div>
+
+        {/* Title & Subtitle */}
+        <div className="space-y-1.5">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
             Dashboard Giám Sát Quá Trình Học & Kiểm Soát Từ Xa
           </h1>
-          <p className="text-xs sm:text-sm text-[#D9D2C5] leading-relaxed">
-            Cập nhật kết quả làm bài, câu sai và tiến độ học tập của em bạn thời gian thực không độ trễ. Hỗ trợ giao bài tập và gửi lời dặn dò trực tiếp từ xa.
+          <p className="text-xs sm:text-sm text-[#D9D2C5] leading-relaxed max-w-3xl">
+            Cập nhật kết quả làm bài, câu sai và tiến độ học tập của em bạn thời gian thực không độ trễ. Hỗ trợ giao bài tập, tạo đề thi AI và dặn dò trực tiếp từ xa.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2 shrink-0">
+        {/* Action Toolbar Grid (6 Quick Action Buttons) */}
+        <div className="pt-2 border-t border-white/15 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
           <button
             onClick={() => setShowAiCreateModal(true)}
-            className="px-3.5 py-2.5 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-md border border-blue-400/40"
+            className="p-3 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] text-white rounded-2xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-md border border-blue-400/40 text-center"
           >
-            <Wand2 className="w-4 h-4 text-amber-300" />
-            <span>🤖 AI Tạo Đề Mới</span>
+            <Wand2 className="w-4 h-4 text-amber-300 shrink-0" />
+            <span className="truncate">🤖 AI Tạo Đề Mới</span>
           </button>
 
           <button
             onClick={() => setShowUploadModal(true)}
-            className="px-3.5 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-md border border-amber-400/40"
+            className="p-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-2xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-md border border-amber-400/40 text-center"
           >
-            <Upload className="w-4 h-4 text-amber-200" />
-            <span>📄 Upload & Trích Xuất</span>
+            <Upload className="w-4 h-4 text-amber-200 shrink-0" />
+            <span className="truncate">📄 Upload & Trích Xuất</span>
           </button>
 
           <button
             onClick={() => setShowAiQModal(true)}
-            className="px-3.5 py-2.5 bg-white/20 hover:bg-white/30 text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs border border-white/20"
+            className="p-3 bg-white/20 hover:bg-white/30 text-white rounded-2xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs border border-white/20 text-center"
           >
-            <Sparkles className="w-4 h-4 text-yellow-300" />
-            <span>✨ AI Soạn Câu Hỏi</span>
+            <Sparkles className="w-4 h-4 text-yellow-300 shrink-0" />
+            <span className="truncate">✨ AI Soạn Câu Hỏi</span>
           </button>
 
           <button
             onClick={() => setShowCloudModal(true)}
-            className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs border border-white/15"
+            className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs border border-white/15 text-center"
             title="Cài đặt mã phòng & đồng bộ Online DB"
           >
-            <Database className="w-4 h-4 text-[#8BA888]" />
-            <span>DB Online</span>
+            <Database className="w-4 h-4 text-[#8BA888] shrink-0" />
+            <span className="truncate">DB Online</span>
           </button>
 
           <button
             onClick={() => setShowAssignTaskModal(true)}
-            className="px-4 py-2.5 bg-[#8BA888] hover:bg-[#789675] text-white rounded-2xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+            className="p-3 bg-[#8BA888] hover:bg-[#789675] text-white rounded-2xl text-xs font-bold shadow-xs transition flex items-center justify-center space-x-1.5 cursor-pointer text-center"
           >
-            <Send className="w-4 h-4" />
-            <span>Giao bài từ xa</span>
+            <Send className="w-4 h-4 shrink-0" />
+            <span className="truncate">Giao bài từ xa</span>
           </button>
 
           <button
             onClick={() => setShowAddStudentModal(true)}
-            className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
+            className="p-3 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-2xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer text-center"
           >
-            <UserPlus className="w-4 h-4" />
-            <span>Thêm học sinh</span>
+            <UserPlus className="w-4 h-4 shrink-0" />
+            <span className="truncate">Thêm học sinh</span>
           </button>
         </div>
       </div>

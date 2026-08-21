@@ -141,7 +141,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
         <div className="space-y-4">
           {currentTopicsMeta.map((topic) => {
             const stat = analytics.topicStats[topic.id] || { solved: 0, accuracy: 0 };
-            const pct = stat.accuracy || 50;
+            const hasSolved = stat.solved > 0;
+            const pct = hasSolved ? stat.accuracy : 0;
             const barColor =
               pct >= 80 ? 'bg-[#8BA888]' : pct >= 60 ? 'bg-[#E8C07D]' : 'bg-[#E67E22]';
 
@@ -155,10 +156,12 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
                     <div className="flex items-center space-x-2">
                       <span className="font-bold text-[#3D3D2D]">{topic.nameVi}</span>
                       <span className="text-[10px] px-2 py-0.5 bg-white text-[#8A8A70] rounded-md border border-[#EAE7E0]">
-                        {topic.weightInExam}
+                        {hasSolved ? `Đã làm ${stat.solved} câu` : 'Chưa luyện tập'}
                       </span>
                     </div>
-                    <span className="font-extrabold text-[#5A5A40]">{pct}%</span>
+                    <span className="font-extrabold text-[#5A5A40]">
+                      {hasSolved ? `${pct}%` : '--'}
+                    </span>
                   </div>
 
                   <div className="w-full bg-white h-2 rounded-full overflow-hidden border border-[#EAE7E0]">

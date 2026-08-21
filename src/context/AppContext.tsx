@@ -439,13 +439,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetSchool: school,
     };
     setCurrentUser(updated);
-    setUsersList((prev) => prev.map((u) => (u.id === currentUser.id ? updated : u)));
+    localStorage.setItem('edu10_currentUser', JSON.stringify(updated));
+    setUsersList((prev) => {
+      const next = prev.map((u) => (u.id === currentUser.id ? updated : u));
+      localStorage.setItem('edu10_users', JSON.stringify(next));
+      return next;
+    });
   };
 
   const updateUserProfile = (data: Partial<UserAccount>) => {
     const updated: UserAccount = { ...currentUser, ...data };
     setCurrentUser(updated);
-    setUsersList((prev) => prev.map((u) => (u.id === currentUser.id ? updated : u)));
+    localStorage.setItem('edu10_currentUser', JSON.stringify(updated));
+    setUsersList((prev) => {
+      const next = prev.map((u) => (u.id === currentUser.id ? updated : u));
+      localStorage.setItem('edu10_users', JSON.stringify(next));
+      return next;
+    });
   };
 
   const toggleUserLock = (userId: string) => {
