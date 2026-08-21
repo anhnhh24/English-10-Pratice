@@ -413,6 +413,87 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
+      {/* 4.5 ĐỀ THI MỚI DO THẦY CÔ & AI SOẠN (Hiển thị ngay cho học sinh) */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {(() => {
+        const subjectExams = exams.filter((e) => (e.subject || 'english') === currentSubject);
+        const newTeacherOrAiExams = subjectExams.filter(
+          (ex) =>
+            !ex.isOfficialFormat ||
+            ex.id.startsWith('exam_ai_') ||
+            ex.id.startsWith('exam_custom_') ||
+            ex.id.startsWith('exam_upload_') ||
+            ex.creatorUserId !== undefined ||
+            ex.title.includes('AI')
+        );
+
+        if (newTeacherOrAiExams.length === 0) return null;
+
+        return (
+          <section className="bg-white p-5 sm:p-7 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-4 animate-in fade-in">
+            <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED]">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-base shadow-2xs">
+                  🎓
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm sm:text-base text-[#3D3D2D]">
+                    Đề thi mới do Thầy Cô & AI biên soạn ({newTeacherOrAiExams.length} đề)
+                  </h3>
+                  <p className="text-[11px] text-[#8A8A70]">
+                    Các đề thi vừa được thêm vào hệ thống môn {isMath ? 'Toán' : 'Tiếng Anh'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setActiveTab('mock_exam')}
+                className="text-xs font-extrabold text-[#5A5A40] hover:underline cursor-pointer"
+              >
+                Mở phòng thi thử →
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {newTeacherOrAiExams.slice(0, 6).map((ex) => (
+                <div
+                  key={ex.id}
+                  className="p-4 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] hover:border-[#5A5A40] transition flex flex-col justify-between space-y-3 shadow-2xs"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-800 font-bold rounded-lg text-[10px]">
+                        {ex.id.startsWith('exam_ai_') ? '🤖 AI Soạn' : '📄 Đề Thầy Cô'}
+                      </span>
+                      <span className="text-[10px] text-[#8A8A70] font-medium">
+                        ⏱️ {ex.timeLimitMinutes} phút • {ex.questionIds.length} câu
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-xs text-[#3D3D2D] line-clamp-2" title={ex.title}>
+                      {ex.title}
+                    </h4>
+                    {ex.description && (
+                      <p className="text-[11px] text-[#8A8A70] line-clamp-1 italic">
+                        {ex.description}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => onStartExam(ex.id)}
+                    className="w-full py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white font-extrabold text-xs rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 shadow-xs"
+                  >
+                    <span>Làm bài ngay</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
       {/* 5. TIẾN ĐỘ CHUYÊN ĐỀ (100% Real Data, Clean State)         */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <section className="bg-white p-5 sm:p-7 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-4">

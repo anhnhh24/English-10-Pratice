@@ -330,11 +330,30 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
       ? currentUser.targetScoreMath || currentUser.targetScore
       : currentUser.targetScoreEnglish || currentUser.targetScore;
 
-  // Filter exams in list
+  // Filter exams in list (Including all teacher/admin/AI created exams)
+  const teacherOrAiExams = subjectExams.filter(
+    (ex) =>
+      !ex.isOfficialFormat ||
+      ex.id.startsWith('exam_ai_') ||
+      ex.id.startsWith('exam_custom_') ||
+      ex.id.startsWith('exam_upload_') ||
+      ex.creatorUserId !== undefined ||
+      ex.title.includes('AI')
+  );
+
   const filteredExamsList = subjectExams.filter((ex) => {
-    if (examTabFilter === 'official') return ex.isOfficialFormat;
+    if (examTabFilter === 'official') return ex.isOfficialFormat && !ex.id.startsWith('exam_ai_') && !ex.id.startsWith('exam_custom_') && !ex.id.startsWith('exam_upload_');
     if (examTabFilter === 'speed') return ex.timeLimitMinutes <= 30 && !ex.id.startsWith('exam_ai_');
-    if (examTabFilter === 'custom') return ex.id.startsWith('exam_ai_') || ex.creatorUserId === currentUser.id;
+    if (examTabFilter === 'custom') {
+      return (
+        !ex.isOfficialFormat ||
+        ex.id.startsWith('exam_ai_') ||
+        ex.id.startsWith('exam_custom_') ||
+        ex.id.startsWith('exam_upload_') ||
+        ex.creatorUserId !== undefined ||
+        ex.title.includes('AI')
+      );
+    }
     return true;
   });
 
@@ -425,7 +444,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
               examTabFilter === 'custom' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
             }`}
           >
-            Đề AI của tôi
+            Thầy Cô & AI ({teacherOrAiExams.length})
           </button>
         </div>
 
