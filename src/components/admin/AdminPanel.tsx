@@ -230,6 +230,7 @@ export const AdminPanel: React.FC = () => {
   const [aiCreateProgress, setAiCreateProgress] = useState<string>('');
   const [aiCreateResult, setAiCreateResult] = useState<{ examId: string; questionCount: number } | null>(null);
   const [aiCreateError, setAiCreateError] = useState<string>('');
+  const [aiCreateModel, setAiCreateModel] = useState<string>('gemini-3.6-flash');
 
   const handleAiCreateExam = async () => {
     setAiCreateLoading(true);
@@ -244,6 +245,7 @@ export const AdminPanel: React.FC = () => {
         timeLimitMinutes: aiCreateCount <= 10 ? 45 : 60,
         customPrompt: aiCreatePrompt,
         title: `Đề AI ${aiCreateSubject === 'math' ? 'Toán' : 'Anh'} - ${new Date().toLocaleDateString('vi-VN')}`,
+        modelName: aiCreateModel,
       };
       const result = await generateExamWithAI(apiKey, config, setAiCreateProgress);
       // Save to app via addExam + add questions
@@ -268,6 +270,7 @@ export const AdminPanel: React.FC = () => {
   const [aiQProgress, setAiQProgress] = useState<string>('');
   const [aiQSuccessMsg, setAiQSuccessMsg] = useState<string>('');
   const [aiQError, setAiQError] = useState<string>('');
+  const [aiQModel, setAiQModel] = useState<string>('gemini-3.6-flash');
 
   const handleAiGenerateQuestions = async () => {
     setAiQLoading(true);
@@ -283,6 +286,7 @@ export const AdminPanel: React.FC = () => {
         focusTopics: [aiQTopicId as TopicId],
         customPrompt: aiQPrompt,
         title: `Bộ câu hỏi ${aiQSubject === 'math' ? 'Toán' : 'Anh'}`,
+        modelName: aiQModel,
       };
       const result = await generateExamWithAI(apiKey, config, setAiQProgress);
       bulkImportQuestions(result.questions);
@@ -306,6 +310,7 @@ export const AdminPanel: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<string>('');
   const [uploadResult, setUploadResult] = useState<{ examId: string; questionCount: number } | null>(null);
   const [uploadError, setUploadError] = useState<string>('');
+  const [uploadModel, setUploadModel] = useState<string>('gemini-3.6-flash');
 
   const handleFileRead = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -353,7 +358,8 @@ export const AdminPanel: React.FC = () => {
         uploadFileContent,
         uploadSubject,
         uploadTitle || 'Đề Thi Upload',
-        setUploadProgress
+        setUploadProgress,
+        uploadModel
       );
       bulkImportQuestions(result.questions);
       addExam(result.exam);
@@ -1018,11 +1024,10 @@ export const AdminPanel: React.FC = () => {
       <div className="flex bg-[#E8E2D9] p-1.5 rounded-2xl max-w-5xl shadow-2xs text-xs font-bold overflow-x-auto no-scrollbar gap-1">
         <button
           onClick={() => setActiveAdminTab('overview')}
-          className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
-            activeAdminTab === 'overview'
+          className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${activeAdminTab === 'overview'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
-          }`}
+            }`}
         >
           <BarChart2 className="w-4 h-4" />
           <span>Tổng quan</span>
@@ -1030,11 +1035,10 @@ export const AdminPanel: React.FC = () => {
 
         <button
           onClick={() => setActiveAdminTab('tasks')}
-          className={`py-2 px-3.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
-            activeAdminTab === 'tasks'
+          className={`py-2 px-3.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${activeAdminTab === 'tasks'
               ? 'bg-[#1E3A8A] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
-          }`}
+            }`}
         >
           <ClipboardList className="w-4 h-4 text-amber-300" />
           <span>🎯 Bài tập đang giao ({assignedTasks.filter((t) => !t.completed).length})</span>
@@ -1042,11 +1046,10 @@ export const AdminPanel: React.FC = () => {
 
         <button
           onClick={() => setActiveAdminTab('submissions')}
-          className={`py-2 px-3.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
-            activeAdminTab === 'submissions'
+          className={`py-2 px-3.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${activeAdminTab === 'submissions'
               ? 'bg-[#1E3A8A] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
-          }`}
+            }`}
         >
           <FileText className="w-4 h-4 text-blue-300" />
           <span>📝 Bài làm học sinh ({allSubmissions.length})</span>
@@ -1054,11 +1057,10 @@ export const AdminPanel: React.FC = () => {
 
         <button
           onClick={() => setActiveAdminTab('exams')}
-          className={`py-2 px-3.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
-            activeAdminTab === 'exams'
+          className={`py-2 px-3.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${activeAdminTab === 'exams'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
-          }`}
+            }`}
         >
           <GraduationCap className="w-4 h-4 text-amber-300" />
           <span>Quản lý đề thi ({exams.length})</span>
@@ -1066,11 +1068,10 @@ export const AdminPanel: React.FC = () => {
 
         <button
           onClick={() => setActiveAdminTab('students')}
-          className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
-            activeAdminTab === 'students'
+          className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${activeAdminTab === 'students'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
-          }`}
+            }`}
         >
           <Users className="w-4 h-4" />
           <span>Học sinh ({totalStudents})</span>
@@ -1078,11 +1079,10 @@ export const AdminPanel: React.FC = () => {
 
         <button
           onClick={() => setActiveAdminTab('questions')}
-          className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
-            activeAdminTab === 'questions'
+          className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${activeAdminTab === 'questions'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
-          }`}
+            }`}
         >
           <Layers className="w-4 h-4" />
           <span>Ngân hàng câu hỏi</span>
@@ -1090,11 +1090,10 @@ export const AdminPanel: React.FC = () => {
 
         <button
           onClick={() => setActiveAdminTab('realtime_pulse')}
-          className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
-            activeAdminTab === 'realtime_pulse'
+          className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${activeAdminTab === 'realtime_pulse'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D]'
-          }`}
+            }`}
         >
           <Activity className="w-4 h-4 text-[#8BA888]" />
           <span>Nhật ký Live ({realtimeEvents.length})</span>
@@ -1252,49 +1251,43 @@ export const AdminPanel: React.FC = () => {
                   <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] text-xs font-bold shrink-0 flex-wrap gap-1">
                     <button
                       onClick={() => setActivityFilterType('all')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                        activityFilterType === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${activityFilterType === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
                     >
                       Tất cả
                     </button>
                     <button
                       onClick={() => setActivityFilterType('exam_submitted')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                        activityFilterType === 'exam_submitted' ? 'bg-emerald-700 text-white shadow-xs' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${activityFilterType === 'exam_submitted' ? 'bg-emerald-700 text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
                     >
                       📝 Nộp bài thi
                     </button>
                     <button
                       onClick={() => setActivityFilterType('practice_completed')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                        activityFilterType === 'practice_completed' ? 'bg-blue-700 text-white shadow-xs' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${activityFilterType === 'practice_completed' ? 'bg-blue-700 text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
                     >
                       ⚡ Luyện tập
                     </button>
                     <button
                       onClick={() => setActivityFilterType('question_wrong')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                        activityFilterType === 'question_wrong' ? 'bg-amber-600 text-white shadow-xs' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${activityFilterType === 'question_wrong' ? 'bg-amber-600 text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
                     >
                       ⚠️ Làm sai
                     </button>
                     <button
                       onClick={() => setActivityFilterType('mistake_mastered')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                        activityFilterType === 'mistake_mastered' ? 'bg-indigo-700 text-white shadow-xs' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${activityFilterType === 'mistake_mastered' ? 'bg-indigo-700 text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
                     >
                       ✅ Sửa câu sai
                     </button>
                     <button
                       onClick={() => setActivityFilterType('study_start')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                        activityFilterType === 'study_start' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${activityFilterType === 'study_start' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
                     >
                       👤 Đăng nhập
                     </button>
@@ -1304,25 +1297,22 @@ export const AdminPanel: React.FC = () => {
                   <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] text-xs font-bold shrink-0">
                     <button
                       onClick={() => setActivityFilterSubject('all')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                        activityFilterSubject === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${activityFilterSubject === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
                     >
                       Tất cả môn
                     </button>
                     <button
                       onClick={() => setActivityFilterSubject('math')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                        activityFilterSubject === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${activityFilterSubject === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
                     >
                       📐 Môn Toán
                     </button>
                     <button
                       onClick={() => setActivityFilterSubject('english')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                        activityFilterSubject === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${activityFilterSubject === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
                     >
                       🇬🇧 Tiếng Anh
                     </button>
@@ -1361,29 +1351,28 @@ export const AdminPanel: React.FC = () => {
                               <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                                 <span className="font-bold text-[#3D3D2D]">{evt.userName}</span>
                                 <span
-                                  className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold ${
-                                    evt.type === 'exam_submitted'
+                                  className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold ${evt.type === 'exam_submitted'
                                       ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                                       : evt.type === 'practice_completed'
-                                      ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                                      : evt.type === 'question_wrong'
-                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                      : evt.type === 'mistake_mastered'
-                                      ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                                      : 'bg-[#F5F2ED] text-[#5A5A40] border border-[#D9D2C5]'
-                                  }`}
+                                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                        : evt.type === 'question_wrong'
+                                          ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                          : evt.type === 'mistake_mastered'
+                                            ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                                            : 'bg-[#F5F2ED] text-[#5A5A40] border border-[#D9D2C5]'
+                                    }`}
                                 >
                                   {evt.type === 'exam_submitted'
                                     ? '📝 Nộp bài thi'
                                     : evt.type === 'practice_completed'
-                                    ? '⚡ Hoàn thành luyện tập'
-                                    : evt.type === 'question_wrong'
-                                    ? '⚠️ Làm sai câu hỏi'
-                                    : evt.type === 'mistake_mastered'
-                                    ? '✅ Đã sửa câu sai'
-                                    : evt.type === 'study_start'
-                                    ? '👤 Đăng nhập'
-                                    : 'Học tập'}
+                                      ? '⚡ Hoàn thành luyện tập'
+                                      : evt.type === 'question_wrong'
+                                        ? '⚠️ Làm sai câu hỏi'
+                                        : evt.type === 'mistake_mastered'
+                                          ? '✅ Đã sửa câu sai'
+                                          : evt.type === 'study_start'
+                                            ? '👤 Đăng nhập'
+                                            : 'Học tập'}
                                 </span>
 
                                 {evt.subject && (
@@ -1487,25 +1476,22 @@ export const AdminPanel: React.FC = () => {
                 <div className="flex space-x-1 bg-[#FAF9F6] p-1 rounded-xl border border-[#D9D2C5] text-[11px] font-bold">
                   <button
                     onClick={() => setSelectedSubjectFilter('all')}
-                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
-                      selectedSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
-                    }`}
+                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${selectedSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                      }`}
                   >
                     Tất cả
                   </button>
                   <button
                     onClick={() => setSelectedSubjectFilter('math')}
-                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
-                      selectedSubjectFilter === 'math' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
-                    }`}
+                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${selectedSubjectFilter === 'math' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                      }`}
                   >
                     Toán
                   </button>
                   <button
                     onClick={() => setSelectedSubjectFilter('english')}
-                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${
-                      selectedSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
-                    }`}
+                    className={`px-2 py-0.5 rounded-lg transition cursor-pointer ${selectedSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                      }`}
                   >
                     Tiếng Anh
                   </button>
@@ -1528,13 +1514,12 @@ export const AdminPanel: React.FC = () => {
                         >
                           <div className="flex items-center space-x-2 min-w-0 flex-1 pr-3">
                             <span
-                              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                                topicStat.hasData
+                              className={`w-2.5 h-2.5 rounded-full shrink-0 ${topicStat.hasData
                                   ? topicStat.isDanger
                                     ? 'bg-[#E67E22] animate-ping'
                                     : 'bg-[#8BA888]'
                                   : 'bg-[#C5C0B5]'
-                              }`}
+                                }`}
                             />
                             <span className="font-bold text-[#3D3D2D] truncate">{t.nameVi}</span>
                           </div>
@@ -1577,13 +1562,12 @@ export const AdminPanel: React.FC = () => {
                         >
                           <div className="flex items-center space-x-2 min-w-0 flex-1 pr-3">
                             <span
-                              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                                topicStat.hasData
+                              className={`w-2.5 h-2.5 rounded-full shrink-0 ${topicStat.hasData
                                   ? topicStat.isDanger
                                     ? 'bg-[#E67E22] animate-ping'
                                     : 'bg-[#8BA888]'
                                   : 'bg-[#C5C0B5]'
-                              }`}
+                                }`}
                             />
                             <span className="font-bold text-[#3D3D2D] truncate">{t.nameVi}</span>
                           </div>
@@ -1817,25 +1801,22 @@ export const AdminPanel: React.FC = () => {
                 <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5]">
                   <button
                     onClick={() => setTaskStatusFilter('all')}
-                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                      taskStatusFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                    }`}
+                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${taskStatusFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
                   >
                     Tất cả ({assignedTasks.length})
                   </button>
                   <button
                     onClick={() => setTaskStatusFilter('pending')}
-                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                      taskStatusFilter === 'pending' ? 'bg-amber-600 text-white shadow-xs' : 'text-amber-700'
-                    }`}
+                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${taskStatusFilter === 'pending' ? 'bg-amber-600 text-white shadow-xs' : 'text-amber-700'
+                      }`}
                   >
                     <span>🟡 Đang chờ ({pendingCount})</span>
                   </button>
                   <button
                     onClick={() => setTaskStatusFilter('completed')}
-                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                      taskStatusFilter === 'completed' ? 'bg-emerald-700 text-white shadow-xs' : 'text-emerald-700'
-                    }`}
+                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${taskStatusFilter === 'completed' ? 'bg-emerald-700 text-white shadow-xs' : 'text-emerald-700'
+                      }`}
                   >
                     <span>🟢 Đã xong ({completedCount})</span>
                   </button>
@@ -1845,25 +1826,22 @@ export const AdminPanel: React.FC = () => {
                 <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5]">
                   <button
                     onClick={() => setTaskSubjectFilter('all')}
-                    className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${
-                      taskSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
-                    }`}
+                    className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${taskSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                      }`}
                   >
                     Tất cả môn
                   </button>
                   <button
                     onClick={() => setTaskSubjectFilter('math')}
-                    className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${
-                      taskSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white' : 'text-[#6B6B54]'
-                    }`}
+                    className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${taskSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white' : 'text-[#6B6B54]'
+                      }`}
                   >
                     📐 Toán
                   </button>
                   <button
                     onClick={() => setTaskSubjectFilter('english')}
-                    className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${
-                      taskSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
-                    }`}
+                    className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${taskSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                      }`}
                   >
                     🇬🇧 Tiếng Anh
                   </button>
@@ -1922,7 +1900,7 @@ export const AdminPanel: React.FC = () => {
                 {filteredTasks.map((task) => {
                   const targetStudent = studentUsers.find((s) => s.id === task.recipientUserId);
                   const linkedExam = task.assignedExamId ? exams.find((e) => e.id === task.assignedExamId) : null;
-                  
+
                   // Check if student has submitted an attempt for this linked exam
                   const studentAttempt = linkedExam
                     ? allSubmissions.find((sub) => sub.examId === linkedExam.id && sub.userId === task.recipientUserId)
@@ -1931,11 +1909,10 @@ export const AdminPanel: React.FC = () => {
                   return (
                     <div
                       key={task.id}
-                      className={`bg-white rounded-[2rem] p-5 border transition-all shadow-xs space-y-3.5 flex flex-col justify-between ${
-                        task.completed
+                      className={`bg-white rounded-[2rem] p-5 border transition-all shadow-xs space-y-3.5 flex flex-col justify-between ${task.completed
                           ? 'border-emerald-200 bg-emerald-50/20'
                           : 'border-[#EAE7E0] hover:border-[#D9D2C5]'
-                      }`}
+                        }`}
                     >
                       {/* Card Top: Student Info + Status */}
                       <div className="flex items-center justify-between gap-2">
@@ -2051,11 +2028,10 @@ export const AdminPanel: React.FC = () => {
                           )}
                           <button
                             onClick={() => handleToggleTaskStatus(task.id)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1 ${
-                              task.completed
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1 ${task.completed
                                 ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
                                 : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
-                            }`}
+                              }`}
                           >
                             {task.completed ? <RotateCcw className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
                             <span>{task.completed ? 'Mở lại' : 'Đã nộp'}</span>
@@ -2158,25 +2134,22 @@ export const AdminPanel: React.FC = () => {
             <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] text-xs font-bold shrink-0">
               <button
                 onClick={() => setSubmissionSubjectFilter('all')}
-                className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                  submissionSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                }`}
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${submissionSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                  }`}
               >
                 Tất cả môn
               </button>
               <button
                 onClick={() => setSubmissionSubjectFilter('math')}
-                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                  submissionSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
-                }`}
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${submissionSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
+                  }`}
               >
                 <span>📐 Toán ({allSubmissions.filter(s => s.subject === 'math').length})</span>
               </button>
               <button
                 onClick={() => setSubmissionSubjectFilter('english')}
-                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                  submissionSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                }`}
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${submissionSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                  }`}
               >
                 <span>🇬🇧 Tiếng Anh ({allSubmissions.filter(s => (s.subject || 'english') === 'english').length})</span>
               </button>
@@ -2440,25 +2413,22 @@ export const AdminPanel: React.FC = () => {
               <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] text-xs font-bold shrink-0">
                 <button
                   onClick={() => setQuestionSubjectFilter('all')}
-                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                    questionSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                  }`}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${questionSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                    }`}
                 >
                   Tất cả ({questions.length})
                 </button>
                 <button
                   onClick={() => setQuestionSubjectFilter('math')}
-                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                    questionSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
-                  }`}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${questionSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
+                    }`}
                 >
                   <span>📐 Toán ({mathQCount})</span>
                 </button>
                 <button
                   onClick={() => setQuestionSubjectFilter('english')}
-                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                    questionSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                  }`}
+                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${questionSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                    }`}
                 >
                   <span>🇬🇧 Tiếng Anh ({engQCount})</span>
                 </button>
@@ -2596,11 +2566,10 @@ export const AdminPanel: React.FC = () => {
                       {q.options.map((opt, oIdx) => (
                         <div
                           key={oIdx}
-                          className={`p-2 rounded-xl border whitespace-pre-line ${
-                            oIdx === q.correctOption
+                          className={`p-2 rounded-xl border whitespace-pre-line ${oIdx === q.correctOption
                               ? 'bg-[#EBF2EB] border-[#8BA888] text-[#3D3D2D] font-bold'
                               : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#6B6B54]'
-                          }`}
+                            }`}
                         >
                           {opt}
                         </div>
@@ -2717,25 +2686,22 @@ export const AdminPanel: React.FC = () => {
                   <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] shrink-0">
                     <button
                       onClick={() => setExamSubjectFilter('all')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                        examSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${examSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
                     >
                       Tất cả ({exams.length})
                     </button>
                     <button
                       onClick={() => setExamSubjectFilter('math')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                        examSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${examSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
                     >
                       <span>📐 Toán ({mathExamsCount})</span>
                     </button>
                     <button
                       onClick={() => setExamSubjectFilter('english')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                        examSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${examSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
                     >
                       <span>🇬🇧 Tiếng Anh ({engExamsCount})</span>
                     </button>
@@ -2745,35 +2711,31 @@ export const AdminPanel: React.FC = () => {
                   <div className="flex items-center space-x-1 bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] shrink-0">
                     <button
                       onClick={() => setExamOriginFilter('all')}
-                      className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${
-                        examOriginFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
-                      }`}
+                      className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${examOriginFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                        }`}
                     >
                       Tất cả nguồn
                     </button>
                     <button
                       onClick={() => setExamOriginFilter('ai')}
-                      className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                        examOriginFilter === 'ai' ? 'bg-blue-600 text-white' : 'text-blue-700 hover:bg-blue-50'
-                      }`}
+                      className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${examOriginFilter === 'ai' ? 'bg-blue-600 text-white' : 'text-blue-700 hover:bg-blue-50'
+                        }`}
                     >
                       <Wand2 className="w-3 h-3" />
                       <span>Đề AI ({aiExamsCount})</span>
                     </button>
                     <button
                       onClick={() => setExamOriginFilter('upload')}
-                      className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                        examOriginFilter === 'upload' ? 'bg-amber-600 text-white' : 'text-amber-700 hover:bg-amber-50'
-                      }`}
+                      className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${examOriginFilter === 'upload' ? 'bg-amber-600 text-white' : 'text-amber-700 hover:bg-amber-50'
+                        }`}
                     >
                       <Upload className="w-3 h-3" />
                       <span>Đề Upload ({uploadExamsCount})</span>
                     </button>
                     <button
                       onClick={() => setExamOriginFilter('official')}
-                      className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${
-                        examOriginFilter === 'official' ? 'bg-emerald-700 text-white' : 'text-emerald-700 hover:bg-emerald-50'
-                      }`}
+                      className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${examOriginFilter === 'official' ? 'bg-emerald-700 text-white' : 'text-emerald-700 hover:bg-emerald-50'
+                        }`}
                     >
                       Chuẩn Sở ({officialExamsCount})
                     </button>
@@ -2868,13 +2830,12 @@ export const AdminPanel: React.FC = () => {
                   return (
                     <div
                       key={ex.id}
-                      className={`bg-white p-6 rounded-[2.5rem] border shadow-sm space-y-3 transition hover:shadow-md ${
-                        isAiExam
+                      className={`bg-white p-6 rounded-[2.5rem] border shadow-sm space-y-3 transition hover:shadow-md ${isAiExam
                           ? 'border-blue-200 hover:border-blue-400'
                           : isUploadExam
-                          ? 'border-amber-200 hover:border-amber-400'
-                          : 'border-[#EAE7E0] hover:border-[#D9D2C5]'
-                      }`}
+                            ? 'border-amber-200 hover:border-amber-400'
+                            : 'border-[#EAE7E0] hover:border-[#D9D2C5]'
+                        }`}
                     >
                       {/* Top Badges */}
                       <div className="flex justify-between items-center flex-wrap gap-2">
@@ -3836,11 +3797,10 @@ export const AdminPanel: React.FC = () => {
                           setAiQSubject(s);
                           setAiQTopicId(s === 'math' ? 'math_pt_bac_hai_viet' : 'grammar');
                         }}
-                        className={`flex-1 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                          aiQSubject === s
+                        className={`flex-1 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${aiQSubject === s
                             ? 'bg-indigo-600 text-white border-indigo-600'
                             : 'bg-[#F5F2ED] text-[#5A5A40] border-[#EAE7E0]'
-                        }`}
+                          }`}
                       >
                         {s === 'math' ? '📐 Môn Toán' : '🇬🇧 Môn Tiếng Anh'}
                       </button>
@@ -3858,15 +3818,15 @@ export const AdminPanel: React.FC = () => {
                   >
                     {aiQSubject === 'math'
                       ? MATH_TOPICS_META.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            📐 {t.nameVi}
-                          </option>
-                        ))
+                        <option key={t.id} value={t.id}>
+                          📐 {t.nameVi}
+                        </option>
+                      ))
                       : TOPICS_META.map((t) => (
-                          <option key={t.id} value={t.id}>
-                            🇬🇧 {t.nameVi}
-                          </option>
-                        ))}
+                        <option key={t.id} value={t.id}>
+                          🇬🇧 {t.nameVi}
+                        </option>
+                      ))}
                   </select>
                 </div>
 
@@ -3898,6 +3858,22 @@ export const AdminPanel: React.FC = () => {
                       <option value="challenge">Phân loại (9 - 10đ)</option>
                     </select>
                   </div>
+                </div>
+
+                {/* Chọn Model AI */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Mô hình AI (Model)</label>
+                  <select
+                    value={aiQModel}
+                    onChange={(e) => setAiQModel(e.target.value)}
+                    className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm text-[#3D3D2D] focus:ring-2 focus:ring-indigo-400 focus:outline-none"
+                  >
+                    {AVAILABLE_MODELS.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Custom Prompt */}
@@ -4029,6 +4005,19 @@ export const AdminPanel: React.FC = () => {
                       <option value="challenge">Phân loại (Khó)</option>
                     </select>
                   </div>
+                </div>
+
+                {/* Chọn Model AI */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Mô hình AI (Model)</label>
+                  <select value={aiCreateModel} onChange={(e) => setAiCreateModel(e.target.value)}
+                    className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm text-[#3D3D2D] focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                    {AVAILABLE_MODELS.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Custom Prompt */}
@@ -4165,6 +4154,19 @@ export const AdminPanel: React.FC = () => {
                   <input type="text" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)}
                     placeholder="Ví dụ: Đề Thi Thử Toán HK2 2024 - Trường ABC"
                     className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-400 focus:outline-none" />
+                </div>
+
+                {/* Chọn Model AI */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Mô hình AI (Model)</label>
+                  <select value={uploadModel} onChange={(e) => setUploadModel(e.target.value)}
+                    className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm text-[#3D3D2D] focus:ring-2 focus:ring-amber-400 focus:outline-none">
+                    {AVAILABLE_MODELS.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Upload Zone */}
@@ -4363,31 +4365,28 @@ export const AdminPanel: React.FC = () => {
                 <div className="flex bg-[#E8E2D9] p-1 rounded-2xl mt-3 max-w-md">
                   <button
                     onClick={() => setAttemptQuestionFilter('all')}
-                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${
-                      attemptQuestionFilter === 'all'
+                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer ${attemptQuestionFilter === 'all'
                         ? 'bg-white text-[#3D3D2D] shadow-xs'
                         : 'text-[#6B6B54] hover:text-[#3D3D2D]'
-                    }`}
+                      }`}
                   >
                     Tất cả ({reviewQuestions.length})
                   </button>
                   <button
                     onClick={() => setAttemptQuestionFilter('wrong')}
-                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center space-x-1 ${
-                      attemptQuestionFilter === 'wrong'
+                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center space-x-1 ${attemptQuestionFilter === 'wrong'
                         ? 'bg-red-500 text-white shadow-xs'
                         : 'text-red-700 hover:text-red-900'
-                    }`}
+                      }`}
                   >
                     <span>❌ Làm sai ({wrongQ})</span>
                   </button>
                   <button
                     onClick={() => setAttemptQuestionFilter('correct')}
-                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center space-x-1 ${
-                      attemptQuestionFilter === 'correct'
+                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center space-x-1 ${attemptQuestionFilter === 'correct'
                         ? 'bg-emerald-600 text-white shadow-xs'
                         : 'text-emerald-700 hover:text-emerald-900'
-                    }`}
+                      }`}
                   >
                     <span>✅ Làm đúng ({correctQ})</span>
                   </button>
@@ -4409,13 +4408,12 @@ export const AdminPanel: React.FC = () => {
                     return (
                       <div
                         key={q.id || qIndex}
-                        className={`p-5 rounded-[2rem] border transition space-y-3.5 bg-white ${
-                          isCorrect
+                        className={`p-5 rounded-[2rem] border transition space-y-3.5 bg-white ${isCorrect
                             ? 'border-emerald-200 shadow-xs'
                             : isAnswered
-                            ? 'border-red-200 shadow-xs'
-                            : 'border-amber-200 shadow-xs'
-                        }`}
+                              ? 'border-red-200 shadow-xs'
+                              : 'border-amber-200 shadow-xs'
+                          }`}
                       >
                         {/* Question Header */}
                         <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#F5F2ED]">
@@ -4673,11 +4671,10 @@ export const AdminPanel: React.FC = () => {
                           return (
                             <div
                               key={optIdx}
-                              className={`p-3 rounded-2xl border text-xs flex items-center justify-between ${
-                                isCorrect
+                              className={`p-3 rounded-2xl border text-xs flex items-center justify-between ${isCorrect
                                   ? 'bg-emerald-50 border-emerald-400 text-emerald-950 font-bold'
                                   : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#3D3D2D]'
-                              }`}
+                                }`}
                             >
                               <span>{opt}</span>
                               {isCorrect && (
@@ -4842,11 +4839,10 @@ export const AdminPanel: React.FC = () => {
               {/* Validation Result Notice */}
               {adminKeyValidationResult && (
                 <div
-                  className={`p-3 rounded-xl border text-xs font-medium ${
-                    adminKeyValidationResult.success
+                  className={`p-3 rounded-xl border text-xs font-medium ${adminKeyValidationResult.success
                       ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
                       : 'bg-red-50 border-red-300 text-red-800'
-                  }`}
+                    }`}
                 >
                   {adminKeyValidationResult.success ? '✅ ' : '❌ '}
                   {adminKeyValidationResult.message}

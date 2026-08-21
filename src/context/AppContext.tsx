@@ -677,7 +677,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setCustomQuestions((prev) => {
       const existing = prev.filter((item) => item.id !== newQ.id);
-      return [newQ, ...existing];
+      const updated = [newQ, ...existing];
+      try {
+        localStorage.setItem('edu10_custom_questions', JSON.stringify(updated));
+      } catch (_) {}
+      return updated;
     });
     // Save to Firebase Realtime DB
     saveQuestionToOnlineDB(newQ).catch((err) => console.warn('DB Question save error:', err));
@@ -692,6 +696,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (target) {
         saveQuestionToOnlineDB(target).catch((err) => console.warn('DB Question update error:', err));
       }
+      try {
+        localStorage.setItem('edu10_custom_questions', JSON.stringify(updated));
+      } catch (_) {}
       return updated;
     });
     dispatchGlobalSync('QUESTIONS_UPDATED');
@@ -731,9 +738,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCustomQuestions((prev) => {
       const existingIds = new Set(prev.map((p) => p.id));
       const toAdd = formatted.filter((f) => !existingIds.has(f.id));
+      const updated = [...toAdd, ...prev];
+      try {
+        localStorage.setItem('edu10_custom_questions', JSON.stringify(updated));
+      } catch (_) {}
       // Save all new questions in a single DB update batch to avoid race conditions
       saveQuestionsToOnlineDB(toAdd).catch((err) => console.warn('DB Questions batch save error:', err));
-      return [...toAdd, ...prev];
+      return updated;
     });
     dispatchGlobalSync('QUESTIONS_UPDATED');
     return formatted.length;

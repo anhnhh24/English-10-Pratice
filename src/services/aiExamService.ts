@@ -472,12 +472,12 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
 
   const formattedQuestions: Question[] = parsedData.questions.map((q: any, idx: number) => {
     const qId = `q_ai_${examTimestamp}_${idx + 1}`;
-    
+
     let opts = Array.isArray(q.options) && q.options.length === 4 ? q.options : ['A. ', 'B. ', 'C. ', 'D. '];
     opts = opts.map((opt: string, i: number) => {
       const prefix = ['A. ', 'B. ', 'C. ', 'D. '][i];
       if (!opt.startsWith('A.') && !opt.startsWith('B.') && !opt.startsWith('C.') && !opt.startsWith('D.') &&
-          !opt.startsWith('A. ') && !opt.startsWith('B. ') && !opt.startsWith('C. ') && !opt.startsWith('D. ')) {
+        !opt.startsWith('A. ') && !opt.startsWith('B. ') && !opt.startsWith('C. ') && !opt.startsWith('D. ')) {
         return `${prefix}${opt}`;
       }
       return opt;
@@ -661,17 +661,17 @@ THÔNG TIN BÀI THI:
 
 THỐNG KÊ KẾT QUẢ THEO TỪNG CHUYÊN ĐỀ:
 ${Object.entries(topicBreakdown)
-  .map(([_, v]) => `- ${v.name}: Đúng ${v.correct}/${v.total} câu (${Math.round((v.correct / (v.total || 1)) * 100)}%)`)
-  .join('\n')}
+      .map(([_, v]) => `- ${v.name}: Đúng ${v.correct}/${v.total} câu (${Math.round((v.correct / (v.total || 1)) * 100)}%)`)
+      .join('\n')}
 
 DANH SÁCH CÁC CÂU LÀM SAI VÀ LÝ DO:
 ${wrongQuestionsList
-  .slice(0, 10)
-  .map(
-    (q, i) =>
-      `${i + 1}. [Chủ đề: ${q.topic}] Câu: "${q.content}" | Học sinh chọn sai: "${q.userChoice}" | Đáp án đúng: "${q.correctChoice}" | Lời giải: "${q.explanation}"`
-  )
-  .join('\n')}
+      .slice(0, 10)
+      .map(
+        (q, i) =>
+          `${i + 1}. [Chủ đề: ${q.topic}] Câu: "${q.content}" | Học sinh chọn sai: "${q.userChoice}" | Đáp án đúng: "${q.correctChoice}" | Lời giải: "${q.explanation}"`
+      )
+      .join('\n')}
 
 YÊU CẦU ĐẦU RA (JSON FORMAT):
 Bạn PHẢI trả về DUY NHẤT một chuỗi JSON hợp lệ không bọc thêm văn bản giải thích:
@@ -758,7 +758,8 @@ export async function extractQuestionsFromText(
   rawText: string,
   subject: SubjectId,
   examTitle: string,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  modelName: string = 'gemini-3.6-flash'
 ): Promise<ExtractedExamResult> {
   const effectiveKey = (apiKey || '').trim() || getStoredApiKey();
   if (!effectiveKey) {
@@ -821,7 +822,7 @@ YÊU CẦU BẮT BUỘC:
 
   const result = await callGeminiApiWithFallback(
     effectiveKey,
-    'gemini-3.6-flash',
+    modelName,
     {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
@@ -920,7 +921,8 @@ export async function explainQuestionWithAI(
   apiKey: string,
   question: Question,
   userSelectedOption?: number,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  modelName: string = 'gemini-3.6-flash'
 ): Promise<AiQuestionExplanation> {
   const effectiveKey = (apiKey || '').trim() || getStoredApiKey();
   if (!effectiveKey) throw new Error('Chưa có Gemini API Key.');
@@ -964,7 +966,7 @@ Hãy trả về DUY NHẤT một chuỗi JSON thuần túy (không kèm markdown
 
   const result = await callGeminiApiWithFallback(
     effectiveKey,
-    'gemini-3.6-flash',
+    modelName,
     {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },

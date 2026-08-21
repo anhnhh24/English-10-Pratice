@@ -349,7 +349,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
     } catch (err: any) {
       setErrorMessage(
         err.message ||
-          'Đã có lỗi xảy ra trong quá trình sinh đề thi bằng AI. Vui lòng kiểm tra API Key hoặc thử lại.'
+        'Đã có lỗi xảy ra trong quá trình sinh đề thi bằng AI. Vui lòng kiểm tra API Key hoặc thử lại.'
       );
     } finally {
       setIsGenerating(false);
@@ -464,11 +464,10 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
       <div className="bg-[#FAF9F6] p-1.5 rounded-2xl border border-[#D9D2C5] flex max-w-md shadow-2xs">
         <button
           onClick={() => handleSubjectTabChange('english')}
-          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${
-            genSubject === 'english'
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${genSubject === 'english'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D] hover:bg-[#E8E2D9]'
-          }`}
+            }`}
         >
           <span>🇬🇧</span>
           <span>Tạo Đề Môn Tiếng Anh</span>
@@ -476,11 +475,10 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
 
         <button
           onClick={() => handleSubjectTabChange('math')}
-          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${
-            genSubject === 'math'
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer ${genSubject === 'math'
               ? 'bg-[#5A5A40] text-white shadow-xs'
               : 'text-[#6B6B54] hover:text-[#3D3D2D] hover:bg-[#E8E2D9]'
-          }`}
+            }`}
         >
           <span>📐</span>
           <span>Tạo Đề Môn Toán Học</span>
@@ -570,11 +568,10 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
 
         {testResult && (
           <div
-            className={`p-3 rounded-2xl text-xs flex items-center space-x-2 ${
-              testResult.success
+            className={`p-3 rounded-2xl text-xs flex items-center space-x-2 ${testResult.success
                 ? 'bg-[#8BA888]/20 text-[#2C3E2D] border border-[#8BA888]/40'
                 : 'bg-red-50 text-red-700 border border-red-200'
-            }`}
+              }`}
           >
             {testResult.success ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -685,11 +682,10 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
                     setTotalQuestions(num);
                     setTimeLimitMinutes(num <= 8 ? 20 : num <= 12 ? 35 : num <= 15 ? 45 : 60);
                   }}
-                  className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-                    totalQuestions === num
+                  className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer ${totalQuestions === num
                       ? 'bg-[#5A5A40] text-white shadow-xs'
                       : 'bg-[#FDFCFB] border border-[#D9D2C5] text-[#6B6B54] hover:bg-[#E8E2D9]'
-                  }`}
+                    }`}
                 >
                   {num} câu
                 </button>
@@ -705,11 +701,10 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
                   key={mins}
                   type="button"
                   onClick={() => setTimeLimitMinutes(mins)}
-                  className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-                    timeLimitMinutes === mins
+                  className={`py-2 rounded-xl text-xs font-bold transition cursor-pointer ${timeLimitMinutes === mins
                       ? 'bg-[#5A5A40] text-white shadow-xs'
                       : 'bg-[#FDFCFB] border border-[#D9D2C5] text-[#6B6B54] hover:bg-[#E8E2D9]'
-                  }`}
+                    }`}
                 >
                   {mins}p
                 </button>
@@ -729,11 +724,10 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
                   key={diff.id}
                   type="button"
                   onClick={() => setDifficulty(diff.id as any)}
-                  className={`py-2 px-1 rounded-xl text-[11px] font-bold transition cursor-pointer ${
-                    difficulty === diff.id
+                  className={`py-2 px-1 rounded-xl text-[11px] font-bold transition cursor-pointer ${difficulty === diff.id
                       ? 'bg-[#5A5A40] text-white shadow-xs'
                       : 'bg-[#FDFCFB] border border-[#D9D2C5] text-[#6B6B54] hover:bg-[#E8E2D9]'
-                  }`}
+                    }`}
                 >
                   {diff.label}
                 </button>
@@ -755,11 +749,10 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
                   key={t.id}
                   type="button"
                   onClick={() => toggleTopic(t.id)}
-                  className={`p-2.5 rounded-2xl border text-left flex items-center justify-between transition cursor-pointer ${
-                    isChecked
+                  className={`p-2.5 rounded-2xl border text-left flex items-center justify-between transition cursor-pointer ${isChecked
                       ? 'bg-[#E8E2D9] border-[#5A5A40] text-[#3D3D2D]'
                       : 'bg-[#FDFCFB] border-[#D9D2C5] text-[#8A8A70] hover:bg-[#FAF9F6]'
-                  }`}
+                    }`}
                 >
                   <span className="text-xs font-bold truncate pr-1">{t.nameVi}</span>
                   {isChecked ? (
@@ -878,11 +871,10 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
               <button
                 onClick={handleSaveToLibrary}
                 disabled={savedSuccess}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-bold border transition flex items-center space-x-1.5 cursor-pointer ${
-                  savedSuccess
+                className={`px-4 py-2.5 rounded-2xl text-xs font-bold border transition flex items-center space-x-1.5 cursor-pointer ${savedSuccess
                     ? 'bg-[#8BA888]/20 border-[#8BA888] text-[#2C3E2D]'
                     : 'bg-[#FDFCFB] border-[#D9D2C5] text-[#5A5A40] hover:bg-[#E8E2D9]'
-                }`}
+                  }`}
               >
                 {savedSuccess ? (
                   <>
@@ -969,11 +961,10 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
                           {q.options.map((opt, oIdx) => (
                             <div
                               key={oIdx}
-                              className={`p-2.5 rounded-xl border text-xs font-medium whitespace-pre-line ${
-                                oIdx === q.correctOption
+                              className={`p-2.5 rounded-xl border text-xs font-medium whitespace-pre-line ${oIdx === q.correctOption
                                   ? 'bg-[#EBF2EB] border-[#8BA888] text-[#2C3E2D] font-bold'
                                   : 'bg-white border-[#EAE7E0] text-[#4A4A4A]'
-                              }`}
+                                }`}
                             >
                               {opt} {oIdx === q.correctOption && ' ✓ (Đáp án đúng)'}
                             </div>

@@ -8,6 +8,7 @@ import {
   generateExamEvaluationWithAI,
   getStoredApiKey,
   ExamEvaluationReport,
+  AVAILABLE_MODELS,
 } from '../../services/aiExamService';
 import { logAndBroadcastActivity } from '../../services/realtimeSyncService';
 import { AiQuestionExplainerModal } from '../common/AiQuestionExplainerModal';
@@ -64,8 +65,8 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
     examId && subjectExams.some((e) => e.id === examId)
       ? examId
       : subjectExams.length > 0
-      ? subjectExams[0].id
-      : 'exam_official_01';
+        ? subjectExams[0].id
+        : 'exam_official_01';
 
   const [selectedExamId, setSelectedExamId] = useState<string>(defaultInitialExamId);
   const [examTabFilter, setExamTabFilter] = useState<'all' | 'official' | 'speed' | 'custom'>('all');
@@ -101,6 +102,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   const [aiAnalyzing, setAiAnalyzing] = useState<boolean>(false);
   const [aiEvaluation, setAiEvaluation] = useState<ExamEvaluationReport | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiEvalModel, setAiEvalModel] = useState<string>('gemini-3.6-flash');
 
   // Completed Attempt State
   const [completedAttempt, setCompletedAttempt] = useState<any>(null);
@@ -133,7 +135,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           setDraftExists(true);
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }, [DRAFT_KEY]);
 
   // Save draft during active exam
@@ -146,7 +148,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           timeLeft,
           timestamp: new Date().toISOString()
         }));
-      } catch (e) {}
+      } catch (e) { }
     }
   }, [userAnswers, flaggedIds, timeLeft, stage, DRAFT_KEY]);
 
@@ -161,14 +163,14 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
         setStage('active');
         setDraftExists(false);
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const clearDraft = () => {
     try {
       localStorage.removeItem(DRAFT_KEY);
       setDraftExists(false);
-    } catch (e) {}
+    } catch (e) { }
   };
 
   // Anti-cheat listener effect
@@ -421,33 +423,29 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
         <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] max-w-lg shadow-2xs text-xs font-bold">
           <button
             onClick={() => setExamTabFilter('all')}
-            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer ${
-              examTabFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-            }`}
+            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer ${examTabFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+              }`}
           >
             Tất cả ({subjectExams.length})
           </button>
           <button
             onClick={() => setExamTabFilter('official')}
-            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer ${
-              examTabFilter === 'official' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-            }`}
+            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer ${examTabFilter === 'official' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+              }`}
           >
             Đề Chuẩn Sở
           </button>
           <button
             onClick={() => setExamTabFilter('speed')}
-            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer ${
-              examTabFilter === 'speed' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-            }`}
+            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer ${examTabFilter === 'speed' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+              }`}
           >
             Luyện Tốc Độ
           </button>
           <button
             onClick={() => setExamTabFilter('custom')}
-            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer ${
-              examTabFilter === 'custom' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-            }`}
+            className={`flex-1 py-1.5 rounded-xl transition cursor-pointer ${examTabFilter === 'custom' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+              }`}
           >
             Thầy Cô & AI ({teacherOrAiExams.length})
           </button>
@@ -469,11 +467,10 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                 <div
                   key={ex.id}
                   onClick={() => setSelectedExamId(ex.id)}
-                  className={`p-4 sm:p-6 rounded-2xl sm:rounded-[2.5rem] border transition-all cursor-pointer flex flex-col justify-between ${
-                    isSelected
+                  className={`p-4 sm:p-6 rounded-2xl sm:rounded-[2.5rem] border transition-all cursor-pointer flex flex-col justify-between ${isSelected
                       ? 'bg-white border-[#5A5A40] shadow-md ring-2 ring-[#5A5A40]/20'
                       : 'bg-white border-[#EAE7E0] hover:border-[#D9D2C5] hover:shadow-xs'
-                  }`}
+                    }`}
                 >
                   <div className="space-y-2.5 sm:space-y-3">
                     <div className="flex items-center justify-between">
@@ -579,11 +576,10 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             </button>
 
             <div
-              className={`flex items-center space-x-1.5 px-3 sm:px-4 py-1.5 rounded-xl sm:rounded-2xl font-mono text-xs sm:text-base font-bold border ${
-                timeLeft < 300
+              className={`flex items-center space-x-1.5 px-3 sm:px-4 py-1.5 rounded-xl sm:rounded-2xl font-mono text-xs sm:text-base font-bold border ${timeLeft < 300
                   ? 'bg-rose-50 border-rose-300 text-rose-600 animate-pulse'
                   : 'bg-[#F5F2ED] border-[#D9D2C5] text-[#5A5A40]'
-              }`}
+                }`}
             >
               <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>{formatTime(timeLeft)}</span>
@@ -593,9 +589,8 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             <button
               onClick={() => setIsFocusMode(!isFocusMode)}
               title="Chế độ tập trung (Zen Mode)"
-              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center space-x-1 ${
-                isFocusMode ? 'bg-[#1E3A8A] text-white border-blue-900 shadow-sm' : 'bg-[#FAF9F6] text-[#5A5A40] border-[#D9D2C5] hover:bg-[#E8E2D9]'
-              }`}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center space-x-1 ${isFocusMode ? 'bg-[#1E3A8A] text-white border-blue-900 shadow-sm' : 'bg-[#FAF9F6] text-[#5A5A40] border-[#D9D2C5] hover:bg-[#E8E2D9]'
+                }`}
             >
               <span>🎯</span>
               <span className="hidden sm:inline">{isFocusMode ? 'Thoát Zen Mode' : 'Zen Mode'}</span>
@@ -657,11 +652,10 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                 <div className="flex items-center space-x-1.5 sm:space-x-2">
                   <button
                     onClick={() => toggleFlag(currentQ.id)}
-                    className={`flex items-center space-x-1 px-2.5 sm:px-3 py-1 rounded-xl text-xs font-semibold border transition cursor-pointer ${
-                      isCurrentFlagged
+                    className={`flex items-center space-x-1 px-2.5 sm:px-3 py-1 rounded-xl text-xs font-semibold border transition cursor-pointer ${isCurrentFlagged
                         ? 'bg-[#FDF2E9] border-[#E67E22] text-[#E67E22]'
                         : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#6B6B54] hover:bg-[#E8E2D9]'
-                    }`}
+                      }`}
                   >
                     <Flag className={`w-3.5 h-3.5 ${isCurrentFlagged ? 'fill-[#E67E22]' : ''}`} />
                     <span className="hidden sm:inline">{isCurrentFlagged ? 'Đã cờ' : 'Gắn cờ'}</span>
@@ -669,11 +663,10 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
 
                   <button
                     onClick={() => toggleBookmark(currentQ.id)}
-                    className={`p-1.5 rounded-xl border transition cursor-pointer ${
-                      isCurrentBookmarked
+                    className={`p-1.5 rounded-xl border transition cursor-pointer ${isCurrentBookmarked
                         ? 'bg-[#F5F2ED] border-[#5A5A40] text-[#5A5A40]'
                         : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#8A8A70]'
-                    }`}
+                      }`}
                   >
                     <Bookmark
                       className={`w-4 h-4 ${isCurrentBookmarked ? 'fill-[#5A5A40]' : ''}`}
@@ -700,19 +693,17 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                     <button
                       key={idx}
                       onClick={() => handleSelectOption(idx)}
-                      className={`w-full text-left p-3.5 sm:p-4 rounded-2xl border text-xs sm:text-sm font-medium transition flex items-center justify-between cursor-pointer ${
-                        isSelected
+                      className={`w-full text-left p-3.5 sm:p-4 rounded-2xl border text-xs sm:text-sm font-medium transition flex items-center justify-between cursor-pointer ${isSelected
                           ? 'bg-[#F5F2ED] border-[#5A5A40] text-[#3D3D2D] ring-2 ring-[#5A5A40]/20 font-bold'
                           : 'bg-white border-[#EAE7E0] text-[#4A4A4A] hover:bg-[#FAF9F6]'
-                      }`}
+                        }`}
                     >
                       <span className="pr-2 leading-relaxed whitespace-pre-line">{option}</span>
                       <div
-                        className={`w-5 h-5 rounded-full border shrink-0 flex items-center justify-center ${
-                          isSelected
+                        className={`w-5 h-5 rounded-full border shrink-0 flex items-center justify-center ${isSelected
                             ? 'border-[#5A5A40] bg-[#5A5A40] text-white'
                             : 'border-[#D9D2C5]'
-                        }`}
+                          }`}
                       >
                         {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                       </div>
@@ -764,13 +755,12 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                   <button
                     key={q.id}
                     onClick={() => setCurrentIdx(index)}
-                    className={`relative h-10 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer ${
-                      isCurrent
+                    className={`relative h-10 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer ${isCurrent
                         ? 'ring-2 ring-[#5A5A40] ring-offset-2 bg-[#5A5A40] text-white shadow-xs'
                         : isAnswered
-                        ? 'bg-[#EBF2EB] text-[#8BA888] hover:bg-[#D9E8D9]'
-                        : 'bg-[#FAF9F6] text-[#6B6B54] hover:bg-[#E8E2D9]'
-                    }`}
+                          ? 'bg-[#EBF2EB] text-[#8BA888] hover:bg-[#D9E8D9]'
+                          : 'bg-[#FAF9F6] text-[#6B6B54] hover:bg-[#E8E2D9]'
+                      }`}
                   >
                     <span>{index + 1}</span>
                     {isFlagged && (
@@ -836,13 +826,12 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                         setCurrentIdx(index);
                         setMobilePaletteOpen(false);
                       }}
-                      className={`relative h-10 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer ${
-                        isCurrent
+                      className={`relative h-10 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer ${isCurrent
                           ? 'ring-2 ring-[#5A5A40] ring-offset-2 bg-[#5A5A40] text-white shadow-xs'
                           : isAnswered
-                          ? 'bg-[#EBF2EB] text-[#8BA888]'
-                          : 'bg-[#FAF9F6] text-[#6B6B54]'
-                      }`}
+                            ? 'bg-[#EBF2EB] text-[#8BA888]'
+                            : 'bg-[#FAF9F6] text-[#6B6B54]'
+                        }`}
                     >
                       <span>{index + 1}</span>
                       {isFlagged && (
@@ -977,7 +966,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           topicBreakdown,
           wrongList,
           currentSubjectTarget,
-          'gemini-3.6-flash',
+          aiEvalModel,
           currentSubject
         );
         setAiEvaluation(result);
@@ -1060,24 +1049,37 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
               </div>
             </div>
 
-            {/* AI Deep Analysis Button */}
-            <button
-              onClick={handleRunAiDeepAnalysis}
-              disabled={aiAnalyzing}
-              className="w-full sm:w-auto px-4 py-2.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] text-[#5A5A40] rounded-2xl text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-60 shrink-0"
-            >
-              {aiAnalyzing ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#E67E22]" />
-                  <span>AI đang phân tích bài thi...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 text-[#E67E22]" />
-                  <span>{aiEvaluation ? 'Phân tích lại bằng AI' : '🤖 AI Phân tích chuyên sâu'}</span>
-                </>
-              )}
-            </button>
+            {/* AI Deep Analysis Button & Model Selector */}
+            <div className="flex items-center space-x-2 w-full sm:w-auto">
+              <select
+                value={aiEvalModel}
+                onChange={(e) => setAiEvalModel(e.target.value)}
+                className="px-3 py-2.5 text-xs bg-[#FAF9F6] border border-[#D9D2C5] rounded-2xl text-[#5A5A40] outline-hidden cursor-pointer font-bold select-none hover:bg-[#E8E2D9]"
+              >
+                {AVAILABLE_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name.split(' (')[0]}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleRunAiDeepAnalysis}
+                disabled={aiAnalyzing}
+                className="px-4 py-2.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] text-[#5A5A40] rounded-2xl text-xs font-bold transition flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-60 shrink-0"
+              >
+                {aiAnalyzing ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#E67E22]" />
+                    <span>AI đang phân tích...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 text-[#E67E22]" />
+                    <span>{aiEvaluation ? 'Phân tích lại' : '🤖 AI Phân tích'}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {aiError && (
@@ -1140,9 +1142,8 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                     </div>
                     <div className="w-full bg-[#E8E2D9] h-2 rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          isGood ? 'bg-[#8BA888]' : 'bg-[#E67E22]'
-                        }`}
+                        className={`h-full rounded-full transition-all duration-500 ${isGood ? 'bg-[#8BA888]' : 'bg-[#E67E22]'
+                          }`}
                         style={{ width: `${acc}%` }}
                       />
                     </div>
@@ -1232,31 +1233,28 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           <div className="flex space-x-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
             <button
               onClick={() => setFilterResult('all')}
-              className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                filterResult === 'all'
+              className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${filterResult === 'all'
                   ? 'bg-[#5A5A40] text-white'
                   : 'bg-white border border-[#EAE7E0] text-[#6B6B54] hover:bg-[#FAF9F6]'
-              }`}
+                }`}
             >
               Tất cả ({examQuestions.length})
             </button>
             <button
               onClick={() => setFilterResult('wrong')}
-              className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                filterResult === 'wrong'
+              className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${filterResult === 'wrong'
                   ? 'bg-[#E67E22] text-white'
                   : 'bg-white border border-[#EAE7E0] text-[#E67E22] hover:bg-[#FDF2E9]'
-              }`}
+                }`}
             >
               Câu sai ({completedAttempt.incorrectCount})
             </button>
             <button
               onClick={() => setFilterResult('flagged')}
-              className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${
-                filterResult === 'flagged'
+              className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition cursor-pointer whitespace-nowrap ${filterResult === 'flagged'
                   ? 'bg-[#5A5A40] text-white'
                   : 'bg-white border border-[#EAE7E0] text-[#6B6B54] hover:bg-[#FAF9F6]'
-              }`}
+                }`}
             >
               Gắn cờ ({flaggedIds.length})
             </button>
@@ -1289,24 +1287,22 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             return (
               <div
                 key={q.id}
-                className={`p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] bg-white border transition-all ${
-                  isCorrect
+                className={`p-4 sm:p-6 rounded-2xl sm:rounded-[2rem] bg-white border transition-all ${isCorrect
                     ? 'border-[#8BA888]'
                     : isUnattempted
-                    ? 'border-[#EAE7E0]'
-                    : 'border-[#E67E22] shadow-xs'
-                }`}
+                      ? 'border-[#EAE7E0]'
+                      : 'border-[#E67E22] shadow-xs'
+                  }`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center space-x-2">
                     <span
-                      className={`px-2.5 py-0.5 rounded-lg text-xs font-bold ${
-                        isCorrect
+                      className={`px-2.5 py-0.5 rounded-lg text-xs font-bold ${isCorrect
                           ? 'bg-[#EBF2EB] text-[#8BA888]'
                           : isUnattempted
-                          ? 'bg-[#FAF9F6] text-[#6B6B54]'
-                          : 'bg-[#FDF2E9] text-[#E67E22]'
-                      }`}
+                            ? 'bg-[#FAF9F6] text-[#6B6B54]'
+                            : 'bg-[#FDF2E9] text-[#E67E22]'
+                        }`}
                     >
                       Câu {examQuestions.findIndex((item) => item.id === q.id) + 1}
                     </span>
@@ -1383,11 +1379,10 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                   <div className="flex items-center justify-between pt-2.5 border-t border-[#EAE7E0] flex-wrap gap-2">
                     <button
                       onClick={() => toggleBookmark(q.id)}
-                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center space-x-1 cursor-pointer ${
-                        isBookmarked(q.id)
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center space-x-1 cursor-pointer ${isBookmarked(q.id)
                           ? 'bg-amber-100 border-amber-300 text-amber-900'
                           : 'bg-white border-[#D9D2C5] text-[#5A5A40] hover:bg-[#FAF9F6]'
-                      }`}
+                        }`}
                     >
                       <Bookmark className="w-3.5 h-3.5 fill-current" />
                       <span>{isBookmarked(q.id) ? 'Đã lưu vào Bookmark' : 'Lưu câu này'}</span>

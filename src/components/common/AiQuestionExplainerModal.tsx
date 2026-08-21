@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Question } from '../../types';
-import { explainQuestionWithAI, AiQuestionExplanation, getStoredApiKey } from '../../services/aiExamService';
+import { explainQuestionWithAI, AiQuestionExplanation, getStoredApiKey, AVAILABLE_MODELS } from '../../services/aiExamService';
 import { useApp } from '../../context/AppContext';
 import {
   Sparkles,
@@ -34,6 +34,7 @@ export const AiQuestionExplainerModal: React.FC<AiQuestionExplainerModalProps> =
   const [progressMsg, setProgressMsg] = useState<string>('🤖 AI Gia Sư đang phân tích câu hỏi...');
   const [explanation, setExplanation] = useState<AiQuestionExplanation | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.6-flash');
 
   useEffect(() => {
     if (!question) return;
@@ -47,7 +48,7 @@ export const AiQuestionExplainerModal: React.FC<AiQuestionExplainerModalProps> =
 
     explainQuestionWithAI(apiKey, question, userSelectedOption, (msg) => {
       if (isMounted) setProgressMsg(msg);
-    })
+    }, selectedModel)
       .then((res) => {
         if (isMounted) {
           setExplanation(res);
@@ -64,7 +65,7 @@ export const AiQuestionExplainerModal: React.FC<AiQuestionExplainerModalProps> =
     return () => {
       isMounted = false;
     };
-  }, [question, userSelectedOption]);
+  }, [question, userSelectedOption, selectedModel]);
 
   if (!question) return null;
 
@@ -98,13 +99,23 @@ export const AiQuestionExplainerModal: React.FC<AiQuestionExplainerModalProps> =
           </div>
 
           <div className="flex items-center space-x-2">
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="px-2.5 py-1.5 text-[11px] bg-white/15 border border-white/20 hover:bg-white/25 rounded-xl text-white outline-hidden cursor-pointer font-bold select-none"
+            >
+              {AVAILABLE_MODELS.map((m) => (
+                <option key={m.id} value={m.id} className="text-[#3D3D2D] bg-[#FAF9F6]">
+                  {m.name.split(' (')[0]}
+                </option>
+              ))}
+            </select>
             <button
               onClick={() => toggleBookmark(question.id)}
-              className={`p-2 rounded-xl transition cursor-pointer ${
-                bookmarked
+              className={`p-2 rounded-xl transition cursor-pointer ${bookmarked
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'bg-white/10 hover:bg-white/20 text-white'
-              }`}
+                }`}
               title={bookmarked ? 'Bỏ lưu câu hỏi' : 'Lưu câu hỏi vào Bookmark'}
             >
               <Bookmark className="w-4 h-4 fill-current" />
@@ -129,9 +140,8 @@ export const AiQuestionExplainerModal: React.FC<AiQuestionExplainerModalProps> =
               <div className="flex items-center space-x-2">
                 {userSelectedOption !== undefined && (
                   <span
-                    className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${
-                      isCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
-                    }`}
+                    className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${isCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                      }`}
                   >
                     Em chọn: {optLabels[userSelectedOption]} ({isCorrect ? 'Đúng ✓' : 'Chưa đúng ✗'})
                   </span>
@@ -159,13 +169,12 @@ export const AiQuestionExplainerModal: React.FC<AiQuestionExplainerModalProps> =
                 return (
                   <div
                     key={i}
-                    className={`p-2.5 rounded-xl border text-xs flex items-center justify-between ${
-                      isThisCorrect
+                    className={`p-2.5 rounded-xl border text-xs flex items-center justify-between ${isThisCorrect
                         ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-semibold'
                         : isUserChosen
-                        ? 'bg-red-50 border-red-300 text-red-900 line-through'
-                        : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#6B6B54]'
-                    }`}
+                          ? 'bg-red-50 border-red-300 text-red-900 line-through'
+                          : 'bg-[#FAF9F6] border-[#EAE7E0] text-[#6B6B54]'
+                      }`}
                   >
                     <span>
                       <strong className="mr-1">{optLabels[i]}.</strong> {opt}
