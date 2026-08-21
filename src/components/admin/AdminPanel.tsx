@@ -96,6 +96,7 @@ export const AdminPanel: React.FC = () => {
     exams,
     getQuestionById,
     addQuestion,
+    bulkImportQuestions,
     updateQuestion,
     deleteQuestion,
     addExam,
@@ -338,7 +339,7 @@ export const AdminPanel: React.FC = () => {
         uploadTitle || 'Đề Thi Upload',
         setUploadProgress
       );
-      result.questions.forEach((q) => addQuestion(q));
+      bulkImportQuestions(result.questions);
       addExam(result.exam);
       setUploadResult({ examId: result.exam.id, questionCount: result.rawQuestionCount });
     } catch (e: any) {
