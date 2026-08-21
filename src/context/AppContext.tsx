@@ -21,6 +21,7 @@ import {
   deleteExamFromOnlineDB,
   subscribeToExamsFromOnlineDB,
   saveQuestionToOnlineDB,
+  saveQuestionsToOnlineDB,
   deleteQuestionFromOnlineDB,
   subscribeToQuestionsFromOnlineDB,
   saveExamAttemptToOnlineDB,
@@ -677,10 +678,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCustomQuestions((prev) => {
       const existingIds = new Set(prev.map((p) => p.id));
       const toAdd = formatted.filter((f) => !existingIds.has(f.id));
-      // Save each new question to DB
-      toAdd.forEach((item) => {
-        saveQuestionToOnlineDB(item).catch(() => {});
-      });
+      // Save all new questions in a single DB update batch to avoid race conditions
+      saveQuestionsToOnlineDB(toAdd).catch((err) => console.warn('DB Questions batch save error:', err));
       return [...toAdd, ...prev];
     });
     dispatchGlobalSync('QUESTIONS_UPDATED');

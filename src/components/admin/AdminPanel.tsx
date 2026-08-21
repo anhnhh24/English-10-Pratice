@@ -247,7 +247,7 @@ export const AdminPanel: React.FC = () => {
       };
       const result = await generateExamWithAI(apiKey, config, setAiCreateProgress);
       // Save to app via addExam + add questions
-      result.questions.forEach((q) => addQuestion(q));
+      bulkImportQuestions(result.questions);
       addExam(result.exam);
       setAiCreateResult({ examId: result.exam.id, questionCount: result.questions.length });
     } catch (e: any) {
@@ -285,7 +285,7 @@ export const AdminPanel: React.FC = () => {
         title: `Bộ câu hỏi ${aiQSubject === 'math' ? 'Toán' : 'Anh'}`,
       };
       const result = await generateExamWithAI(apiKey, config, setAiQProgress);
-      result.questions.forEach((q) => addQuestion(q));
+      bulkImportQuestions(result.questions);
       setAiQSuccessMsg(`Đã tạo thành công ${result.questions.length} câu hỏi mới môn ${aiQSubject === 'math' ? 'Toán' : 'Tiếng Anh'} và lưu vào ngân hàng câu hỏi!`);
     } catch (e: any) {
       setAiQError(e.message || 'Lỗi không xác định khi tạo câu hỏi');

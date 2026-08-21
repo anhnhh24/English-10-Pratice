@@ -3,7 +3,7 @@
  * Real cross-device sync between guardian (admin) and student (Hoàng Hà)
  * Persistent online storage for Exams, Question Bank, Test Attempts, and Progress
  */
-import { database, ref, set, get, onValue, off, remove } from './firebaseConfig';
+import { database, ref, set, get, onValue, off, remove, update } from './firebaseConfig';
 import type { DataSnapshot } from 'firebase/database';
 import { Exam, Question, ExamAttempt } from '../types';
 
@@ -286,6 +286,36 @@ export async function saveQuestionToOnlineDB(question: Question): Promise<{ succ
   } catch (err: any) {
     console.error('Firebase saveQuestion error:', err);
     return { success: false, message: err.message || 'Lỗi lưu câu hỏi lên DB' };
+  }
+}
+
+/**
+ * Save multiple custom questions to Firebase Realtime Database in a single update batch
+ */
+export async function saveQuestionsToOnlineDB(questions: Question[]): Promise<{ success: boolean; message: string }> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) {
+    return { success: false, message: 'Cloud DB chưa được kích hoạt' };
+  }
+
+  if (questions.length === 0) {
+    return { success: true, message: 'Không có câu hỏi nào để lưu' };
+  }
+
+  try {
+    const updates: Record<string, any> = {};
+    const timestamp = new Date().toISOString();
+    questions.forEach((q) => {
+      updates[`rooms/${settings.roomCode}/questions/${q.id}`] = {
+        ...q,
+        updatedAt: timestamp,
+      };
+    });
+    await update(ref(database), updates);
+    return { success: true, message: `Đã lưu ${questions.length} câu hỏi lên DB thành công` };
+  } catch (err: any) {
+    console.error('Firebase saveQuestions error:', err);
+    return { success: false, message: err.message || 'Lỗi lưu danh sách câu hỏi lên DB' };
   }
 }
 
