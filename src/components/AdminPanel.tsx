@@ -396,11 +396,11 @@ export const AdminPanel: React.FC = () => {
     const topicQIds = new Set(questions.filter((q) => q.topicId === topicId).map((q) => q.id));
 
     studentUsers.forEach((stu) => {
-      const uData = getUserScopedData(stu.id);
+      const uData = getUserScopedData(stu.id) || {};
 
       // 1. Check Exam Attempts
-      (uData.examAttempts || []).forEach((att) => {
-        if (att.userAnswers) {
+      (uData.examAttempts || []).forEach((att: any) => {
+        if (att && att.userAnswers && typeof att.userAnswers === 'object') {
           Object.entries(att.userAnswers).forEach(([qId, userChoice]) => {
             const q = getQuestionById(qId);
             if (q && q.topicId === topicId) {
@@ -420,11 +420,11 @@ export const AdminPanel: React.FC = () => {
       });
 
       // 2. Check Practice Sessions
-      (uData.practiceSessions || []).forEach((sess) => {
-        if (sess.topicId === topicId) {
+      (uData.practiceSessions || []).forEach((sess: any) => {
+        if (sess && sess.topicId === topicId) {
           totalQuestionsAnswered += sess.totalQuestions || 0;
           totalQuestionsCorrect += sess.correctCount || 0;
-        } else if (sess.userAnswers) {
+        } else if (sess && sess.userAnswers && typeof sess.userAnswers === 'object') {
           Object.entries(sess.userAnswers).forEach(([qId, userChoice]) => {
             const q = getQuestionById(qId);
             if (q && q.topicId === topicId) {
@@ -438,8 +438,9 @@ export const AdminPanel: React.FC = () => {
       });
 
       // 3. Check Mistakes
-      Object.values(uData.mistakes || {}).forEach((m: any) => {
-        if (!m.mastered) {
+      const mList = uData && uData.mistakes && typeof uData.mistakes === 'object' ? Object.values(uData.mistakes) : [];
+      mList.forEach((m: any) => {
+        if (m && !m.mastered) {
           const q = getQuestionById(m.questionId);
           if (q && q.topicId === topicId) {
             activeMistakesInTopic++;
@@ -464,30 +465,30 @@ export const AdminPanel: React.FC = () => {
 
   // Real Grade Distribution across all students
   const totalEvaluated = studentUsers.length || 1;
-  const studentsWithExams = studentUsers.filter((stu) => (getUserScopedData(stu.id).examAttempts || []).length > 0);
+  const studentsWithExams = studentUsers.filter((stu) => ((getUserScopedData(stu.id) || {}).examAttempts || []).length > 0);
 
   const gradeTiers = {
     excellent: studentsWithExams.filter((stu) => {
-      const atts = getUserScopedData(stu.id).examAttempts || [];
-      const avg = atts.reduce((s, a) => s + a.score, 0) / atts.length;
+      const atts = (getUserScopedData(stu.id) || {}).examAttempts || [];
+      const avg = atts.length > 0 ? atts.reduce((s: number, a: any) => s + (a.score || 0), 0) / atts.length : 0;
       return avg >= 9.0;
     }),
     good: studentsWithExams.filter((stu) => {
-      const atts = getUserScopedData(stu.id).examAttempts || [];
-      const avg = atts.reduce((s, a) => s + a.score, 0) / atts.length;
+      const atts = (getUserScopedData(stu.id) || {}).examAttempts || [];
+      const avg = atts.length > 0 ? atts.reduce((s: number, a: any) => s + (a.score || 0), 0) / atts.length : 0;
       return avg >= 8.0 && avg < 9.0;
     }),
     fair: studentsWithExams.filter((stu) => {
-      const atts = getUserScopedData(stu.id).examAttempts || [];
-      const avg = atts.reduce((s, a) => s + a.score, 0) / atts.length;
+      const atts = (getUserScopedData(stu.id) || {}).examAttempts || [];
+      const avg = atts.length > 0 ? atts.reduce((s: number, a: any) => s + (a.score || 0), 0) / atts.length : 0;
       return avg >= 6.5 && avg < 8.0;
     }),
     average: studentsWithExams.filter((stu) => {
-      const atts = getUserScopedData(stu.id).examAttempts || [];
-      const avg = atts.reduce((s, a) => s + a.score, 0) / atts.length;
+      const atts = (getUserScopedData(stu.id) || {}).examAttempts || [];
+      const avg = atts.length > 0 ? atts.reduce((s: number, a: any) => s + (a.score || 0), 0) / atts.length : 0;
       return avg < 6.5;
     }),
-    unattempted: studentUsers.filter((stu) => (getUserScopedData(stu.id).examAttempts || []).length === 0),
+    unattempted: studentUsers.filter((stu) => ((getUserScopedData(stu.id) || {}).examAttempts || []).length === 0),
   };
 
   const gradeDistribution = {
@@ -498,8 +499,15 @@ export const AdminPanel: React.FC = () => {
     unattempted: { count: gradeTiers.unattempted.length, percent: Math.round((gradeTiers.unattempted.length / totalEvaluated) * 100) },
   };
 
-  // Sibling Focus Stat
-  const siblingStat = allStudentStats.find((s) => s.student.id === siblingId) || allStudentStats[0];
+  // Sibling Focus Stat (Ưu tiên em trai Nguyễn Hoàng Hà)
+  const siblingStat =
+    allStudentStats.find(
+      (s) =>
+        s.student.id === 'user_ha' ||
+        s.student.name.toLowerCase().includes('nguyễn hoàng hà') ||
+        s.student.name.toLowerCase().includes('hà') ||
+        s.student.id === siblingId
+    ) || allStudentStats[0];
 
   // Filtered student list
   const filteredStudents = allStudentStats.filter(({ student }) => {

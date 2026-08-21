@@ -31,7 +31,7 @@ export const getStoredApiKey = (): string => {
     ''
   ).trim();
   const localKey = (localStorage.getItem('edu10_gemini_api_key') || '').trim();
-  return envKey || localKey;
+  return envKey || localKey || 'AIzaSyCPLq--cwxWORm4jPVNyrAW1b80cbBdAV4';
 };
 
 export const isApiKeyFromEnv = (): boolean => {

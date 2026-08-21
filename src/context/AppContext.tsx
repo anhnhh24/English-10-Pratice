@@ -573,13 +573,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     // Automatically record mistakes
-    Object.entries(attempt.userAnswers).forEach(([qId, chosenOpt]) => {
-      const q = getQuestionById(qId);
-      if (q) {
-        const isCorrect = chosenOpt === q.correctOption;
-        recordAnswerResult(qId, isCorrect);
-      }
-    });
+    if (attempt && attempt.userAnswers && typeof attempt.userAnswers === 'object') {
+      Object.entries(attempt.userAnswers).forEach(([qId, chosenOpt]) => {
+        const q = getQuestionById(qId);
+        if (q) {
+          const isCorrect = chosenOpt === q.correctOption;
+          recordAnswerResult(qId, isCorrect);
+        }
+      });
+    }
 
     return newAttempt;
   };
@@ -593,13 +595,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setPracticeSessions((prev) => [newSession, ...prev]);
 
-    Object.entries(session.userAnswers).forEach(([qId, chosenOpt]) => {
-      const q = getQuestionById(qId);
-      if (q) {
-        const isCorrect = chosenOpt === q.correctOption;
-        recordAnswerResult(qId, isCorrect);
-      }
-    });
+    if (session && session.userAnswers && typeof session.userAnswers === 'object') {
+      Object.entries(session.userAnswers).forEach(([qId, chosenOpt]) => {
+        const q = getQuestionById(qId);
+        if (q) {
+          const isCorrect = chosenOpt === q.correctOption;
+          recordAnswerResult(qId, isCorrect);
+        }
+      });
+    }
 
     return newSession;
   };
@@ -711,35 +715,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     filteredAttempts.forEach((attempt) => {
-      Object.entries(attempt.userAnswers).forEach(([qId, ans]) => {
-        const q = getQuestionById(qId);
-        if (q && (q.subject || 'english') === currentSubject) {
-          totalSolved += 1;
-          const isRight = ans === q.correctOption;
-          if (isRight) totalCorrect += 1;
-          if (!topicStats[q.topicId]) {
-            topicStats[q.topicId] = { solved: 0, correct: 0, accuracy: 0 };
+      if (attempt && attempt.userAnswers && typeof attempt.userAnswers === 'object') {
+        Object.entries(attempt.userAnswers).forEach(([qId, ans]) => {
+          const q = getQuestionById(qId);
+          if (q && (q.subject || 'english') === currentSubject) {
+            totalSolved += 1;
+            const isRight = ans === q.correctOption;
+            if (isRight) totalCorrect += 1;
+            if (!topicStats[q.topicId]) {
+              topicStats[q.topicId] = { solved: 0, correct: 0, accuracy: 0 };
+            }
+            topicStats[q.topicId].solved += 1;
+            if (isRight) topicStats[q.topicId].correct += 1;
           }
-          topicStats[q.topicId].solved += 1;
-          if (isRight) topicStats[q.topicId].correct += 1;
-        }
-      });
+        });
+      }
     });
 
     filteredSessions.forEach((session) => {
-      Object.entries(session.userAnswers).forEach(([qId, ans]) => {
-        const q = getQuestionById(qId);
-        if (q && (q.subject || 'english') === currentSubject) {
-          totalSolved += 1;
-          const isRight = ans === q.correctOption;
-          if (isRight) totalCorrect += 1;
-          if (!topicStats[q.topicId]) {
-            topicStats[q.topicId] = { solved: 0, correct: 0, accuracy: 0 };
+      if (session && session.userAnswers && typeof session.userAnswers === 'object') {
+        Object.entries(session.userAnswers).forEach(([qId, ans]) => {
+          const q = getQuestionById(qId);
+          if (q && (q.subject || 'english') === currentSubject) {
+            totalSolved += 1;
+            const isRight = ans === q.correctOption;
+            if (isRight) totalCorrect += 1;
+            if (!topicStats[q.topicId]) {
+              topicStats[q.topicId] = { solved: 0, correct: 0, accuracy: 0 };
+            }
+            topicStats[q.topicId].solved += 1;
+            if (isRight) topicStats[q.topicId].correct += 1;
           }
-          topicStats[q.topicId].solved += 1;
-          if (isRight) topicStats[q.topicId].correct += 1;
-        }
-      });
+        });
+      }
     });
 
     Object.keys(topicStats).forEach((tId) => {
