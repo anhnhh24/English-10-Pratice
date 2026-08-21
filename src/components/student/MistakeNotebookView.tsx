@@ -40,6 +40,15 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = () => {
   const [chosenAnswer, setChosenAnswer] = useState<number | null>(null);
   const [hasChecked, setHasChecked] = useState<boolean>(false);
 
+  // Cleanly reset practice mode & topic filter when subject changes
+  React.useEffect(() => {
+    setIsPracticing(false);
+    setPracticeIdx(0);
+    setChosenAnswer(null);
+    setHasChecked(false);
+    setSelectedTopic('all');
+  }, [currentSubject]);
+
   const mistakeList = (Object.values(mistakes) as MistakeItem[])
     .map((item) => {
       const q = getQuestionById(item.questionId);

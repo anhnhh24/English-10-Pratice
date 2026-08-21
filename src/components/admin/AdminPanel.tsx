@@ -3115,126 +3115,156 @@ export const AdminPanel: React.FC = () => {
               </div>
             </div>
 
-            {/* Student Quick Scores Banner */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#FAF9F6] p-4 rounded-2xl border border-[#D9D2C5]">
-              <div className="space-y-0.5">
-                <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Mục tiêu Môn Toán</span>
-                <p className="text-lg font-extrabold text-[#5A5A40]">
-                  {selectedStudentForDetail.targetScoreMath || 8.5}/10
-                </p>
-              </div>
-              <div className="space-y-0.5">
-                <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Mục tiêu Tiếng Anh</span>
-                <p className="text-lg font-extrabold text-[#5A5A40]">
-                  {selectedStudentForDetail.targetScoreEnglish || 8.5}/10
-                </p>
-              </div>
-              <div className="space-y-0.5">
-                <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Chuỗi ngày chuyên cần</span>
-                <p className="text-lg font-extrabold text-[#E67E22]">
-                  🔥 {selectedStudentForDetail.streakDays || 1} ngày
-                </p>
-              </div>
-              <div className="space-y-0.5">
-                <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Trạng thái tài khoản</span>
-                <p className="text-sm font-bold text-[#8BA888]">
-                  {selectedStudentForDetail.isLocked ? '🔒 Đang khóa' : '✓ Hoạt động'}
-                </p>
-              </div>
-            </div>
+            {/* Student Quick Scores Banner & Real-time stats */}
+            {(() => {
+              const studentData = getUserScopedData(selectedStudentForDetail.id);
+              const studentAttempts = studentData.examAttempts || [];
+              const studentMistakes = Object.values(studentData.mistakes || {}) as MistakeItem[];
+              const mathAttempts = studentAttempts.filter((a) => a.subject === 'math');
+              const engAttempts = studentAttempts.filter((a) => (a.subject || 'english') === 'english');
+              const avgMath = mathAttempts.length > 0
+                ? (mathAttempts.reduce((acc, c) => acc + c.score, 0) / mathAttempts.length).toFixed(1)
+                : '--';
+              const avgEng = engAttempts.length > 0
+                ? (engAttempts.reduce((acc, c) => acc + c.score, 0) / engAttempts.length).toFixed(1)
+                : '--';
+              const activeMistakes = studentMistakes.filter((m) => !m.mastered);
 
-            {/* Exam Attempts History for this student */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-bold text-[#3D3D2D] flex items-center space-x-2">
-                <GraduationCap className="w-4 h-4 text-[#5A5A40]" />
-                <span>Lịch Sử Bài Thi Thử Đã Hoàn Thành:</span>
-              </h4>
-
-              {getUserScopedData(selectedStudentForDetail.id).examAttempts.length === 0 ? (
-                <div className="p-6 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] text-center text-xs text-[#8A8A70]">
-                  Học sinh chưa hoàn thành bài thi thử nào.
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-56 overflow-y-auto no-scrollbar">
-                  {getUserScopedData(selectedStudentForDetail.id).examAttempts.map((att, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3.5 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] hover:border-[#D9D2C5] transition flex items-center justify-between text-xs gap-3"
-                    >
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                          <span className="font-bold text-[#3D3D2D] truncate">{att.examTitle}</span>
-                          <span className="px-2 py-0.5 bg-white rounded-lg text-[10px] font-bold text-[#5A5A40] border border-[#D9D2C5]">
-                            {att.subject === 'math' ? '📐 Môn Toán' : '🇬🇧 Môn Tiếng Anh'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-[#8A8A70]">
-                          Thời gian: {Math.round((att.timeSpentSeconds || 1800) / 60)} phút • Ngày {new Date(att.date).toLocaleDateString('vi-VN')}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center space-x-3 shrink-0">
-                        <div className="text-right">
-                          <span className="text-base font-extrabold text-[#5A5A40]">{att.score.toFixed(2)}đ</span>
-                          <span className="text-[10px] text-[#8BA888] block font-semibold">
-                            {att.correctCount}/{att.totalQuestions} câu đúng
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => {
-                            setSelectedAttemptForReview({
-                              attempt: att,
-                              studentName: selectedStudentForDetail.name,
-                            });
-                          }}
-                          className="px-3 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>Xem chi tiết</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Active Mistakes for this student */}
-            <div className="space-y-3">
-              <h4 className="text-sm font-bold text-[#3D3D2D] flex items-center space-x-2">
-                <BookMarked className="w-4 h-4 text-[#E67E22]" />
-                <span>Sổ Câu Sai Cần Bồi Dưỡng Của Học Sinh:</span>
-              </h4>
-
-              {Object.keys(getUserScopedData(selectedStudentForDetail.id).mistakes || {}).length === 0 ? (
-                <div className="p-4 bg-[#EBF2EB] rounded-2xl border border-[#8BA888]/30 text-center text-xs text-emerald-800 font-medium">
-                  Không có câu sai tồn đọng! Học sinh đã nắm chắc kiến thức.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto no-scrollbar">
-                  {(Object.values(getUserScopedData(selectedStudentForDetail.id).mistakes || {}) as MistakeItem[]).map((m, idx) => (
-                    <div key={idx} className="p-3 bg-[#FAF9F6] rounded-xl border border-[#EAE7E0] space-y-1 text-xs">
-                      <div className="flex justify-between items-center">
-                        <span className="px-2 py-0.5 bg-[#FDF2E9] text-[#E67E22] font-bold rounded text-[10px]">
-                          Sai {m.wrongCount} lần
-                        </span>
-                        <span className="text-[10px] text-[#8A8A70] uppercase font-bold">
-                          {m.subject === 'math' ? 'Toán' : 'Anh'}
-                        </span>
-                      </div>
-                      <p className="text-[#3D3D2D] font-medium line-clamp-2">
-                        Mã câu hỏi: <code className="font-mono text-[11px]">{m.questionId}</code>
+              return (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#FAF9F6] p-4 rounded-2xl border border-[#D9D2C5]">
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Mục tiêu Toán / Điểm TB</span>
+                      <p className="text-lg font-extrabold text-[#1E3A8A]">
+                        {selectedStudentForDetail.targetScoreMath || selectedStudentForDetail.targetScore || 8.5}đ{' '}
+                        <span className="text-xs font-normal text-[#8A8A70]">({avgMath}đ TB)</span>
                       </p>
-                      {m.userNote && (
-                        <p className="text-[11px] text-[#5A5A40] italic bg-white p-1.5 rounded border border-[#EAE7E0]">
-                          💡 {m.userNote}
-                        </p>
-                      )}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Mục tiêu Anh / Điểm TB</span>
+                      <p className="text-lg font-extrabold text-[#5A5A40]">
+                        {selectedStudentForDetail.targetScoreEnglish || selectedStudentForDetail.targetScore || 8.5}đ{' '}
+                        <span className="text-xs font-normal text-[#8A8A70]">({avgEng}đ TB)</span>
+                      </p>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Chuỗi ngày học</span>
+                      <p className="text-lg font-extrabold text-[#E67E22]">
+                        🔥 {selectedStudentForDetail.streakDays || 0} ngày
+                      </p>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] uppercase font-bold text-[#8A8A70]">Trạng thái / Đề đã nộp</span>
+                      <p className="text-sm font-bold text-[#8BA888]">
+                        {selectedStudentForDetail.isLocked ? '🔒 Đang khóa' : `✓ ${studentAttempts.length} đề thi`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Exam Attempts History for this student */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-bold text-[#3D3D2D] flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <GraduationCap className="w-4 h-4 text-[#5A5A40]" />
+                        <span>Lịch Sử Bài Thi Thử Đã Hoàn Thành ({studentAttempts.length} bài):</span>
+                      </div>
+                    </h4>
+
+                    {studentAttempts.length === 0 ? (
+                      <div className="p-6 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] text-center text-xs text-[#8A8A70] space-y-1">
+                        <p className="font-semibold text-[#3D3D2D]">Học sinh chưa hoàn thành bài thi thử nào.</p>
+                        <p className="text-[11px]">
+                          Khi học sinh làm bài và nộp bài, toàn bộ kết quả, điểm số và chi tiết từng câu sẽ tự động hiển thị ở đây.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-56 overflow-y-auto no-scrollbar">
+                        {studentAttempts.map((att, idx) => (
+                          <div
+                            key={idx}
+                            className="p-3.5 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] hover:border-[#D9D2C5] transition flex items-center justify-between text-xs gap-3"
+                          >
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                                <span className="font-bold text-[#3D3D2D] truncate">{att.examTitle}</span>
+                                <span className="px-2 py-0.5 bg-white rounded-lg text-[10px] font-bold text-[#5A5A40] border border-[#D9D2C5]">
+                                  {att.subject === 'math' ? '📐 Môn Toán' : '🇬🇧 Môn Tiếng Anh'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-[#8A8A70]">
+                                Thời gian: {Math.round((att.timeSpentSeconds || 1800) / 60)} phút • Ngày{' '}
+                                {new Date(att.date).toLocaleDateString('vi-VN')}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center space-x-3 shrink-0">
+                              <div className="text-right">
+                                <span className="text-base font-extrabold text-[#5A5A40]">{att.score.toFixed(2)}đ</span>
+                                <span className="text-[10px] text-[#8BA888] block font-semibold">
+                                  {att.correctCount}/{att.totalQuestions} câu đúng
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setSelectedAttemptForReview({
+                                    attempt: att,
+                                    studentName: selectedStudentForDetail.name,
+                                    studentId: selectedStudentForDetail.id,
+                                  });
+                                }}
+                                className="px-3 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Xem chi tiết</span>
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Active Mistakes for this student */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-bold text-[#3D3D2D] flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <BookMarked className="w-4 h-4 text-[#E67E22]" />
+                        <span>Sổ Câu Sai Cần Bồi Dưỡng Của Học Sinh ({activeMistakes.length} câu):</span>
+                      </div>
+                    </h4>
+
+                    {activeMistakes.length === 0 ? (
+                      <div className="p-4 bg-[#EBF2EB] rounded-2xl border border-[#8BA888]/30 text-center text-xs text-emerald-800 font-medium">
+                        Không có câu sai tồn đọng! Học sinh đã nắm chắc kiến thức hoặc chưa làm sai câu nào.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto no-scrollbar">
+                        {activeMistakes.map((m, idx) => (
+                          <div key={idx} className="p-3 bg-[#FAF9F6] rounded-xl border border-[#EAE7E0] space-y-1 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="px-2 py-0.5 bg-[#FDF2E9] text-[#E67E22] font-bold rounded text-[10px]">
+                                Sai {m.wrongCount} lần
+                              </span>
+                              <span className="text-[10px] text-[#8A8A70] uppercase font-bold">
+                                {m.subject === 'math' ? '📐 Toán' : '🇬🇧 Anh'}
+                              </span>
+                            </div>
+                            <p className="text-[#3D3D2D] font-medium line-clamp-2">
+                              Mã câu hỏi: <code className="font-mono text-[11px]">{m.questionId}</code>
+                            </p>
+                            {m.userNote && (
+                              <p className="text-[11px] text-[#5A5A40] italic bg-white p-1.5 rounded border border-[#EAE7E0]">
+                                💡 {m.userNote}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
 
             {/* Teacher Feedback / Pedagogical Note Section */}
             <div className="p-4 sm:p-5 rounded-2xl bg-[#5A5A40]/10 border border-[#5A5A40]/30 space-y-2.5">

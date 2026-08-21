@@ -298,7 +298,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
     const saved = saveExamAttempt({
       examId: exam.id,
       examTitle: exam.title,
-      subject: currentSubject,
+      subject: (exam.subject || currentSubject) as any,
       date: new Date().toISOString(),
       score: scoreVal,
       score100: score100Val,

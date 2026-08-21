@@ -25,6 +25,7 @@ import {
   subscribeToQuestionsFromOnlineDB,
   saveExamAttemptToOnlineDB,
   subscribeToStudentData,
+  subscribeToRoomData,
   clearOnlineStudentData,
 } from '../services/cloudSyncService';
 
@@ -312,6 +313,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return () => unsubStudent();
+  }, [currentUser.id]);
+
+  // Subscribe to real-time room data for ALL students (so Admin sees live submissions from any student on any device)
+  useEffect(() => {
+    const unsubRoom = subscribeToRoomData((studentsPayload) => {
+      if (studentsPayload && typeof studentsPayload === 'object') {
+        Object.entries(studentsPayload).forEach(([stuId, payload]: [string, any]) => {
+          if (payload && payload.userData) {
+            try {
+              localStorage.setItem(getUserDataKey(stuId), JSON.stringify(payload.userData));
+            } catch (_) {}
+            if (stuId === currentUser.id) {
+              if (Array.isArray(payload.userData.examAttempts)) {
+                setExamAttempts(payload.userData.examAttempts);
+              }
+              if (Array.isArray(payload.userData.practiceSessions)) {
+                setPracticeSessions(payload.userData.practiceSessions);
+              }
+              if (payload.userData.mistakes) {
+                setMistakes(payload.userData.mistakes);
+              }
+            }
+          }
+        });
+      }
+    });
+
+    return () => unsubRoom();
   }, [currentUser.id]);
 
   // Sync user data to localStorage and Online Cloud DB on changes
@@ -875,6 +904,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [examAttempts, practiceSessions, mistakes, currentSubject, allQuestions]);
 
   const getUserScopedData = (userId: string): UserScopedData => {
+    if (userId === currentUser.id) {
+      return {
+        examAttempts,
+        practiceSessions,
+        mistakes,
+        bookmarks,
+        customExams,
+      };
+    }
     try {
       const stored = localStorage.getItem(`edu10_userdata_${userId}`);
       if (stored) {

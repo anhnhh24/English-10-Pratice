@@ -19,6 +19,15 @@ export const QuickBlitzView: React.FC<QuickBlitzViewProps> = ({ onBackToDashboar
   const [isFinished, setIsFinished] = useState<boolean>(false);
   const [startTime, setStartTime] = useState<number>(0);
 
+  // Cleanly reset blitz session when subject changes
+  React.useEffect(() => {
+    setIsStarted(false);
+    setIsFinished(false);
+    setBlitzQuestions([]);
+    setUserAnswers({});
+    setCurrentIdx(0);
+  }, [currentSubject]);
+
   const handleStartBlitz = () => {
     const subjectQuestions = questions.filter(
       (q) => (q.subject || 'english') === currentSubject
