@@ -2,11 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { TOPICS_META } from '../../data/topicsMeta';
 import { MATH_TOPICS_META } from '../../data/mathTopicsMeta';
-import { DifficultyLevel, Question, TopicId, SubTopicId, Exam, ExamAttempt, UserAccount, SubjectId, RealtimeActivityEvent, MistakeItem } from '../../types';
+import { DifficultyLevel, Question, TopicId, SubTopicId, Exam, ExamAttempt, UserAccount, SubjectId, RealtimeActivityEvent, MistakeItem, RemoteTaskAssignment } from '../../types';
 import {
   getStoredRealtimeActivities,
   subscribeToRealtimeActivities,
+  getStoredRemoteTasks,
   broadcastRemoteTask,
+  subscribeToRemoteTasks,
+  deleteRemoteTask,
+  toggleRemoteTaskCompleted,
   logAndBroadcastActivity,
   sendRemotePing,
 } from '../../services/realtimeSyncService';
@@ -58,6 +62,10 @@ import {
   HelpCircle,
   Printer,
   Share2,
+  ClipboardList,
+  CheckSquare,
+  Square,
+  RotateCcw,
 } from 'lucide-react';
 import { CloudSyncModal } from '../modals/CloudSyncModal';
 import { formatDateVi, formatRelativeTime, formatTimeLimit, formatTopicTitle } from '../../utils/formatters';
@@ -94,10 +102,17 @@ export const AdminPanel: React.FC = () => {
     deleteExam,
   } = useApp();
 
-  const [activeAdminTab, setActiveAdminTab] = useState<'overview' | 'realtime_pulse' | 'students' | 'submissions' | 'questions' | 'exams'>('overview');
+  const [activeAdminTab, setActiveAdminTab] = useState<'overview' | 'tasks' | 'submissions' | 'exams' | 'students' | 'questions' | 'realtime_pulse'>('overview');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
   const [searchStudentQuery, setSearchStudentQuery] = useState<string>('');
   const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<UserAccount | null>(null);
+
+  // Assigned Tasks Management State (Quản lý bài tập đang giao)
+  const [assignedTasks, setAssignedTasks] = useState<RemoteTaskAssignment[]>(() => getStoredRemoteTasks());
+  const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [taskStudentFilter, setTaskStudentFilter] = useState<string>('all');
+  const [taskSubjectFilter, setTaskSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
+  const [taskSearchQuery, setTaskSearchQuery] = useState<string>('');
 
   // Exam preview & origin filter states
   const [selectedExamForPreview, setSelectedExamForPreview] = useState<Exam | null>(null);
@@ -335,13 +350,23 @@ export const AdminPanel: React.FC = () => {
 
   // Real-time Activity Subscription
   useEffect(() => {
-    const unsubscribe = subscribeToRealtimeActivities((event) => {
+    const unsubscribeActivities = subscribeToRealtimeActivities((event) => {
       setRealtimeEvents((prev) => [event, ...prev.filter((e) => e.id !== event.id)].slice(0, 50));
       setLiveToast(event);
       setTimeout(() => setLiveToast(null), 5000);
     });
 
-    return () => unsubscribe();
+    const unsubscribeTasks = subscribeToRemoteTasks((task) => {
+      setAssignedTasks((prev) => {
+        const filtered = prev.filter((t) => t.id !== task.id);
+        return [task, ...filtered];
+      });
+    });
+
+    return () => {
+      unsubscribeActivities();
+      unsubscribeTasks();
+    };
   }, []);
 
   // Calculate Aggregate Class Performance
@@ -605,7 +630,7 @@ export const AdminPanel: React.FC = () => {
   // Remote Task Send Handler
   const handleSendRemoteTask = (e: React.FormEvent) => {
     e.preventDefault();
-    broadcastRemoteTask({
+    const newTask = broadcastRemoteTask({
       senderName: currentUser.name || 'Anh/Chị (Người giám sát)',
       recipientUserId: taskTargetStudentId,
       subject: taskSubject,
@@ -613,11 +638,38 @@ export const AdminPanel: React.FC = () => {
       message: taskMessage,
       assignedExamId: taskAssignedExamId,
     });
+    setAssignedTasks((prev) => [newTask, ...prev.filter((t) => t.id !== newTask.id)]);
     setTaskSuccessMsg(true);
     setTimeout(() => {
       setTaskSuccessMsg(false);
       setShowAssignTaskModal(false);
     }, 1500);
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    if (confirm('Bạn có chắc muốn thu hồi / xóa nhiệm vụ này?')) {
+      deleteRemoteTask(taskId);
+      setAssignedTasks((prev) => prev.filter((t) => t.id !== taskId));
+    }
+  };
+
+  const handleToggleTaskStatus = (taskId: string) => {
+    const newStatus = toggleRemoteTaskCompleted(taskId);
+    setAssignedTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, completed: newStatus } : t))
+    );
+  };
+
+  const handleRemindTaskPing = (task: RemoteTaskAssignment) => {
+    const targetStudent = studentUsers.find((s) => s.id === task.recipientUserId);
+    const stuName = targetStudent?.name || 'Học sinh';
+    sendRemotePing({
+      senderName: currentUser.name || 'Thầy/Cô (Giám sát)',
+      recipientUserId: task.recipientUserId,
+      message: `🔔 Nhắc nhở bài tập: Em hãy vào hoàn thành bài "${task.title}" nhé!`,
+      pingType: 'reminder',
+    });
+    alert(`Đã gửi thông báo nhắc nhở làm bài trực tiếp đến màn hình em ${stuName}!`);
   };
 
   const [quickPingMessage, setQuickPingMessage] = useState<string>('');
@@ -929,7 +981,7 @@ export const AdminPanel: React.FC = () => {
       )}
 
       {/* 3. Navigation Tabs */}
-      <div className="flex bg-[#E8E2D9] p-1.5 rounded-2xl max-w-4xl shadow-2xs text-xs font-bold overflow-x-auto no-scrollbar gap-1">
+      <div className="flex bg-[#E8E2D9] p-1.5 rounded-2xl max-w-5xl shadow-2xs text-xs font-bold overflow-x-auto no-scrollbar gap-1">
         <button
           onClick={() => setActiveAdminTab('overview')}
           className={`py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
@@ -940,6 +992,18 @@ export const AdminPanel: React.FC = () => {
         >
           <BarChart2 className="w-4 h-4" />
           <span>Tổng quan</span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab('tasks')}
+          className={`py-2 px-3.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+            activeAdminTab === 'tasks'
+              ? 'bg-[#1E3A8A] text-white shadow-xs'
+              : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+          }`}
+        >
+          <ClipboardList className="w-4 h-4 text-amber-300" />
+          <span>🎯 Bài tập đang giao ({assignedTasks.filter((t) => !t.completed).length})</span>
         </button>
 
         <button
@@ -1621,6 +1685,367 @@ export const AdminPanel: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
+      {/* 🎯 TAB: ASSIGNED TASKS MANAGEMENT (QUẢN LÝ BÀI TẬP ĐANG GIAO)             */}
+      {/* ========================================================================= */}
+      {activeAdminTab === 'tasks' && (() => {
+        const pendingCount = assignedTasks.filter((t) => !t.completed).length;
+        const completedCount = assignedTasks.filter((t) => t.completed).length;
+        const recipientStudents = Array.from(new Set(assignedTasks.map((t) => t.recipientUserId)));
+
+        const filteredTasks = assignedTasks.filter((task) => {
+          // Status filter
+          if (taskStatusFilter === 'pending' && task.completed) return false;
+          if (taskStatusFilter === 'completed' && !task.completed) return false;
+
+          // Student filter
+          if (taskStudentFilter !== 'all' && task.recipientUserId !== taskStudentFilter) return false;
+
+          // Subject filter
+          if (taskSubjectFilter !== 'all' && task.subject !== taskSubjectFilter) return false;
+
+          // Search Query
+          if (taskSearchQuery) {
+            const query = taskSearchQuery.toLowerCase();
+            const studentName = studentUsers.find((s) => s.id === task.recipientUserId)?.name || '';
+            const matchTitle = task.title.toLowerCase().includes(query);
+            const matchMsg = task.message?.toLowerCase().includes(query);
+            const matchStudent = studentName.toLowerCase().includes(query);
+            if (!matchTitle && !matchMsg && !matchStudent) return false;
+          }
+          return true;
+        });
+
+        return (
+          <div className="space-y-6 animate-in fade-in">
+            {/* Top Stat Overview Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+              <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
+                <div className="flex items-center space-x-1.5 text-xs text-[#8A8A70] font-bold">
+                  <ClipboardList className="w-4 h-4 text-[#1E3A8A]" />
+                  <span>Tổng nhiệm vụ đã giao</span>
+                </div>
+                <p className="text-2xl font-extrabold text-[#3D3D2D]">{assignedTasks.length} <span className="text-xs font-normal text-[#8A8A70]">nhiệm vụ</span></p>
+                <p className="text-[11px] text-[#8A8A70]">Toàn bộ danh sách bài tập</p>
+              </div>
+
+              <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
+                <div className="flex items-center space-x-1.5 text-xs text-amber-700 font-bold">
+                  <Clock className="w-4 h-4 text-amber-600" />
+                  <span>Đang chờ hoàn thành</span>
+                </div>
+                <p className="text-2xl font-extrabold text-amber-600">{pendingCount} <span className="text-xs font-normal text-[#8A8A70]">bài</span></p>
+                <p className="text-[11px] text-amber-700/80 font-medium">Học sinh chưa nộp bài</p>
+              </div>
+
+              <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
+                <div className="flex items-center space-x-1.5 text-xs text-emerald-700 font-bold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Đã hoàn thành</span>
+                </div>
+                <p className="text-2xl font-extrabold text-emerald-700">{completedCount} <span className="text-xs font-normal text-[#8A8A70]">bài</span></p>
+                <p className="text-[11px] text-emerald-700/80 font-medium">Đã làm và nộp bài</p>
+              </div>
+
+              <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
+                <div className="flex items-center space-x-1.5 text-xs text-[#5A5A40] font-bold">
+                  <Users className="w-4 h-4 text-[#5A5A40]" />
+                  <span>Học sinh được giao</span>
+                </div>
+                <p className="text-2xl font-extrabold text-[#5A5A40]">{recipientStudents.length} <span className="text-xs font-normal text-[#8A8A70]">em</span></p>
+                <p className="text-[11px] text-[#8A8A70]">Đang có bài tập hoạt động</p>
+              </div>
+            </div>
+
+            {/* Header Action Banner & Giao Bài Nút */}
+            <div className="bg-gradient-to-r from-[#1E3A8A] via-[#2563EB] to-[#3B82F6] text-white p-6 rounded-[2.5rem] shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center space-x-2">
+                  <Sparkles className="w-5 h-5 text-amber-300" />
+                  <h3 className="text-lg font-bold">Trung Tâm Quản Lý & Điều Phối Bài Tập</h3>
+                </div>
+                <p className="text-xs text-blue-100 max-w-xl">
+                  Giao bài tập/đề thi theo thời gian thực tới từng em học sinh, theo dõi tiến độ nộp bài và phát tín hiệu nhắc nhở trực tiếp.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAssignTaskModal(true)}
+                className="px-5 py-3 bg-amber-400 hover:bg-amber-300 text-[#1E3A8A] rounded-2xl font-extrabold text-xs transition cursor-pointer shadow-sm flex items-center space-x-2 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>➕ Giao Bài Tập Mới Ngay</span>
+              </button>
+            </div>
+
+            {/* Filter Toolbar */}
+            <div className="bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-xs flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                {/* Status Filter */}
+                <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5]">
+                  <button
+                    onClick={() => setTaskStatusFilter('all')}
+                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                      taskStatusFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                    }`}
+                  >
+                    Tất cả ({assignedTasks.length})
+                  </button>
+                  <button
+                    onClick={() => setTaskStatusFilter('pending')}
+                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                      taskStatusFilter === 'pending' ? 'bg-amber-600 text-white shadow-xs' : 'text-amber-700'
+                    }`}
+                  >
+                    <span>🟡 Đang chờ ({pendingCount})</span>
+                  </button>
+                  <button
+                    onClick={() => setTaskStatusFilter('completed')}
+                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                      taskStatusFilter === 'completed' ? 'bg-emerald-700 text-white shadow-xs' : 'text-emerald-700'
+                    }`}
+                  >
+                    <span>🟢 Đã xong ({completedCount})</span>
+                  </button>
+                </div>
+
+                {/* Subject Filter */}
+                <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5]">
+                  <button
+                    onClick={() => setTaskSubjectFilter('all')}
+                    className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${
+                      taskSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                    }`}
+                  >
+                    Tất cả môn
+                  </button>
+                  <button
+                    onClick={() => setTaskSubjectFilter('math')}
+                    className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${
+                      taskSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white' : 'text-[#6B6B54]'
+                    }`}
+                  >
+                    📐 Toán
+                  </button>
+                  <button
+                    onClick={() => setTaskSubjectFilter('english')}
+                    className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${
+                      taskSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                    }`}
+                  >
+                    🇬🇧 Tiếng Anh
+                  </button>
+                </div>
+
+                {/* Student Filter */}
+                <select
+                  value={taskStudentFilter}
+                  onChange={(e) => setTaskStudentFilter(e.target.value)}
+                  className="px-3 py-1.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-xl text-xs text-[#3D3D2D] font-bold outline-hidden cursor-pointer"
+                >
+                  <option value="all">👥 Tất cả học sinh</option>
+                  {studentUsers.map((stu) => (
+                    <option key={stu.id} value={stu.id}>
+                      {stu.name} {stu.id === siblingId ? '⭐ (Em tôi)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Search Box */}
+              <div className="relative min-w-[220px] flex-1 max-w-xs">
+                <Search className="w-4 h-4 text-[#8A8A70] absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={taskSearchQuery}
+                  onChange={(e) => setTaskSearchQuery(e.target.value)}
+                  placeholder="Tìm bài tập, học sinh..."
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:ring-1 focus:ring-[#5A5A40]"
+                />
+              </div>
+            </div>
+
+            {/* Tasks List */}
+            {filteredTasks.length === 0 ? (
+              <div className="bg-white rounded-[2.5rem] p-12 border border-[#EAE7E0] text-center space-y-4 shadow-xs">
+                <div className="w-16 h-16 bg-[#FAF9F6] border border-[#D9D2C5] rounded-3xl flex items-center justify-center mx-auto text-3xl">
+                  🎯
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-base font-bold text-[#3D3D2D]">Chưa có bài tập nào phù hợp</h4>
+                  <p className="text-xs text-[#8A8A70]">
+                    Hãy nhấn nút "Giao bài tập mới ngay" để giao nhiệm vụ luyện thi cho học sinh.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAssignTaskModal(true)}
+                  className="px-5 py-2.5 bg-[#1E3A8A] hover:bg-[#2563EB] text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-sm inline-flex items-center space-x-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Giao bài tập đầu tiên</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredTasks.map((task) => {
+                  const targetStudent = studentUsers.find((s) => s.id === task.recipientUserId);
+                  const linkedExam = task.assignedExamId ? exams.find((e) => e.id === task.assignedExamId) : null;
+                  
+                  // Check if student has submitted an attempt for this linked exam
+                  const studentAttempt = linkedExam
+                    ? allSubmissions.find((sub) => sub.examId === linkedExam.id && sub.userId === task.recipientUserId)
+                    : null;
+
+                  return (
+                    <div
+                      key={task.id}
+                      className={`bg-white rounded-[2rem] p-5 border transition-all shadow-xs space-y-3.5 flex flex-col justify-between ${
+                        task.completed
+                          ? 'border-emerald-200 bg-emerald-50/20'
+                          : 'border-[#EAE7E0] hover:border-[#D9D2C5]'
+                      }`}
+                    >
+                      {/* Card Top: Student Info + Status */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center space-x-2.5">
+                          <div
+                            className="w-9 h-9 rounded-2xl flex items-center justify-center text-white font-bold text-xs shadow-2xs"
+                            style={{ backgroundColor: targetStudent?.avatarColor || '#5A5A40' }}
+                          >
+                            {targetStudent?.name?.charAt(0) || 'H'}
+                          </div>
+                          <div>
+                            <div className="flex items-center space-x-1.5">
+                              <span className="font-bold text-xs text-[#3D3D2D]">{targetStudent?.name || 'Học sinh'}</span>
+                              {task.recipientUserId === siblingId && (
+                                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-md text-[9px] font-extrabold">
+                                  ⭐ Em tôi
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-[#8A8A70] block">
+                              Giao bởi: {task.senderName} • {formatRelativeTime(task.timestamp)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-1.5">
+                          <SubjectBadge subject={task.subject} />
+                          {task.completed ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center space-x-1">
+                              <Check className="w-3 h-3" />
+                              <span>Đã xong</span>
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center space-x-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                              <span>Đang làm</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Task Content */}
+                      <div className="space-y-2">
+                        <h4 className="font-extrabold text-sm text-[#3D3D2D] leading-snug">
+                          {task.title}
+                        </h4>
+                        {task.message && (
+                          <div className="bg-[#FAF9F6] p-3 rounded-xl border border-[#EAE7E0] text-xs text-[#5A5A40] italic">
+                            💬 "{task.message}"
+                          </div>
+                        )}
+
+                        {/* Linked Exam Card */}
+                        {linkedExam && (
+                          <div className="flex items-center justify-between bg-blue-50/50 p-2.5 rounded-xl border border-blue-100 text-xs">
+                            <div className="flex items-center space-x-2">
+                              <GraduationCap className="w-4 h-4 text-[#1E3A8A]" />
+                              <div>
+                                <span className="font-bold text-[#1E3A8A] block truncate max-w-[200px]">
+                                  {linkedExam.title}
+                                </span>
+                                <span className="text-[10px] text-blue-700 font-mono">
+                                  {linkedExam.code} • {linkedExam.timeLimitMinutes}p • {linkedExam.totalQuestions} câu
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setSelectedExamForPreview(linkedExam)}
+                              className="px-2.5 py-1 bg-white hover:bg-blue-100 text-[#1E3A8A] border border-blue-200 rounded-lg text-[11px] font-bold transition cursor-pointer shadow-2xs"
+                            >
+                              👁️ Xem đề
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Submission Result badge if student completed */}
+                        {studentAttempt && (
+                          <div className="flex items-center justify-between bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 text-xs">
+                            <div className="flex items-center space-x-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              <span className="text-emerald-800 font-bold">
+                                Kết quả: {studentAttempt.score.toFixed(1)}/10đ ({studentAttempt.correctCount}/{studentAttempt.totalQuestions} câu)
+                              </span>
+                            </div>
+                            <button
+                              onClick={() =>
+                                setSelectedAttemptForReview({
+                                  attempt: studentAttempt,
+                                  studentName: targetStudent?.name || 'Học sinh',
+                                  studentId: task.recipientUserId,
+                                })
+                              }
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition cursor-pointer"
+                            >
+                              Chi tiết bài làm
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Footer Action Buttons */}
+                      <div className="pt-2 border-t border-[#F5F2ED] flex items-center justify-between gap-2">
+                        <div className="flex items-center space-x-1.5">
+                          {!task.completed && (
+                            <button
+                              onClick={() => handleRemindTaskPing(task)}
+                              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1"
+                              title="Gửi tín hiệu nhắc nhở tới màn hình của em"
+                            >
+                              <Zap className="w-3.5 h-3.5 text-amber-600" />
+                              <span>⚡ Nhắc làm bài</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleToggleTaskStatus(task.id)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1 ${
+                              task.completed
+                                ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
+                                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            }`}
+                          >
+                            {task.completed ? <RotateCcw className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                            <span>{task.completed ? 'Mở lại' : 'Đã nộp'}</span>
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={() => handleDeleteTask(task.id)}
+                          className="p-1.5 text-red-500 hover:bg-red-50 rounded-xl transition cursor-pointer"
+                          title="Thu hồi / Xóa nhiệm vụ này"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ========================================================================= */}
       {/* 📝 TAB: STUDENT EXAM SUBMISSIONS (BÀI LÀM HỌC SINH CHI TIẾT)             */}
       {/* ========================================================================= */}
       {activeAdminTab === 'submissions' && (
@@ -2206,113 +2631,140 @@ export const AdminPanel: React.FC = () => {
         };
 
         return (
-          <div className="space-y-4 animate-in fade-in">
-            {/* Header Toolbar */}
-            <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-sm gap-3">
-              {/* Subject Tabs */}
-              <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] text-xs font-bold shrink-0">
-                <button
-                  onClick={() => setExamSubjectFilter('all')}
-                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
-                    examSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                  }`}
-                >
-                  Tất cả ({exams.length})
-                </button>
-                <button
-                  onClick={() => setExamSubjectFilter('math')}
-                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                    examSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
-                  }`}
-                >
-                  <span>📐 Toán ({mathExamsCount})</span>
-                </button>
-                <button
-                  onClick={() => setExamSubjectFilter('english')}
-                  className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                    examSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
-                  }`}
-                >
-                  <span>🇬🇧 Tiếng Anh ({engExamsCount})</span>
-                </button>
+          <div className="space-y-6 animate-in fade-in">
+            {/* Header Toolbar (2-Tier Spacious Layout) */}
+            <div className="bg-white p-5 sm:p-6 rounded-[2.5rem] border border-[#EAE7E0] shadow-xs space-y-4">
+              {/* Row 1: Title & Action Hub */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-[#F5F2ED]">
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <GraduationCap className="w-5 h-5 text-[#1E3A8A]" />
+                    <h3 className="text-base font-extrabold text-[#3D3D2D]">Ngân Hàng Đề Thi Tuyển Sinh Vào Lớp 10</h3>
+                  </div>
+                  <p className="text-xs text-[#8A8A70]">
+                    Tổng cộng <span className="font-bold text-[#3D3D2D]">{exams.length} đề thi</span> • {mathExamsCount} Đề Toán • {engExamsCount} Đề Tiếng Anh • {aiExamsCount} Đề AI • {uploadExamsCount} Đề Upload
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setShowAiCreateModal(true)}
+                    className="px-4 py-2.5 bg-gradient-to-r from-[#1E3A8A] to-[#2563EB] hover:opacity-95 text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Wand2 className="w-4 h-4 text-amber-300" />
+                    <span>🤖 AI Soạn Đề Mới</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowUploadModal(true)}
+                    className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>📄 Upload & Trích Xuất File</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSelectedQIds(questions.slice(0, 12).map((q) => q.id));
+                      setShowExamModal(true);
+                    }}
+                    className="px-4 py-2.5 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>➕ Tạo Đề Thủ Công</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Origin Sub-Filter */}
-              <div className="flex items-center space-x-1 bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] text-xs font-bold shrink-0">
-                <button
-                  onClick={() => setExamOriginFilter('all')}
-                  className={`px-2.5 py-1 rounded-xl transition cursor-pointer ${
-                    examOriginFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
-                  }`}
-                >
-                  Tất cả nguồn
-                </button>
-                <button
-                  onClick={() => setExamOriginFilter('ai')}
-                  className={`px-2.5 py-1 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                    examOriginFilter === 'ai' ? 'bg-blue-600 text-white' : 'text-blue-700 hover:bg-blue-50'
-                  }`}
-                >
-                  <Wand2 className="w-3 h-3" />
-                  <span>Đề AI ({aiExamsCount})</span>
-                </button>
-                <button
-                  onClick={() => setExamOriginFilter('upload')}
-                  className={`px-2.5 py-1 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
-                    examOriginFilter === 'upload' ? 'bg-amber-600 text-white' : 'text-amber-700 hover:bg-amber-50'
-                  }`}
-                >
-                  <Upload className="w-3 h-3" />
-                  <span>Đề Upload ({uploadExamsCount})</span>
-                </button>
-                <button
-                  onClick={() => setExamOriginFilter('official')}
-                  className={`px-2.5 py-1 rounded-xl transition cursor-pointer ${
-                    examOriginFilter === 'official' ? 'bg-emerald-700 text-white' : 'text-emerald-700 hover:bg-emerald-50'
-                  }`}
-                >
-                  Chuẩn Sở ({officialExamsCount})
-                </button>
-              </div>
+              {/* Row 2: Filter & Search Controls */}
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-1">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+                  {/* Subject Tabs */}
+                  <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] shrink-0">
+                    <button
+                      onClick={() => setExamSubjectFilter('all')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${
+                        examSubjectFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      Tất cả ({exams.length})
+                    </button>
+                    <button
+                      onClick={() => setExamSubjectFilter('math')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                        examSubjectFilter === 'math' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      <span>📐 Toán ({mathExamsCount})</span>
+                    </button>
+                    <button
+                      onClick={() => setExamSubjectFilter('english')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                        examSubjectFilter === 'english' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      <span>🇬🇧 Tiếng Anh ({engExamsCount})</span>
+                    </button>
+                  </div>
 
-              {/* Search Bar */}
-              <div className="relative flex-1 min-w-[180px]">
-                <Search className="w-4 h-4 text-[#8A8A70] absolute left-3 top-2.5" />
-                <input
-                  type="text"
-                  value={searchExamQuery}
-                  onChange={(e) => setSearchExamQuery(e.target.value)}
-                  placeholder="Tìm theo tên đề, mã đề thi..."
-                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:ring-1 focus:ring-[#5A5A40]"
-                />
-              </div>
+                  {/* Origin Sub-Filter */}
+                  <div className="flex items-center space-x-1 bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] shrink-0">
+                    <button
+                      onClick={() => setExamOriginFilter('all')}
+                      className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${
+                        examOriginFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+                      }`}
+                    >
+                      Tất cả nguồn
+                    </button>
+                    <button
+                      onClick={() => setExamOriginFilter('ai')}
+                      className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                        examOriginFilter === 'ai' ? 'bg-blue-600 text-white' : 'text-blue-700 hover:bg-blue-50'
+                      }`}
+                    >
+                      <Wand2 className="w-3 h-3" />
+                      <span>Đề AI ({aiExamsCount})</span>
+                    </button>
+                    <button
+                      onClick={() => setExamOriginFilter('upload')}
+                      className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${
+                        examOriginFilter === 'upload' ? 'bg-amber-600 text-white' : 'text-amber-700 hover:bg-amber-50'
+                      }`}
+                    >
+                      <Upload className="w-3 h-3" />
+                      <span>Đề Upload ({uploadExamsCount})</span>
+                    </button>
+                    <button
+                      onClick={() => setExamOriginFilter('official')}
+                      className={`px-2.5 py-1.5 rounded-xl transition cursor-pointer ${
+                        examOriginFilter === 'official' ? 'bg-emerald-700 text-white' : 'text-emerald-700 hover:bg-emerald-50'
+                      }`}
+                    >
+                      Chuẩn Sở ({officialExamsCount})
+                    </button>
+                  </div>
+                </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-2 shrink-0">
-                <button
-                  onClick={() => setShowAiCreateModal(true)}
-                  className="px-3.5 py-2 bg-gradient-to-r from-[#1E3A8A] to-[#2563EB] hover:opacity-90 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
-                >
-                  <Wand2 className="w-4 h-4 text-amber-300" />
-                  <span>🤖 AI Tạo Đề Mới</span>
-                </button>
-                <button
-                  onClick={() => setShowUploadModal(true)}
-                  className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>📄 Upload & Trích Xuất</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setSelectedQIds(questions.slice(0, 12).map((q) => q.id));
-                    setShowExamModal(true);
-                  }}
-                  className="px-3.5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Tạo thủ công</span>
-                </button>
+                {/* Search Bar */}
+                <div className="relative min-w-[220px] flex-1 max-w-sm">
+                  <Search className="w-4 h-4 text-[#8A8A70] absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={searchExamQuery}
+                    onChange={(e) => setSearchExamQuery(e.target.value)}
+                    placeholder="Tìm theo tên đề, mã đề thi..."
+                    className="w-full pl-9 pr-7 py-1.5 text-xs bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:ring-1 focus:ring-[#5A5A40]"
+                  />
+                  {searchExamQuery && (
+                    <button
+                      onClick={() => setSearchExamQuery('')}
+                      className="absolute right-2.5 top-2 text-xs text-[#8A8A70] hover:text-[#3D3D2D]"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 

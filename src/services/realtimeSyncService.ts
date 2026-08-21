@@ -297,6 +297,52 @@ export function markRemoteTaskCompleted(taskId: string): void {
   }
 }
 
+/**
+ * Toggle completed state of a remote task
+ */
+export function toggleRemoteTaskCompleted(taskId: string): boolean {
+  try {
+    const current = getStoredRemoteTasks();
+    const target = current.find((t) => t.id === taskId);
+    const newStatus = target ? !target.completed : true;
+    const updated = current.map((t) => (t.id === taskId ? { ...t, completed: newStatus } : t));
+    localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify(updated));
+
+    const settings = getCloudDBSettings();
+    if (settings.enabled && settings.roomCode) {
+      const taskRef = ref(database, `rooms/${settings.roomCode}/tasks/${taskId}/completed`);
+      set(taskRef, newStatus).catch((err) =>
+        console.warn('Firebase task complete update failed:', err)
+      );
+    }
+    return newStatus;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
+}
+
+/**
+ * Delete / Revoke an assigned remote task
+ */
+export function deleteRemoteTask(taskId: string): void {
+  try {
+    const current = getStoredRemoteTasks();
+    const updated = current.filter((t) => t.id !== taskId);
+    localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify(updated));
+
+    const settings = getCloudDBSettings();
+    if (settings.enabled && settings.roomCode) {
+      const taskRef = ref(database, `rooms/${settings.roomCode}/tasks/${taskId}`);
+      set(taskRef, null).catch((err) =>
+        console.warn('Firebase task delete failed:', err)
+      );
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
 // ═══════════════════════════════════════════════
 // 3. REMOTE PINGS / REALTIME MESSAGES (Admin → Student Instant Messages)
 // ═══════════════════════════════════════════════
