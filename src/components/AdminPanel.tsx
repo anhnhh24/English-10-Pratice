@@ -50,7 +50,6 @@ import {
   Database,
   Cloud,
   Upload,
-  FileText,
   Wand2,
 } from 'lucide-react';
 import { CloudSyncModal } from './CloudSyncModal';

@@ -345,12 +345,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [customQuestions]);
 
   // Auth Operations
-  const login = (email: string, password?: string): { success: boolean; message?: string } => {
-    const cleanEmail = email.trim().toLowerCase();
-    const user = usersList.find((u) => u.email.toLowerCase() === cleanEmail);
+  const login = (emailOrUsername: string, password?: string): { success: boolean; message?: string } => {
+    const cleanInput = (emailOrUsername || '').trim().toLowerCase();
+    const user = usersList.find(
+      (u) =>
+        u.email.toLowerCase() === cleanInput ||
+        (cleanInput === 'admin' && u.role === 'admin') ||
+        (cleanInput === 'admin@gmail.com' && u.role === 'admin')
+    );
 
     if (!user) {
-      return { success: false, message: 'Email này chưa được đăng ký trong hệ thống.' };
+      return { success: false, message: 'Tài khoản hoặc email này chưa được đăng ký trong hệ thống.' };
     }
 
     if (user.isLocked) {

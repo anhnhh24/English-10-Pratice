@@ -50,6 +50,83 @@ const AppContent: React.FC = () => {
 
   const isMath = currentSubject === 'math';
 
+  // ═════════════════════════════════════════════════════════════════
+  // 🛡️ DEDICATED ADMIN PORTAL (Trang Quản Trị & Giám Sát Riêng Biệt)
+  // ═════════════════════════════════════════════════════════════════
+  if (currentUser.role === 'admin') {
+    return (
+      <div className="min-h-screen w-full bg-[#FAF9F6] text-[#334155] font-sans flex flex-col overflow-x-hidden">
+        {/* Dedicated Admin Header */}
+        <header className="bg-white border-b border-[#EAE7E0] sticky top-0 z-40 px-4 sm:px-8 py-3.5 flex items-center justify-between shadow-2xs">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#1E3A8A] to-[#2563EB] text-white flex items-center justify-center font-bold text-base shadow-sm">
+              🛡️
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h1 className="font-extrabold text-base sm:text-lg text-[#3D3D2D] leading-tight">
+                  Edu10 • Trung Tâm Quản Trị & Giám Sát
+                </h1>
+                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-extrabold rounded-full">
+                  ADMIN PORTAL
+                </span>
+              </div>
+              <p className="text-xs text-[#8A8A70]">
+                Quản lý học sinh, đề thi AI, trích xuất file đề & theo dõi bài làm realtime
+              </p>
+            </div>
+          </div>
+
+          {/* Admin User Info & Actions */}
+          <div className="flex items-center space-x-2.5">
+            <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 bg-[#FAF9F6] rounded-xl border border-[#EAE7E0] text-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[#3D3D2D] font-bold">Admin (Giám Sát)</span>
+            </div>
+
+            <button
+              onClick={() => setProfileModalOpen(true)}
+              className="px-3.5 py-2 bg-[#F5F2ED] hover:bg-[#EAE7E0] text-[#3D3D2D] rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer border border-[#D9D2C5]"
+            >
+              <span>👤 Tài khoản</span>
+            </button>
+
+            <button
+              onClick={() => setAuthModalOpen(true)}
+              className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer border border-red-200"
+            >
+              <span>🚪 Đổi tài khoản</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Admin Main Body */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+          <Suspense fallback={<LoadingSpinner />}>
+            <AdminPanel />
+          </Suspense>
+        </main>
+
+        {/* Authentication Modal */}
+        <AuthModal
+          isOpen={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+        />
+
+        {/* User Profile Modal */}
+        <UserProfileModal
+          isOpen={profileModalOpen}
+          onClose={() => setProfileModalOpen(false)}
+          onOpenAuthModal={() => setAuthModalOpen(true)}
+          onSwitchToLogin={() => setAuthModalOpen(true)}
+        />
+      </div>
+    );
+  }
+
+  // ═════════════════════════════════════════════════════════════════
+  // 🎓 STUDENT PORTAL (Trang Luyện Thi Cho Học Sinh)
+  // ═════════════════════════════════════════════════════════════════
   return (
     <div className={`flex flex-col lg:flex-row h-screen w-full ${isMath ? 'bg-[#F0F4F8]' : 'bg-[#F5F2ED]'} text-[#334155] font-sans overflow-hidden transition-colors duration-300`}>
       {/* Sidebar Navigation (Desktop) & Top Header + Bottom Bar (Mobile) */}
@@ -119,19 +196,6 @@ const AppContent: React.FC = () => {
             )}
 
             {activeTab === 'bookmarks' && <BookmarksView />}
-
-            {activeTab === 'admin' && (
-              currentUser.role === 'admin' ? (
-                <AdminPanel />
-              ) : (
-                <Dashboard
-                  setActiveTab={setActiveTab}
-                  onStartExam={handleStartExam}
-                  onPracticeTopic={handlePracticeTopic}
-                  onOpenTargetModal={() => setTargetModalOpen(true)}
-                />
-              )
-            )}
           </Suspense>
         </div>
       </main>

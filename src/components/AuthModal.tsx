@@ -189,13 +189,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="space-y-1">
               <label className="text-xs font-bold text-[#4A4A4A] flex items-center space-x-1.5">
                 <Mail className="w-3.5 h-3.5 text-[#8A8A70]" />
-                <span>Email đăng nhập</span>
+                <span>Tài khoản / Email đăng nhập</span>
               </label>
               <input
-                type="email"
+                type="text"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="Nhập email tài khoản..."
+                placeholder="Nhập 'admin' hoặc email học sinh..."
                 autoComplete="username"
                 className="w-full px-3.5 py-2.5 bg-white border border-[#D9D2C5] rounded-2xl text-xs text-[#3D3D2D] focus:ring-1 focus:ring-[#5A5A40] outline-hidden"
                 required
