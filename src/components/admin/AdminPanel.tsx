@@ -66,6 +66,8 @@ import {
   CheckSquare,
   Square,
   RotateCcw,
+  Key,
+  EyeOff,
 } from 'lucide-react';
 import { CloudSyncModal } from '../modals/CloudSyncModal';
 import { formatDateVi, formatRelativeTime, formatTimeLimit, formatTopicTitle } from '../../utils/formatters';
@@ -73,6 +75,11 @@ import {
   generateExamWithAI,
   extractQuestionsFromText,
   getStoredApiKey,
+  setStoredApiKey,
+  clearStoredApiKey,
+  validateApiKey,
+  isApiKeyFromEnv,
+  AVAILABLE_MODELS,
   ExamGenerationConfig,
 } from '../../services/aiExamService';
 import {
@@ -203,6 +210,15 @@ export const AdminPanel: React.FC = () => {
   const [selectedQIds, setSelectedQIds] = useState<string[]>([]);
   const [examSubjectFilter, setExamSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
   const [searchExamQuery, setSearchExamQuery] = useState<string>('');
+
+  // ── Gemini API Key Management State ─────────────────────────
+  const [showGeminiKeyModal, setShowGeminiKeyModal] = useState<boolean>(false);
+  const [adminApiKeyInput, setAdminApiKeyInput] = useState<string>(() => getStoredApiKey());
+  const [adminKeyTesting, setAdminKeyTesting] = useState<boolean>(false);
+  const [adminKeyValidationResult, setAdminKeyValidationResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [adminKeySavedMsg, setAdminKeySavedMsg] = useState<boolean>(false);
+  const [adminShowKeyText, setAdminShowKeyText] = useState<boolean>(false);
+  const [adminSelectedModel, setAdminSelectedModel] = useState<string>('gemini-3.6-flash');
 
   // ── AI Tạo Đề Modal ──────────────────────────────────────────
   const [showAiCreateModal, setShowAiCreateModal] = useState<boolean>(false);
@@ -872,8 +888,25 @@ export const AdminPanel: React.FC = () => {
           </p>
         </div>
 
-        {/* Action Toolbar Grid (6 Quick Action Buttons) */}
-        <div className="pt-2 border-t border-white/15 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        {/* Action Toolbar Grid (7 Quick Action Buttons) */}
+        <div className="pt-2 border-t border-white/15 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5">
+          <button
+            onClick={() => {
+              setAdminApiKeyInput(getStoredApiKey());
+              setAdminKeyValidationResult(null);
+              setShowGeminiKeyModal(true);
+            }}
+            className="p-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-md border border-emerald-400/40 text-center relative"
+          >
+            <Key className="w-4 h-4 text-emerald-200 shrink-0" />
+            <span className="truncate">🔑 Gemini Key</span>
+            {getStoredApiKey() ? (
+              <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse shrink-0 ml-0.5" title="Đã có API Key" />
+            ) : (
+              <span className="w-2 h-2 rounded-full bg-amber-300 shrink-0 ml-0.5" title="Chưa cài API Key" />
+            )}
+          </button>
+
           <button
             onClick={() => setShowAiCreateModal(true)}
             className="p-3 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#1D4ED8] hover:to-[#1E40AF] text-white rounded-2xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-md border border-blue-400/40 text-center"
@@ -3947,6 +3980,24 @@ export const AdminPanel: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-4">
+                {!getStoredApiKey() && (
+                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl flex items-center justify-between text-xs text-amber-900">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-base">⚠️</span>
+                      <span>Chưa cài đặt Gemini API Key.</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setAdminApiKeyInput(getStoredApiKey());
+                        setAdminKeyValidationResult(null);
+                        setShowGeminiKeyModal(true);
+                      }}
+                      className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold transition cursor-pointer"
+                    >
+                      🔑 Cài Key ngay
+                    </button>
+                  </div>
+                )}
                 {/* Subject */}
                 <div>
                   <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Môn học</label>
@@ -4048,14 +4099,53 @@ export const AdminPanel: React.FC = () => {
                   <span className="text-3xl">✅</span>
                 </div>
                 <h4 className="font-bold text-[#3D3D2D] text-lg">Import thành công!</h4>
-                <p className="text-sm text-[#5A5A40]">AI đã trích xuất <strong>{uploadResult.questionCount} câu hỏi</strong> và lưu vào hệ thống.</p>
-                <div className="flex gap-3 justify-center">
-                  <button onClick={() => { setUploadResult(null); setUploadFileContent(''); setUploadFileName(''); setUploadTitle(''); }} className="px-5 py-2 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 cursor-pointer">Upload thêm</button>
-                  <button onClick={() => { setShowUploadModal(false); setUploadResult(null); setActiveAdminTab('exams'); }} className="px-5 py-2 bg-[#F5F2ED] text-[#3D3D2D] rounded-xl text-sm font-bold hover:bg-[#EAE7E0] cursor-pointer">Xem danh sách</button>
+                <p className="text-sm text-[#5A5A40]">Hệ thống và AI đã trích xuất hoàn chỉnh <strong>{uploadResult.questionCount} câu hỏi</strong> và gắn bài đọc tương ứng.</p>
+                <div className="flex flex-wrap gap-2 justify-center pt-2">
+                  <button
+                    onClick={() => {
+                      const newExam = exams.find((e) => e.id === uploadResult.examId);
+                      setShowUploadModal(false);
+                      setUploadResult(null);
+                      setActiveAdminTab('exams');
+                      if (newExam) setSelectedExamForPreview(newExam);
+                    }}
+                    className="px-5 py-2.5 bg-[#1E3A8A] text-white rounded-xl text-xs font-bold hover:bg-[#1E40AF] transition cursor-pointer shadow-xs"
+                  >
+                    👁️ Xem trước đề thi vừa tạo
+                  </button>
+                  <button
+                    onClick={() => {
+                      setUploadResult(null);
+                      setUploadFileContent('');
+                      setUploadFileName('');
+                      setUploadTitle('');
+                    }}
+                    className="px-4 py-2.5 bg-amber-600 text-white rounded-xl text-xs font-bold hover:bg-amber-700 transition cursor-pointer"
+                  >
+                    + Upload thêm
+                  </button>
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
+                {!getStoredApiKey() && (
+                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl flex items-center justify-between text-xs text-amber-900">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-base">⚠️</span>
+                      <span>Chưa cài đặt Gemini API Key để trích xuất đề thi.</span>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setAdminApiKeyInput(getStoredApiKey());
+                        setAdminKeyValidationResult(null);
+                        setShowGeminiKeyModal(true);
+                      }}
+                      className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold transition cursor-pointer shrink-0 ml-2"
+                    >
+                      🔑 Cài Key ngay
+                    </button>
+                  </div>
+                )}
                 {/* Subject */}
                 <div>
                   <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Môn học của đề</label>
@@ -4639,6 +4729,206 @@ export const AdminPanel: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* 🔑 MODAL: CẤU HÌNH GEMINI API KEY CHO ADMIN                 */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {showGeminiKeyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-5 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-700">
+                  <Key className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-[#3D3D2D] text-base sm:text-lg">🔑 Cấu Hình Gemini AI Key</h3>
+                  <p className="text-[11px] text-[#8A8A70]">Dùng cho tính năng Trích xuất đề thi, Tạo đề AI & AI Gia sư</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowGeminiKeyModal(false);
+                  setAdminKeyValidationResult(null);
+                  setAdminKeySavedMsg(false);
+                }}
+                className="text-[#8A8A70] hover:text-red-500 font-bold p-1 cursor-pointer transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Current Key Status Badge */}
+            <div className="p-3.5 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-semibold text-[#5A5A40]">Trạng thái hiện tại:</span>
+                {getStoredApiKey() ? (
+                  <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-[11px] font-bold flex items-center space-x-1">
+                    <span>🟢 Đã kết nối API Key</span>
+                    {isApiKeyFromEnv() && <span className="text-[9px] opacity-75">(từ .env)</span>}
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 rounded-full text-[11px] font-bold">
+                    🔴 Chưa cấu hình Key
+                  </span>
+                )}
+              </div>
+              {getStoredApiKey() && (
+                <button
+                  onClick={() => {
+                    if (confirm('Bạn có chắc muốn xóa Gemini API Key đã lưu khỏi trình duyệt?')) {
+                      clearStoredApiKey();
+                      setAdminApiKeyInput('');
+                      setAdminKeyValidationResult(null);
+                      setAdminKeySavedMsg(true);
+                      setTimeout(() => setAdminKeySavedMsg(false), 2000);
+                    }
+                  }}
+                  className="text-xs text-red-600 hover:text-red-700 font-bold flex items-center space-x-1 cursor-pointer transition"
+                  title="Xóa Key khỏi trình duyệt"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Xóa Key</span>
+                </button>
+              )}
+            </div>
+
+            {/* Input Form */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#3D3D2D] mb-1.5">
+                  Nhập Google Gemini API Key:
+                </label>
+                <div className="relative">
+                  <input
+                    type={adminShowKeyText ? 'text' : 'password'}
+                    value={adminApiKeyInput}
+                    onChange={(e) => {
+                      setAdminApiKeyInput(e.target.value);
+                      setAdminKeyValidationResult(null);
+                    }}
+                    placeholder="AIzaSy..."
+                    className="w-full px-3.5 py-2.5 pr-10 bg-[#FAF9F6] border border-[#D9D2C5] rounded-xl text-xs font-mono text-[#3D3D2D] focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAdminShowKeyText(!adminShowKeyText)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8A8A70] hover:text-[#3D3D2D] cursor-pointer"
+                  >
+                    {adminShowKeyText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Model Choice */}
+              <div>
+                <label className="block text-xs font-bold text-[#3D3D2D] mb-1.5">
+                  Mô hình AI ưu tiên (Mặc định):
+                </label>
+                <select
+                  value={adminSelectedModel}
+                  onChange={(e) => setAdminSelectedModel(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#D9D2C5] rounded-xl text-xs text-[#3D3D2D] font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                >
+                  {AVAILABLE_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Validation Result Notice */}
+              {adminKeyValidationResult && (
+                <div
+                  className={`p-3 rounded-xl border text-xs font-medium ${
+                    adminKeyValidationResult.success
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : 'bg-red-50 border-red-300 text-red-800'
+                  }`}
+                >
+                  {adminKeyValidationResult.success ? '✅ ' : '❌ '}
+                  {adminKeyValidationResult.message}
+                </div>
+              )}
+
+              {/* Saved Success Notice */}
+              {adminKeySavedMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-xl text-center">
+                  ✨ Đã cập nhật Gemini API Key thành công!
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!adminApiKeyInput.trim()) {
+                      setAdminKeyValidationResult({ success: false, message: 'Vui lòng nhập API Key để kiểm tra' });
+                      return;
+                    }
+                    setAdminKeyTesting(true);
+                    setAdminKeyValidationResult(null);
+                    try {
+                      const res = await validateApiKey(adminApiKeyInput.trim(), adminSelectedModel);
+                      setAdminKeyValidationResult(res);
+                    } catch (e: any) {
+                      setAdminKeyValidationResult({ success: false, message: e.message || 'Lỗi kiểm tra API Key' });
+                    } finally {
+                      setAdminKeyTesting(false);
+                    }
+                  }}
+                  disabled={adminKeyTesting || !adminApiKeyInput.trim()}
+                  className="flex-1 py-2.5 bg-[#FAF9F6] hover:bg-[#EAE7E0] border border-[#D9D2C5] text-[#3D3D2D] rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {adminKeyTesting ? (
+                    <span>⏳ Đang kiểm tra...</span>
+                  ) : (
+                    <>
+                      <span>🔍 Kiểm tra kết nối (Validate)</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!adminApiKeyInput.trim()) {
+                      setAdminKeyValidationResult({ success: false, message: 'Vui lòng nhập API Key trước khi lưu' });
+                      return;
+                    }
+                    setStoredApiKey(adminApiKeyInput.trim());
+                    setAdminKeySavedMsg(true);
+                    setTimeout(() => {
+                      setAdminKeySavedMsg(false);
+                      setShowGeminiKeyModal(false);
+                    }, 1200);
+                  }}
+                  disabled={!adminApiKeyInput.trim()}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold shadow-md transition flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Key className="w-3.5 h-3.5" />
+                  <span>💾 Lưu API Key</span>
+                </button>
+              </div>
+
+              {/* Free API Key Instructions */}
+              <div className="p-3.5 bg-blue-50/80 rounded-2xl border border-blue-200 text-xs text-blue-950 space-y-1.5">
+                <div className="font-bold flex items-center space-x-1">
+                  <span>💡 Hướng dẫn lấy Gemini API Key miễn phí:</span>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-blue-900 leading-relaxed">
+                  <li>Truy cập Google AI Studio: <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline font-bold text-blue-700 hover:text-blue-900">aistudio.google.com/app/apikey</a></li>
+                  <li>Đăng nhập tài khoản Google và bấm <strong>"Create API key"</strong>.</li>
+                  <li>Copy chuỗi khóa API (bắt đầu bằng <code>AIzaSy...</code>) và dán vào ô trên rồi bấm <strong>Lưu</strong>.</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

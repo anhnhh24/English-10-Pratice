@@ -18,11 +18,12 @@ export interface GeneratedExamResult {
 }
 
 export const AVAILABLE_MODELS = [
-  { id: 'gemini-flash-latest', name: 'Gemini Flash (Mặc định - Nhanh & Ổn định nhất)' },
-  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash (Thế hệ mới)' },
+  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash (Ưu tiên - Siêu nhanh & Chuẩn xác)' },
+  { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash (Thế hệ mới nhất)' },
   { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash (Tốc độ cao)' },
-  { id: 'gemma-4-31b-it', name: 'Gemma 4 31B IT (Model dự phòng khi Gemini quá tải)' },
-  { id: 'gemma-4-26b-a4b-it', name: 'Gemma 4 26B IT (Model nhẹ & phản hồi nhanh)' },
+  { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite (Hạn mức cao 500 RPD)' },
+  { id: 'gemma-4-26b-it', name: 'Gemma 4 26B (Model dự phòng)' },
+  { id: 'gemma-4-31b-it', name: 'Gemma 4 31B (Model dự phòng)' },
 ];
 
 export const getStoredApiKey = (): string => {
@@ -71,7 +72,9 @@ export function formatGeminiError(status: number, rawMessage: string): string {
 }
 
 /**
- * Gọi API thông minh với cơ chế tự động chuyển model dự phòng khi model chính quá tải
+ * Gọi API thông minh với cơ chế:
+ * 1. Retry tự động tối đa 2 lần cho mỗi model với Exponential Backoff (1.5s -> 3s) khi bị 429/503/mạng lag.
+ * 2. Tự động chuyển (Failover) sang model tiếp theo trong danh sách nếu model hiện tại lỗi.
  */
 export async function callGeminiApiWithFallback(
   apiKey: string,
@@ -80,58 +83,80 @@ export async function callGeminiApiWithFallback(
   onProgress?: (msg: string) => void
 ): Promise<{ text: string; modelUsed: string }> {
   const modelsToTry = [
-    preferredModel,
-    'gemini-flash-latest',
+    preferredModel || 'gemini-3.6-flash',
     'gemini-3.6-flash',
+    'gemini-3.7-flash',
     'gemini-3.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemma-4-26b-it',
     'gemma-4-31b-it',
-    'gemma-4-26b-a4b-it',
-  ].filter((v, i, a) => a.indexOf(v) === i);
+  ].filter((v, i, a) => Boolean(v) && a.indexOf(v) === i);
 
   let lastError: any = null;
+  const maxRetriesPerModel = 2;
 
-  for (let i = 0; i < modelsToTry.length; i++) {
-    const currentModel = modelsToTry[i];
-    if (i > 0) {
-      onProgress?.(`⚡ Model ${modelsToTry[i - 1]} đang bận, tự động chuyển sang ${currentModel}...`);
-    }
+  for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+    const currentModel = modelsToTry[mIdx];
 
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload),
-      });
+    for (let retry = 0; retry <= maxRetriesPerModel; retry++) {
+      if (mIdx > 0 && retry === 0) {
+        onProgress?.(`⚡ Model ${modelsToTry[mIdx - 1]} không phản hồi, tự động chuyển sang ${currentModel}...`);
+      } else if (retry > 0) {
+        const delaySec = retry * 1.5;
+        onProgress?.(`🔄 Model ${currentModel} bận (Lần ${retry}/${maxRetriesPerModel}), đang thử lại sau ${delaySec}s...`);
+        await new Promise((resolve) => setTimeout(resolve, delaySec * 1000));
+      }
 
-      if (response.ok) {
-        const data = await response.json();
-        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawText && rawText.trim()) {
-          return { text: rawText, modelUsed: currentModel };
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s timeout per request
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestPayload),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const data = await response.json();
+          const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (rawText && rawText.trim()) {
+            return { text: rawText, modelUsed: currentModel };
+          }
         }
-      }
 
-      const errorData = await response.json().catch(() => ({}));
-      const errorMsg = errorData?.error?.message || response.statusText;
-      lastError = new Error(formatGeminiError(response.status, errorMsg));
+        const errorData = await response.json().catch(() => ({}));
+        const errorMsg = errorData?.error?.message || response.statusText;
+        lastError = new Error(formatGeminiError(response.status, errorMsg));
 
-      // Stop fallback on authentication/key leak errors
-      if (response.status === 400 || (response.status === 403 && (errorMsg.includes('API key') || errorMsg.includes('leaked')))) {
-        throw lastError;
-      }
-    } catch (err: any) {
-      lastError = err;
-      if (err.message && err.message.includes('vô hiệu hóa')) {
-        throw err;
+        // Nếu API Key sai hoặc bị leak thì dừng ngay không cần thử lại
+        if (response.status === 400 || (response.status === 403 && (errorMsg.includes('API key') || errorMsg.includes('leaked')))) {
+          throw lastError;
+        }
+
+        // Nếu lỗi 404 (model không hỗ trợ endpoint này), break ngay để chuyển model khác không cần retry
+        if (response.status === 404) {
+          break;
+        }
+      } catch (err: any) {
+        lastError = err;
+        if (err.name === 'AbortError') {
+          lastError = new Error(`Request tới model ${currentModel} bị quá thời gian chờ (Timeout).`);
+        }
+        if (err.message && err.message.includes('vô hiệu hóa')) {
+          throw err;
+        }
       }
     }
   }
 
-  throw lastError || new Error('Không thể kết nối đến máy chủ AI. Vui lòng thử lại sau giây lát.');
+  throw lastError || new Error('Không thể kết nối đến máy chủ AI sau khi đã thử tất cả model dự phòng. Vui lòng kiểm tra lại API Key hoặc kết nối mạng.');
 }
 
-export async function validateApiKey(apiKey: string, model: string = 'gemini-flash-latest'): Promise<{ success: boolean; message: string }> {
+export async function validateApiKey(apiKey: string, model: string = 'gemini-3.6-flash'): Promise<{ success: boolean; message: string }> {
   if (!apiKey || !apiKey.trim()) {
     return { success: false, message: 'Vui lòng nhập API Key để kiểm tra' };
   }
@@ -295,7 +320,7 @@ export async function generateExamWithAI(
   }
 
   const subject = config.subject || 'english';
-  const model = config.modelName || 'gemini-flash-latest';
+  const model = config.modelName || 'gemini-3.6-flash';
 
   onProgressUpdate?.(
     subject === 'math'
@@ -616,7 +641,7 @@ export async function generateExamEvaluationWithAI(
   topicBreakdown: Record<string, { total: number; correct: number; wrong: number; name: string }>,
   wrongQuestionsList: { content: string; userChoice: string; correctChoice: string; topic: string; explanation: string }[],
   targetScore: number = 8.5,
-  modelName: string = 'gemini-flash-latest',
+  modelName: string = 'gemini-3.6-flash',
   subject: SubjectId = 'english'
 ): Promise<ExamEvaluationReport> {
   const effectiveKey = apiKey.trim() || getStoredApiKey();
@@ -712,8 +737,7 @@ export interface ExtractedExamResult {
 }
 
 /**
-/**
- * 1. Tiền xử lý làm sạch văn bản đề thi (loại bỏ watermark, số trang thừa, gộp khoảng trắng)
+ * 1. Tiền xử lý văn bản đề thi (chỉ làm sạch khoảng trắng cơ bản, không cắt xén cấu trúc)
  */
 export function cleanAndNormalizeExamText(rawText: string): string {
   if (!rawText) return '';
@@ -721,204 +745,13 @@ export function cleanAndNormalizeExamText(rawText: string): string {
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .replace(/\t/g, ' ')
-    .replace(/Trang\s*\d+\s*(\/\s*\d+)?/gi, '') // Xóa số trang (Trang 1/5)
-    .replace(/Page\s*\d+\s*(of\s*\d+)?/gi, '') // Xóa Page 1 of 5
-    .replace(/thuvienhoclieu\.com|Thư viện học liệu/gi, '') // Xóa watermark phổ biến
-    .replace(/[ \t]{2,}/g, ' ') // Xóa khoảng trắng lặp
-    .replace(/\n{3,}/g, '\n\n') // Gộp dòng trống
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim();
 }
 
 /**
- * 2. Tách riêng bảng ĐÁP ÁN (nếu có ở cuối file) để luôn đính kèm vào Context của từng phần
- */
-export function extractAnswerKeySection(text: string): { mainText: string; answerKeyText: string } {
-  // Tìm vị trí bắt đầu của phần ĐÁP ÁN ở cuối văn bản
-  const keyMarkerRegex = /(?:\n|^)\s*(?:ĐÁP\s*ÁN|BẢNG\s*ĐÁP\s*ÁN|HƯỚNG\s*DẪN\s*CHẤM|ANSWER\s*KEY|KEY\s*BÀI\s*LÀM)\b/i;
-  const match = text.match(keyMarkerRegex);
-
-  if (match && match.index !== undefined && match.index > text.length * 0.4) {
-    const mainText = text.slice(0, match.index).trim();
-    const answerKeyText = text.slice(match.index).trim();
-    return { mainText, answerKeyText };
-  }
-
-  return { mainText: text, answerKeyText: '' };
-}
-
-/**
- * 3. Phân đoạn thông minh theo ranh giới câu hỏi (Semantic Question Chunking)
- * Chia đề thi thành các mẻ nhỏ tối đa 8 - 10 câu/mẻ để Gemini API luôn trả về 100% trọn vẹn không bao giờ bị tràn output token.
- */
-export function splitExamIntoSemanticChunks(mainText: string, maxQuestionsPerChunk = 10): { text: string; startQ: number; endQ: number }[] {
-  const qMarkerRegex = /(?:^|\n)\s*(?:Câu|Question|\b\d+[\.\)])\s*(\d+)[\.\:\)]/gi;
-  const matches: { index: number; qNum: number }[] = [];
-  let m: RegExpExecArray | null;
-
-  while ((m = qMarkerRegex.exec(mainText)) !== null) {
-    const qNum = parseInt(m[1], 10);
-    if (!isNaN(qNum)) {
-      matches.push({ index: m.index, qNum });
-    }
-  }
-
-  // Nếu không nhận diện được mốc số hoặc ít hơn maxQuestionsPerChunk, trả về 1 chunk duy nhất
-  if (matches.length <= maxQuestionsPerChunk) {
-    return [{ text: mainText, startQ: 1, endQ: matches.length || 10 }];
-  }
-
-  const chunks: { text: string; startQ: number; endQ: number }[] = [];
-  let currentChunkStartIndex = 0;
-
-  for (let i = maxQuestionsPerChunk; i < matches.length; i += maxQuestionsPerChunk) {
-    const splitIndex = matches[i].index;
-    const chunkText = mainText.slice(currentChunkStartIndex, splitIndex).trim();
-    if (chunkText.length > 30) {
-      chunks.push({
-        text: chunkText,
-        startQ: matches[i - maxQuestionsPerChunk]?.qNum || 1,
-        endQ: matches[i - 1]?.qNum || i,
-      });
-    }
-    currentChunkStartIndex = splitIndex;
-  }
-
-  // Mẻ cuối cùng
-  const lastChunkText = mainText.slice(currentChunkStartIndex).trim();
-  if (lastChunkText.length > 30) {
-    const remainingCount = matches.length % maxQuestionsPerChunk || maxQuestionsPerChunk;
-    chunks.push({
-      text: lastChunkText,
-      startQ: matches[matches.length - remainingCount]?.qNum || matches[matches.length - 1]?.qNum || 31,
-      endQ: matches[matches.length - 1]?.qNum || 40,
-    });
-  }
-
-  return chunks.length > 0 ? chunks : [{ text: mainText, startQ: 1, endQ: 40 }];
-}
-
-/**
- * 4. Trích xuất câu hỏi từ 1 chunk văn bản với Gemini API (Strict Batch Extraction)
- */
-async function extractSingleChunkWithAI(
-  apiKey: string,
-  chunkText: string,
-  answerKeyText: string,
-  subject: SubjectId,
-  startQ: number,
-  endQ: number,
-  chunkIndex: number,
-  totalChunks: number,
-  onProgress?: (msg: string) => void
-): Promise<any[]> {
-  const topicIds = subject === 'math'
-    ? 'math_can_thuc | math_he_phuong_trinh | math_ham_so_do_thi | math_pt_bac_hai_viet | math_giai_toan_lap_pt | math_he_thuc_luong | math_duong_tron_tu_giac | math_hinh_khong_gian_thuc_te | math_bat_dang_thuc_cuc_tri'
-    : 'grammar | vocabulary | pronunciation | stress | reading | sentence_rewrite | cloze | error_identification';
-
-  const prompt = `Bạn là chuyên gia khảo thí và xử lý dữ liệu đề thi tuyển sinh vào lớp 10 THPT môn ${subject === 'math' ? 'Toán' : 'Tiếng Anh'}.
-
-NHIỆM VỤ QUAN TRỌNG:
-Bạn đang xử lý Phần ${chunkIndex + 1}/${totalChunks} (gồm các câu hỏi từ Câu ${startQ} đến Câu ${endQ}).
-BẮT BUỘC TRÍCH XUẤT ĐẦY ĐỦ TẤT CẢ TỪNG CÂU HỎI TRONG PHẦN NÀY (Không được bỏ sót bất kỳ câu nào).
-
-NỘI DUNG PHẦN THI NÀY:
----
-${chunkText}
----
-
-${answerKeyText ? `BẢNG ĐÁP ÁN THAM CHIẾU TOÀN ĐỀ (BẮT BUỘC TRA CỨU ĐỂ GÁN ĐÚNG ĐÁP ÁN):\n---\n${answerKeyText}\n---` : ''}
-
-YÊU CẦU ĐỊNH DẠNG JSON TRẢ VỀ:
-Trả về DUY NHẤT một chuỗi JSON hợp lệ theo format sau:
-{
-  "questions": [
-    {
-      "topicId": "Chọn phù hợp từ: ${topicIds}",
-      "subTopicId": "general",
-      "difficulty": "medium",
-      "passage": "Nếu là bài đọc hiểu hoặc điền từ cloze, hãy đưa đoạn văn vào đây",
-      "content": "Nội dung câu hỏi đầy đủ",
-      "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
-      "correctOption": 0,
-      "explanation": "Giải thích chi tiết 1-2 câu sư phạm dễ hiểu vì sao chọn đáp án này",
-      "grammarRule": "Quy tắc ngữ pháp / Định lý Toán học cốt lõi liên quan",
-      "commonMistakeTip": "Bẫy đề thi cần lưu ý"
-    }
-  ]
-}
-
-QUY TẮC BẮT BUỘC:
-1. Trích xuất ĐẦY ĐỦ 100% tất cả các câu từ Câu ${startQ} đến Câu ${endQ}.
-2. ĐỐI CHIẾU ĐÁP ÁN: correctOption (0=A, 1=B, 2=C, 3=D) phải khớp 100% với Bảng đáp án tham chiếu.
-3. options PHẢI ĐỦ 4 PHƯƠNG ÁN ["A. ...", "B. ...", "C. ...", "D. ..."].
-4. TUYỆT ĐỐI KHÔNG TÓM TẮT, KHÔNG BỎ QUA CÂU NÀO.`;
-
-  const result = await callGeminiApiWithFallback(
-    apiKey,
-    'gemini-flash-latest',
-    {
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.1,
-        maxOutputTokens: 8192,
-      },
-    },
-    onProgress
-  );
-
-  const rawJson = result.text;
-  if (!rawJson) return [];
-
-  const parsed = tryParseOrRepairExamJson(rawJson);
-  if (parsed && Array.isArray(parsed.questions)) {
-    return parsed.questions;
-  }
-  return [];
-}
-
-/**
- * 5. Bóc tách bảng đáp án tham chiếu ở cuối file để đối chiếu
- */
-export function extractAnswerKeyTable(text: string): Record<number, string> {
-  const answerMap: Record<number, string> = {};
-  const keyMarkerRegex = /(?:\n|^)\s*(?:ĐÁP\s*ÁN|BẢNG\s*ĐÁP\s*ÁN|HƯỚNG\s*DẪN\s*CHẤM|ANSWER\s*KEY|KEY\s*BÀI\s*LÀM)\b/i;
-  const keyMatch = text.match(keyMarkerRegex);
-
-  if (keyMatch && keyMatch.index !== undefined) {
-    const keySection = text.slice(keyMatch.index);
-    const tokens = keySection.replace(/ĐÁP\s*ÁN/gi, '').split(/\s+/).filter(Boolean);
-    let numbers: number[] = [];
-    let letters: string[] = [];
-    for (const t of tokens) {
-      if (/^\d+$/.test(t)) {
-        if (letters.length > 0) {
-          for (let i = 0; i < Math.min(numbers.length, letters.length); i++) {
-            answerMap[numbers[i]] = letters[i];
-          }
-          numbers = [];
-          letters = [];
-        }
-        numbers.push(parseInt(t, 10));
-      } else if (/^[A-D]$/i.test(t)) {
-        letters.push(t.toUpperCase());
-      }
-    }
-    for (let i = 0; i < Math.min(numbers.length, letters.length); i++) {
-      answerMap[numbers[i]] = letters[i];
-    }
-
-    const pairRegex = /(\d+)[\s\.\:\-\)]+([A-D])\b/gi;
-    let pm: RegExpExecArray | null;
-    while ((pm = pairRegex.exec(keySection)) !== null) {
-      answerMap[parseInt(pm[1], 10)] = pm[2].toUpperCase();
-    }
-  }
-  return answerMap;
-}
-
-/**
- * 6. Hàm trích xuất 100% qua Gemini AI API với Semantic Chunking và Answer Key Verification
+ * 2. Trích xuất Đề Thi 100% bằng Gemini AI thuần túy (Không dùng bất kỳ regex cắt câu nào)
  */
 export async function extractQuestionsFromText(
   apiKey: string,
@@ -936,59 +769,91 @@ export async function extractQuestionsFromText(
     throw new Error('Nội dung file quá ngắn hoặc trống. Vui lòng kiểm tra lại file.');
   }
 
-  onProgress?.('🧹 Đang làm sạch văn bản và tách bảng đáp án...');
+  onProgress?.('🤖 Đang gửi toàn bộ tài liệu đề thi tới Gemini AI để phân tích và số hóa...');
 
-  // Bước 1: Chuẩn hóa văn bản & Tách bảng đáp án
-  const normalizedText = cleanAndNormalizeExamText(rawText);
-  const { mainText, answerKeyText } = extractAnswerKeySection(normalizedText);
-  const verifiedAnswerMap = extractAnswerKeyTable(normalizedText);
+  const cleanedText = cleanAndNormalizeExamText(rawText);
+  const topicIds = subject === 'math'
+    ? 'math_can_thuc | math_he_phuong_trinh | math_ham_so_do_thi | math_pt_bac_hai_viet | math_giai_toan_lap_pt | math_he_thuc_luong | math_duong_tron_tu_giac | math_hinh_khong_gian_thuc_te | math_bat_dang_thuc_cuc_tri'
+    : 'pronunciation | stress | grammar | vocabulary | reading | cloze | sentence_rewrite | error_identification';
 
-  // Bước 2: Phân chia thành các mẻ nhỏ 8 - 10 câu/mẻ để gọi Gemini API an toàn 100%
-  const chunks = splitExamIntoSemanticChunks(mainText, 10);
+  const prompt = `Bạn là chuyên gia khảo thí và số hóa đề thi tuyển sinh vào lớp 10 THPT môn ${subject === 'math' ? 'Toán' : 'Tiếng Anh'}.
 
-  onProgress?.(`🤖 Khởi chạy Gemini AI API: Phân tích ${chunks.length} mẻ câu hỏi...`);
+NHIỆM VỤ:
+Đọc hiểu toàn bộ văn bản đề thi dưới đây, bóc tách ĐẦY ĐỦ 100% TẤT CẢ các câu hỏi trắc nghiệm thành định dạng JSON chuẩn.
 
-  let rawQuestions: any[] = [];
+VĂN BẢN ĐỀ THI GỐC:
+---
+${cleanedText}
+---
 
-  // Bước 3: Gọi Gemini AI API cho từng mẻ câu hỏi
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    onProgress?.(`🤖 Gemini AI đang gọi API xử lý Mẻ ${i + 1}/${chunks.length} (Câu ${chunk.startQ} - ${chunk.endQ})...`);
+YÊU CẦU BẮT BUỘC:
+1. TRÍCH XUẤT ĐẦY ĐỦ 100% TẤT CẢ CÂU HỎI: Không được bỏ sót, không được cắt bớt hay tóm tắt. Nếu đề có 40 câu hỏi, phải trả về đủ 40 câu trong mảng "questions".
+2. BÀI ĐỌC (PASSAGE):
+   - Nếu là dạng bài Đọc hiểu (Reading) hoặc Điền từ (Cloze Test), hãy đưa nội dung đoạn văn bài đọc vào trường "passage" của các câu hỏi thuộc bài đọc đó.
+   - Đối với câu đơn lẻ (phát âm, trọng âm, ngữ pháp...): để "passage" là null hoặc chuỗi rỗng.
+3. PHƯƠNG ÁN LỰA CHỌN:
+   - Mỗi câu hỏi BẮT BUỘC có đủ 4 phương án trong mảng "options" theo định dạng: ["A. ...", "B. ...", "C. ...", "D. ..."].
+4. ĐỐI CHIẾU ĐÁP ÁN:
+   - Tra cứu bảng đáp án ở cuối văn bản để gán chính xác "correctOption" (0=A, 1=B, 2=C, 3=D).
+5. SƯ PHẠM:
+   - Phân loại "topicId" phù hợp từ: ${topicIds}.
+   - Tạo "explanation" ngắn gọn 1-2 câu giải thích vì sao đáp án đúng, "grammarRule" (công thức/quy tắc), và "commonMistakeTip" (bẫy đề).
 
-    const chunkQuestions = await extractSingleChunkWithAI(
-      effectiveKey,
-      chunk.text,
-      answerKeyText,
-      subject,
-      chunk.startQ,
-      chunk.endQ,
-      i,
-      chunks.length,
-      onProgress
-    );
-
-    if (chunkQuestions && chunkQuestions.length > 0) {
-      rawQuestions.push(...chunkQuestions);
-      onProgress?.(`✅ Mẻ ${i + 1}/${chunks.length}: Đã trích xuất thành công ${chunkQuestions.length} câu.`);
+ĐỊNH DẠNG JSON TRẢ VỀ (DUY NHẤT 1 CHUỖI JSON HỢP LỆ):
+{
+  "questions": [
+    {
+      "topicId": "Chọn phù hợp từ danh sách chuyên đề",
+      "subTopicId": "general",
+      "difficulty": "easy | medium | hard",
+      "passage": "Nội dung bài đọc nếu có (hoặc để trống)",
+      "content": "Nội dung câu hỏi đầy đủ",
+      "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+      "correctOption": 0,
+      "explanation": "Lời giải chi tiết sư phạm",
+      "grammarRule": "Quy tắc ngữ pháp / Công thức cốt lõi",
+      "commonMistakeTip": "Bẫy đề thi cần lưu ý"
     }
+  ]
+}`;
+
+  onProgress?.('🧠 Gemini AI đang đọc hiểu từng câu hỏi, bài đọc và bảng đáp án...');
+
+  const result = await callGeminiApiWithFallback(
+    effectiveKey,
+    'gemini-3.6-flash',
+    {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+        maxOutputTokens: 8192,
+      },
+    },
+    onProgress
+  );
+
+  const rawJson = result.text;
+  if (!rawJson) {
+    throw new Error('Gemini AI không trả về dữ liệu. Vui lòng thử lại.');
   }
 
-  if (rawQuestions.length === 0) {
-    throw new Error('Gemini AI không nhận diện được câu hỏi nào từ file. Hãy kiểm tra lại file hoặc API Key.');
+  const parsed = tryParseOrRepairExamJson(rawJson);
+  if (!parsed || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+    throw new Error('Không thể phân tích dữ liệu JSON trả về từ Gemini AI. Vui lòng thử lại.');
   }
 
-  onProgress?.(`📋 Gemini AI đã trích xuất thành công ${rawQuestions.length} câu hỏi. Đang đối chiếu bảng đáp án và hoàn tất đề thi...`);
+  onProgress?.(`✨ Gemini AI đã bóc tách thành công ${parsed.questions.length} câu hỏi. Đang lưu đề thi...`);
 
-  // Bước 4: Chuẩn hóa dữ liệu câu hỏi và gán ID
+  // Chuẩn hóa và tạo ID
   const examId = `admin_upload_${Date.now()}`;
   const questionIds: string[] = [];
 
-  const questions: Question[] = rawQuestions.map((q: any, idx: number) => {
+  const questions: Question[] = parsed.questions.map((q: any, idx: number) => {
     const qId = `q_upload_${Date.now()}_${idx + 1}`;
     questionIds.push(qId);
     const qNum = idx + 1;
 
-    // Format options A, B, C, D
     let opts = Array.isArray(q.options) && q.options.length >= 4 ? q.options : ['A. ', 'B. ', 'C. ', 'D. '];
     opts = opts.slice(0, 4).map((opt: string, optIdx: number) => {
       const prefix = ['A. ', 'B. ', 'C. ', 'D. '][optIdx];
@@ -997,15 +862,10 @@ export async function extractQuestionsFromText(
       return `${prefix}${cleanOpt}`;
     });
 
-    // Cross-verify correct option against answer key table if available
-    let correctOpt = typeof q.correctOption === 'number' && q.correctOption >= 0 && q.correctOption <= 3 ? q.correctOption : 0;
-    if (verifiedAnswerMap[qNum]) {
-      const mappedLetter = verifiedAnswerMap[qNum];
-      const mappedIdx = { A: 0, B: 1, C: 2, D: 3 }[mappedLetter];
-      if (mappedIdx !== undefined) {
-        correctOpt = mappedIdx;
-      }
-    }
+    const correctOpt =
+      typeof q.correctOption === 'number' && q.correctOption >= 0 && q.correctOption <= 3
+        ? q.correctOption
+        : 0;
 
     return {
       id: qId,
@@ -1017,7 +877,7 @@ export async function extractQuestionsFromText(
       content: q.content || `Câu hỏi số ${qNum}`,
       options: opts,
       correctOption: correctOpt,
-      explanation: q.explanation || `Đáp án đúng là ${['A', 'B', 'C', 'D'][correctOpt]}. Đối chiếu chính xác theo bảng đáp án chuẩn của đề thi.`,
+      explanation: q.explanation || `Đáp án đúng là ${['A', 'B', 'C', 'D'][correctOpt]}.`,
       grammarRule: q.grammarRule || '',
       commonMistakeTip: q.commonMistakeTip || '',
     };
@@ -1028,7 +888,7 @@ export async function extractQuestionsFromText(
     subject,
     title: examTitle || `Đề Thi Upload - ${new Date().toLocaleDateString('vi-VN')}`,
     code: `UPLOAD-${subject.toUpperCase()}-${Date.now().toString().slice(-6)}`,
-    description: `Đề thi gồm ${questions.length} câu hỏi được phân tích và trích xuất hoàn chỉnh bởi Gemini AI.`,
+    description: `Đề thi gồm đầy đủ ${questions.length} câu hỏi được phân tích và trích xuất hoàn chỉnh bởi Gemini AI.`,
     timeLimitMinutes: questions.length <= 20 ? 45 : questions.length <= 40 ? 60 : 90,
     totalQuestions: questions.length,
     difficulty: 'standard',
@@ -1104,7 +964,7 @@ Hãy trả về DUY NHẤT một chuỗi JSON thuần túy (không kèm markdown
 
   const result = await callGeminiApiWithFallback(
     effectiveKey,
-    'gemini-flash-latest',
+    'gemini-3.6-flash',
     {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },

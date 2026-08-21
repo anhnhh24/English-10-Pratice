@@ -977,7 +977,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           topicBreakdown,
           wrongList,
           currentSubjectTarget,
-          'gemini-flash-latest',
+          'gemini-3.6-flash',
           currentSubject
         );
         setAiEvaluation(result);
