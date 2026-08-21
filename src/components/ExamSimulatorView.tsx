@@ -101,6 +101,64 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   const [tabSwitchCount, setTabSwitchCount] = useState<number>(0);
   const [showTabWarning, setShowTabWarning] = useState<boolean>(false);
 
+  // Focus Mode, Scratchpad & Auto-save Draft States
+  const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
+  const [showScratchpad, setShowScratchpad] = useState<boolean>(false);
+  const [scratchpadText, setScratchpadText] = useState<string>('');
+  const [draftExists, setDraftExists] = useState<boolean>(false);
+  const [aiQuestionExplain, setAiQuestionExplain] = useState<Record<string, string>>({});
+  const [aiQuestionLoading, setAiQuestionLoading] = useState<string | null>(null);
+
+  const DRAFT_KEY = `edu10_exam_draft_${examId || selectedExamId}_${currentUser?.id || 'guest'}`;
+
+  // Check draft existence
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.userAnswers && Object.keys(parsed.userAnswers).length > 0) {
+          setDraftExists(true);
+        }
+      }
+    } catch (e) {}
+  }, [DRAFT_KEY]);
+
+  // Save draft during active exam
+  useEffect(() => {
+    if (stage === 'active') {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          userAnswers,
+          flaggedIds,
+          timeLeft,
+          timestamp: new Date().toISOString()
+        }));
+      } catch (e) {}
+    }
+  }, [userAnswers, flaggedIds, timeLeft, stage, DRAFT_KEY]);
+
+  const handleRestoreDraft = () => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.userAnswers) setUserAnswers(parsed.userAnswers);
+        if (parsed.flaggedIds) setFlaggedIds(parsed.flaggedIds);
+        if (parsed.timeLeft) setTimeLeft(parsed.timeLeft);
+        setStage('active');
+        setDraftExists(false);
+      }
+    } catch (e) {}
+  };
+
+  const clearDraft = () => {
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+      setDraftExists(false);
+    } catch (e) {}
+  };
+
   // Anti-cheat listener effect
   useEffect(() => {
     if (stage !== 'active') return;
@@ -196,6 +254,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   };
 
   const handleSubmitExam = () => {
+    clearDraft();
     setShowSubmitModal(false);
     let correctCount = 0;
     let incorrectCount = 0;
@@ -282,6 +341,38 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             </p>
           </div>
         </div>
+
+        {/* Draft restore banner */}
+        {draftExists && (
+          <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs animate-in fade-in">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-700 flex items-center justify-center font-bold text-lg">
+                💾
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-[#3D3D2D]">Có bài làm dở chưa nộp</h4>
+                <p className="text-xs text-[#8A8A70]">
+                  Hệ thống đã tự động lưu nháp các câu trả lời bạn vừa tích trước đó.
+                </p>
+              </div>
+            </div>
+            <div className="flex space-x-2 w-full sm:w-auto">
+              <button
+                onClick={clearDraft}
+                className="px-3.5 py-2 text-xs font-bold text-[#8A8A70] hover:text-[#3D3D2D] bg-white rounded-xl border border-[#D9D2C5] cursor-pointer"
+              >
+                Bỏ qua
+              </button>
+              <button
+                onClick={handleRestoreDraft}
+                className="px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs cursor-pointer flex items-center space-x-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Khôi phục bài làm ngay</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Filter categories tabs */}
         <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] max-w-lg shadow-2xs text-xs font-bold">
@@ -454,6 +545,28 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
               <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>{formatTime(timeLeft)}</span>
             </div>
+
+            {/* Zen / Focus Mode Toggle */}
+            <button
+              onClick={() => setIsFocusMode(!isFocusMode)}
+              title="Chế độ tập trung (Zen Mode)"
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center space-x-1 ${
+                isFocusMode ? 'bg-[#1E3A8A] text-white border-blue-900 shadow-sm' : 'bg-[#FAF9F6] text-[#5A5A40] border-[#D9D2C5] hover:bg-[#E8E2D9]'
+              }`}
+            >
+              <span>🎯</span>
+              <span className="hidden sm:inline">{isFocusMode ? 'Thoát Zen Mode' : 'Zen Mode'}</span>
+            </button>
+
+            {/* Scratchpad Toggle */}
+            <button
+              onClick={() => setShowScratchpad(true)}
+              title="Bảng nháp / Tính nhanh"
+              className="px-2.5 py-1.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#5A5A40] transition cursor-pointer flex items-center space-x-1"
+            >
+              <span>📝</span>
+              <span className="hidden sm:inline">Nháp</span>
+            </button>
 
             <button
               onClick={() => setShowSubmitModal(true)}
@@ -1227,6 +1340,67 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             );
           })}
         </div>
+
+        {/* 📝 Scratchpad Modal */}
+        {showScratchpad && (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-5 shadow-2xl border-2 border-[#5A5A40] space-y-4 animate-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between border-b border-[#F5F2ED] pb-3">
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 rounded-xl bg-[#8BA888]/20 flex items-center justify-center text-[#5A5A40]">
+                    📝
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-[#3D3D2D]">Bảng Nháp & Ký Hiệu Nhanh</h3>
+                    <p className="text-[11px] text-[#8A8A70]">Nháp công thức, biến số hoặc phép tính tại đây</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowScratchpad(false)}
+                  className="p-1.5 text-[#8A8A70] hover:text-[#3D3D2D] rounded-xl transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Quick symbols buttons */}
+              <div className="flex flex-wrap gap-1.5 bg-[#FAF9F6] p-2 rounded-2xl border border-[#D9D2C5] text-xs font-mono">
+                {['√', 'x²', 'Δ', 'π', '≠', '≤', '≥', '±', 'α', 'β', 'x₁', 'x₂'].map((sym) => (
+                  <button
+                    key={sym}
+                    onClick={() => setScratchpadText((prev) => prev + sym + ' ')}
+                    className="px-2 py-1 bg-white hover:bg-[#E8E2D9] border border-[#D9D2C5] rounded-lg text-xs font-bold text-[#5A5A40] transition cursor-pointer"
+                  >
+                    {sym}
+                  </button>
+                ))}
+              </div>
+
+              <textarea
+                rows={6}
+                value={scratchpadText}
+                onChange={(e) => setScratchpadText(e.target.value)}
+                placeholder="Ghi chú nháp lời giải, phép tính hoặc nháp từ vựng..."
+                className="w-full p-3.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-2xl text-xs font-mono text-[#3D3D2D] focus:outline-hidden focus:ring-2 focus:ring-[#8BA888]"
+              />
+
+              <div className="flex justify-between items-center pt-1">
+                <button
+                  onClick={() => setScratchpadText('')}
+                  className="px-3 py-1.5 text-xs text-rose-600 hover:text-rose-700 font-bold cursor-pointer"
+                >
+                  Xóa nháp
+                </button>
+                <button
+                  onClick={() => setShowScratchpad(false)}
+                  className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-xs"
+                >
+                  Xong (Đóng)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

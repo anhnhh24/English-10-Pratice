@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { TOPICS_META } from '../data/topicsMeta';
 import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
 import { MistakeItem } from '../types';
+import { getStoredRemoteTasks } from '../services/realtimeSyncService';
 import {
   GraduationCap,
   BookMarked,
@@ -123,6 +124,46 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </button>
         </div>
       </header>
+
+      {/* Assigned Tasks Widget */}
+      {(() => {
+        const pendingTasks = getStoredRemoteTasks().filter(
+          (t) => !t.completed && (t.recipientUserId === 'all' || t.recipientUserId === currentUser.id)
+        );
+        if (pendingTasks.length === 0) return null;
+
+        return (
+          <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-4 sm:p-5 rounded-2xl sm:rounded-[2rem] shadow-md space-y-2 animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="text-lg">📌</span>
+                <h3 className="font-bold text-sm sm:text-base">Nhiệm vụ anh vừa giao cho Hà ({pendingTasks.length})</h3>
+              </div>
+              <span className="px-2.5 py-0.5 bg-white/20 text-xs font-bold rounded-full">Cần làm ngay</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              {pendingTasks.slice(0, 2).map((t) => (
+                <div key={t.id} className="p-3 bg-white/10 backdrop-blur-xs rounded-xl border border-white/20 text-xs space-y-1">
+                  <p className="font-bold text-white flex items-center justify-between">
+                    <span>{t.title}</span>
+                    <span className="text-[10px] text-amber-200">{t.senderName}</span>
+                  </p>
+                  <p className="text-white/80 text-[11px] italic line-clamp-1">"{t.message}"</p>
+                  <button
+                    onClick={() => {
+                      if (t.assignedExamId) onStartExam(t.assignedExamId);
+                      else if (t.assignedTopicId) onPracticeTopic(t.assignedTopicId);
+                    }}
+                    className="mt-1 px-3 py-1 bg-white text-amber-900 font-bold text-[11px] rounded-lg hover:bg-amber-50 transition cursor-pointer"
+                  >
+                    Bắt đầu làm ngay →
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* AI Exam Generator Feature Spotlight Banner */}
       <div className={`${theme.bannerGradient} text-white p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-[2.5rem] shadow-md relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all duration-300`}>

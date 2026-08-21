@@ -262,6 +262,16 @@ export interface RemoteTaskAssignment {
   completed?: boolean;
 }
 
+export interface RemotePing {
+  id: string;
+  senderName: string;
+  recipientUserId: string;
+  message: string;
+  pingType: 'encouragement' | 'warning' | 'reminder' | 'custom';
+  timestamp: string;
+  read?: boolean;
+}
+
 export interface DailyMission {
   id: string;
   title: string;

@@ -55,6 +55,20 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const { currentSubject, switchSubject, currentUser, mistakes, bookmarks, analytics } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState<boolean>(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const activeMistakesCount = (Object.values(mistakes) as MistakeItem[]).filter(
     (m) => !m.mastered && (m.subject || 'english') === currentSubject
@@ -188,6 +202,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>📐</span>
               <span>Toán Học</span>
             </button>
+          </div>
+
+          {/* Realtime Connection Status Indicator */}
+          <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#FAF9F6] rounded-xl border border-[#D9D2C5] text-[10px] font-bold">
+            <span className="text-[#6B6B54]">Trạng thái kết nối:</span>
+            <div className="flex items-center space-x-1.5">
+              <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+              <span className={isOnline ? 'text-emerald-700' : 'text-amber-700'}>
+                {isOnline ? '📡 Online (DB)' : '⚡ Offline'}
+              </span>
+            </div>
           </div>
         </div>
 

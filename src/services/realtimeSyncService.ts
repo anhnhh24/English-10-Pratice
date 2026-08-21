@@ -4,7 +4,7 @@
  */
 import { database, ref, set, get, onValue, push, off } from './firebaseConfig';
 import { getCloudDBSettings } from './cloudSyncService';
-import { RealtimeActivityEvent, RemoteTaskAssignment } from '../types';
+import { RealtimeActivityEvent, RemoteTaskAssignment, RemotePing } from '../types';
 import type { DataSnapshot } from 'firebase/database';
 
 const CHANNEL_NAME = 'edu10_realtime_channel';
@@ -295,4 +295,89 @@ export function markRemoteTaskCompleted(taskId: string): void {
   } catch (e) {
     console.error(e);
   }
+}
+
+// ═══════════════════════════════════════════════
+// 3. REMOTE PINGS / REALTIME MESSAGES (Admin → Student Instant Messages)
+// ═══════════════════════════════════════════════
+
+const STORAGE_PINGS_KEY = 'edu10_remote_pings';
+
+export function sendRemotePing(
+  pingData: Omit<RemotePing, 'id' | 'timestamp'>
+): RemotePing {
+  const newPing: RemotePing = {
+    ...pingData,
+    id: `ping_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    // 1. localStorage cache
+    const currentRaw = localStorage.getItem(STORAGE_PINGS_KEY);
+    const current = currentRaw ? JSON.parse(currentRaw) : [];
+    localStorage.setItem(STORAGE_PINGS_KEY, JSON.stringify([newPing, ...current].slice(0, 30)));
+
+    // 2. BroadcastChannel
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({ type: 'REMOTE_PING_SENT', payload: newPing });
+    }
+
+    // 3. Firebase RTDB
+    const settings = getCloudDBSettings();
+    if (settings.enabled && settings.roomCode) {
+      const pingsRef = ref(database, `rooms/${settings.roomCode}/pings`);
+      push(pingsRef, newPing).catch((err) =>
+        console.warn('Firebase ping push failed:', err)
+      );
+    }
+  } catch (e) {
+    console.error('Error sending remote ping:', e);
+  }
+
+  return newPing;
+}
+
+export function subscribeToRemotePings(
+  callback: (ping: RemotePing) => void
+): () => void {
+  const cleanups: (() => void)[] = [];
+
+  // BroadcastChannel
+  const handleBroadcastMessage = (e: MessageEvent) => {
+    if (e.data && e.data.type === 'REMOTE_PING_SENT') {
+      callback(e.data.payload);
+    }
+  };
+  if (broadcastChannel) {
+    broadcastChannel.addEventListener('message', handleBroadcastMessage);
+    cleanups.push(() => broadcastChannel?.removeEventListener('message', handleBroadcastMessage));
+  }
+
+  // Firebase
+  const settings = getCloudDBSettings();
+  if (settings.enabled && settings.roomCode) {
+    const pingsRef = ref(database, `rooms/${settings.roomCode}/pings`);
+    let isInitialLoad = true;
+    const handler = (snapshot: DataSnapshot) => {
+      if (isInitialLoad) {
+        isInitialLoad = false;
+        return;
+      }
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        if (typeof data === 'object' && data !== null) {
+          const pings = Object.values(data) as RemotePing[];
+          const sorted = pings.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          if (sorted[0]) {
+            callback(sorted[0]);
+          }
+        }
+      }
+    };
+    onValue(pingsRef, handler);
+    cleanups.push(() => off(pingsRef, 'value', handler));
+  }
+
+  return () => cleanups.forEach((fn) => fn());
 }

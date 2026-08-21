@@ -8,6 +8,7 @@ import {
   subscribeToRealtimeActivities,
   broadcastRemoteTask,
   logAndBroadcastActivity,
+  sendRemotePing,
 } from '../services/realtimeSyncService';
 import {
   ShieldCheck,
@@ -252,6 +253,26 @@ export const AdminPanel: React.FC = () => {
       setTaskSuccessMsg(false);
       setShowAssignTaskModal(false);
     }, 1500);
+  };
+
+  const [quickPingMessage, setQuickPingMessage] = useState<string>('');
+  const [pingSentSuccess, setPingSentSuccess] = useState<boolean>(false);
+
+  const handleSendQuickPing = (
+    msg?: string,
+    type: 'encouragement' | 'warning' | 'reminder' | 'custom' = 'custom'
+  ) => {
+    const textToSend = msg || quickPingMessage;
+    if (!textToSend.trim()) return;
+    sendRemotePing({
+      senderName: currentUser.name || 'Người anh (Giám sát)',
+      recipientUserId: siblingId,
+      message: textToSend.trim(),
+      pingType: type,
+    });
+    setQuickPingMessage('');
+    setPingSentSuccess(true);
+    setTimeout(() => setPingSentSuccess(false), 2500);
   };
 
   // Live Test Simulation Trigger
@@ -601,11 +622,66 @@ export const AdminPanel: React.FC = () => {
                 <span>⚡ Em nộp bài thi Tiếng Anh (8.5đ)</span>
               </button>
 
+            </div>
+          </div>
+
+          {/* 💬 Quick Ping & Encouragement Box */}
+          <div className="bg-gradient-to-r from-[#1E3A8A] to-[#2563EB] text-white p-5 sm:p-6 rounded-[2.5rem] shadow-md space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
+                  <Send className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Gửi Lời Nhắn Tức Thời Đến Màn Hình Của Hà</h3>
+                  <p className="text-[11px] text-blue-100">Thông điệp sẽ xuất hiện tức thì dạng popup trên màn hình em</p>
+                </div>
+              </div>
+              {pingSentSuccess && (
+                <span className="px-3 py-1 bg-emerald-500 text-white font-bold text-xs rounded-full animate-bounce">
+                  ✓ Đã gửi tin nhắn!
+                </span>
+              )}
+            </div>
+
+            {/* Quick preset buttons */}
+            <div className="flex flex-wrap gap-2 pt-1">
               <button
-                onClick={handleSimulateStudentMistake}
-                className="px-3.5 py-2 bg-[#FDF2E9] hover:bg-[#FCE6D2] border border-[#E67E22]/40 rounded-xl text-xs font-bold text-[#D35400] transition flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+                onClick={() => handleSendQuickPing('💪 Cố lên em trai! Hoàn thành nốt bài thi rồi nghỉ ngơi nhé.', 'encouragement')}
+                className="px-3 py-1.5 bg-white/15 hover:bg-white/25 backdrop-blur-xs border border-white/20 rounded-xl text-xs font-semibold text-white transition cursor-pointer"
               >
-                <span>⚠️ Em làm sai câu Vi-ét</span>
+                🌟 "💪 Cố lên em trai! Hoàn thành..."
+              </button>
+              <button
+                onClick={() => handleSendQuickPing('⚠️ Em vừa chuyển tab đúng không? Tập trung làm bài thi nghiêm túc nhé!', 'warning')}
+                className="px-3 py-1.5 bg-amber-500/30 hover:bg-amber-500/40 backdrop-blur-xs border border-amber-300/30 rounded-xl text-xs font-semibold text-amber-200 transition cursor-pointer"
+              >
+                ⚠️ "⚠️ Em vừa chuyển tab đúng không..."
+              </button>
+              <button
+                onClick={() => handleSendQuickPing('⏰ Đã đến giờ làm bài tập toán chuyên đề hôm nay rồi đấy!', 'reminder')}
+                className="px-3 py-1.5 bg-white/15 hover:bg-white/25 backdrop-blur-xs border border-white/20 rounded-xl text-xs font-semibold text-white transition cursor-pointer"
+              >
+                ⏰ "⏰ Đã đến giờ làm bài tập..."
+              </button>
+            </div>
+
+            {/* Custom Input */}
+            <div className="flex gap-2 pt-1">
+              <input
+                type="text"
+                value={quickPingMessage}
+                onChange={(e) => setQuickPingMessage(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSendQuickPing()}
+                placeholder="Nhập nội dung lời nhắn riêng cho em..."
+                className="flex-1 px-4 py-2.5 bg-white/10 backdrop-blur-xs border border-white/20 rounded-2xl text-xs text-white placeholder-blue-200 focus:outline-hidden focus:ring-2 focus:ring-white/40"
+              />
+              <button
+                onClick={() => handleSendQuickPing()}
+                className="px-5 py-2.5 bg-white text-[#1E3A8A] font-bold text-xs rounded-2xl hover:bg-blue-50 transition cursor-pointer shadow-sm flex items-center space-x-1.5"
+              >
+                <span>Gửi ngay</span>
+                <Send className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>

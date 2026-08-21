@@ -1,22 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar, TabType } from './components/Navbar';
 import { Dashboard } from './components/Dashboard';
-import { AiExamGeneratorView } from './components/AiExamGeneratorView';
-import { ExamSimulatorView } from './components/ExamSimulatorView';
-import { MistakeNotebookView } from './components/MistakeNotebookView';
-import { LessonsView } from './components/LessonsView';
-import { TopicPracticeView } from './components/TopicPracticeView';
-import { QuickBlitzView } from './components/QuickBlitzView';
-import { VocabFlashcardsView } from './components/VocabFlashcardsView';
-import { AnalyticsView } from './components/AnalyticsView';
-import { BookmarksView } from './components/BookmarksView';
-import { AdminPanel } from './components/AdminPanel';
-import { StudyPathView } from './components/StudyPathView';
 import { TargetSettingModal } from './components/TargetSettingModal';
 import { AuthModal } from './components/AuthModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { RealtimeStudentTaskListener } from './components/RealtimeStudentTaskListener';
+
+// Lazy loading heavy view components for optimal bundle splitting
+const AiExamGeneratorView = lazy(() => import('./components/AiExamGeneratorView').then(m => ({ default: m.AiExamGeneratorView })));
+const ExamSimulatorView = lazy(() => import('./components/ExamSimulatorView').then(m => ({ default: m.ExamSimulatorView })));
+const MistakeNotebookView = lazy(() => import('./components/MistakeNotebookView').then(m => ({ default: m.MistakeNotebookView })));
+const LessonsView = lazy(() => import('./components/LessonsView').then(m => ({ default: m.LessonsView })));
+const TopicPracticeView = lazy(() => import('./components/TopicPracticeView').then(m => ({ default: m.TopicPracticeView })));
+const QuickBlitzView = lazy(() => import('./components/QuickBlitzView').then(m => ({ default: m.QuickBlitzView })));
+const VocabFlashcardsView = lazy(() => import('./components/VocabFlashcardsView').then(m => ({ default: m.VocabFlashcardsView })));
+const AnalyticsView = lazy(() => import('./components/AnalyticsView').then(m => ({ default: m.AnalyticsView })));
+const BookmarksView = lazy(() => import('./components/BookmarksView').then(m => ({ default: m.BookmarksView })));
+const AdminPanel = lazy(() => import('./components/AdminPanel').then(m => ({ default: m.AdminPanel })));
+const StudyPathView = lazy(() => import('./components/StudyPathView').then(m => ({ default: m.StudyPathView })));
+
+const LoadingSpinner = () => (
+  <div className="flex items-center justify-center p-12 w-full min-h-[300px]">
+    <div className="flex flex-col items-center space-y-3">
+      <div className="w-8 h-8 border-4 border-[#1E3A8A] border-t-transparent rounded-full animate-spin" />
+      <span className="text-xs font-bold text-[#64748B]">Đang tải màn hình...</span>
+    </div>
+  </div>
+);
 
 const AppContent: React.FC = () => {
   const { currentSubject } = useApp();
@@ -53,62 +64,64 @@ const AppContent: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 p-3.5 sm:p-6 lg:p-8 pb-20 lg:pb-8 flex flex-col overflow-y-auto w-full">
         <div className="max-w-6xl w-full mx-auto">
-          {activeTab === 'dashboard' && (
-            <Dashboard
-              setActiveTab={setActiveTab}
-              onStartExam={handleStartExam}
-              onPracticeTopic={handlePracticeTopic}
-              onOpenTargetModal={() => setTargetModalOpen(true)}
-            />
-          )}
+          <Suspense fallback={<LoadingSpinner />}>
+            {activeTab === 'dashboard' && (
+              <Dashboard
+                setActiveTab={setActiveTab}
+                onStartExam={handleStartExam}
+                onPracticeTopic={handlePracticeTopic}
+                onOpenTargetModal={() => setTargetModalOpen(true)}
+              />
+            )}
 
-          {activeTab === 'study_path' && (
-            <StudyPathView
-              onStartExam={handleStartExam}
-              onPracticeTopic={handlePracticeTopic}
-            />
-          )}
+            {activeTab === 'study_path' && (
+              <StudyPathView
+                onStartExam={handleStartExam}
+                onPracticeTopic={handlePracticeTopic}
+              />
+            )}
 
-          {activeTab === 'ai_generator' && (
-            <AiExamGeneratorView onStartExam={handleStartExam} />
-          )}
+            {activeTab === 'ai_generator' && (
+              <AiExamGeneratorView onStartExam={handleStartExam} />
+            )}
 
-          {activeTab === 'mock_exam' && (
-            <ExamSimulatorView
-              examId={activeExamId}
-              onBackToDashboard={() => setActiveTab('dashboard')}
-            />
-          )}
+            {activeTab === 'mock_exam' && (
+              <ExamSimulatorView
+                examId={activeExamId}
+                onBackToDashboard={() => setActiveTab('dashboard')}
+              />
+            )}
 
-          {activeTab === 'mistakes' && <MistakeNotebookView />}
+            {activeTab === 'mistakes' && <MistakeNotebookView />}
 
-          {activeTab === 'lessons' && (
-            <LessonsView onPracticeTopic={handlePracticeTopic} />
-          )}
+            {activeTab === 'lessons' && (
+              <LessonsView onPracticeTopic={handlePracticeTopic} />
+            )}
 
-          {activeTab === 'topic_practice' && (
-            <TopicPracticeView
-              initialTopicId={activePracticeTopicId}
-              onBackToDashboard={() => setActiveTab('dashboard')}
-            />
-          )}
+            {activeTab === 'topic_practice' && (
+              <TopicPracticeView
+                initialTopicId={activePracticeTopicId}
+                onBackToDashboard={() => setActiveTab('dashboard')}
+              />
+            )}
 
-          {activeTab === 'quick_blitz' && (
-            <QuickBlitzView onBackToDashboard={() => setActiveTab('dashboard')} />
-          )}
+            {activeTab === 'quick_blitz' && (
+              <QuickBlitzView onBackToDashboard={() => setActiveTab('dashboard')} />
+            )}
 
-          {activeTab === 'vocab' && <VocabFlashcardsView />}
+            {activeTab === 'vocab' && <VocabFlashcardsView />}
 
-          {activeTab === 'analytics' && (
-            <AnalyticsView
-              onOpenTargetModal={() => setTargetModalOpen(true)}
-              onPracticeWeakness={handlePracticeTopic}
-            />
-          )}
+            {activeTab === 'analytics' && (
+              <AnalyticsView
+                onOpenTargetModal={() => setTargetModalOpen(true)}
+                onPracticeWeakness={handlePracticeTopic}
+              />
+            )}
 
-          {activeTab === 'bookmarks' && <BookmarksView />}
+            {activeTab === 'bookmarks' && <BookmarksView />}
 
-          {activeTab === 'admin' && <AdminPanel />}
+            {activeTab === 'admin' && <AdminPanel />}
+          </Suspense>
         </div>
       </main>
 
