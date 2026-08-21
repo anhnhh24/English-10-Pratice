@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { TOPICS_META } from '../../data/topicsMeta';
 import { MATH_TOPICS_META } from '../../data/mathTopicsMeta';
-import { MistakeItem } from '../../types';
-import { getStoredRemoteTasks } from '../../services/realtimeSyncService';
+import { MistakeItem, RemoteTaskAssignment } from '../../types';
+import { getStoredRemoteTasks, subscribeToRemoteTasks, markRemoteTaskCompleted } from '../../services/realtimeSyncService';
 import {
   GraduationCap,
   BookMarked,
@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   AlertCircle,
   TrendingUp,
+  X,
 } from 'lucide-react';
 import { TabType } from './Navbar';
 
@@ -32,11 +33,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onPracticeTopic,
   onOpenTargetModal,
 }) => {
-  const { currentSubject, currentUser, examAttempts, mistakes, analytics, getQuestionById } = useApp();
+  const { currentSubject, currentUser, examAttempts, mistakes, analytics, getQuestionById, exams } = useApp();
 
   const isMath = currentSubject === 'math';
   const currentTopicsMeta = isMath ? MATH_TOPICS_META : TOPICS_META;
   const defaultExamId = isMath ? 'math_exam_official_01' : 'exam_official_01';
+
+  // Remote assigned tasks state with real-time sync
+  const [tasks, setTasks] = useState<RemoteTaskAssignment[]>(() => getStoredRemoteTasks());
+
+  useEffect(() => {
+    const unsub = subscribeToRemoteTasks((newTask) => {
+      setTasks((prev) => {
+        const filtered = prev.filter((t) => t.id !== newTask.id);
+        return [newTask, ...filtered];
+      });
+    });
+
+    const handleStorage = () => {
+      setTasks(getStoredRemoteTasks());
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      unsub();
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   // Real Subject Attempts & Mistakes
   const filteredAttempts = examAttempts.filter(
@@ -63,10 +86,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const dynamicFocusTopic =
     currentTopicsMeta.find((t) => t.id === dynamicFocusTopicId) || currentTopicsMeta[0];
 
-  // Remote assigned tasks for this student
-  const pendingTasks = getStoredRemoteTasks().filter(
-    (t) => !t.completed && (t.recipientUserId === 'all' || t.recipientUserId === currentUser.id)
-  );
+  // Remote assigned tasks for this student (Filter out completed tasks & deleted exams)
+  const pendingTasks = tasks.filter((t) => {
+    if (t.completed) return false;
+    if (t.recipientUserId !== 'all' && t.recipientUserId !== currentUser.id) return false;
+    // If task is bound to an exam, ensure the exam still exists in current exams
+    if (t.assignedExamId) {
+      const examExists = exams.some((e) => e.id === t.assignedExamId);
+      if (!examExists) return false;
+    }
+    return true;
+  });
+
+  const handleDismissTask = (taskId: string) => {
+    markRemoteTaskCompleted(taskId);
+    setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, completed: true } : t)));
+  };
 
   return (
     <div className="space-y-5 pb-8 max-w-5xl mx-auto">
@@ -160,9 +195,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div>
                   <div className="flex items-center justify-between font-bold text-white mb-1">
                     <span className="truncate pr-2">{t.title}</span>
-                    <span className="text-[10px] text-amber-200 shrink-0 font-normal">
-                      {t.senderName || 'Người giám sát'}
-                    </span>
+                    <div className="flex items-center space-x-1.5 shrink-0">
+                      <span className="text-[10px] text-amber-200 font-normal">
+                        {t.senderName || 'Người giám sát'}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDismissTask(t.id);
+                        }}
+                        className="p-1 hover:bg-white/20 rounded-md transition text-white/80 hover:text-white cursor-pointer"
+                        title="Đánh dấu đã hoàn thành / Ẩn nhiệm vụ"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <p className="text-white/90 text-[11px] italic line-clamp-2">"{t.message}"</p>
                 </div>

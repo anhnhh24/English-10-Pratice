@@ -331,12 +331,41 @@ export function deleteRemoteTask(taskId: string): void {
     const updated = current.filter((t) => t.id !== taskId);
     localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify(updated));
 
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({ type: 'REMOTE_TASK_DELETED', payload: { id: taskId } });
+    }
+
     const settings = getCloudDBSettings();
     if (settings.enabled && settings.roomCode) {
       const taskRef = ref(database, `rooms/${settings.roomCode}/tasks/${taskId}`);
       set(taskRef, null).catch((err) =>
         console.warn('Firebase task delete failed:', err)
       );
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+/**
+ * Delete all remote tasks associated with a deleted exam ID
+ */
+export function deleteRemoteTasksByExamId(examId: string): void {
+  try {
+    const current = getStoredRemoteTasks();
+    const updated = current.filter((t) => t.assignedExamId !== examId);
+    localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify(updated));
+
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({ type: 'REMOTE_TASKS_RESET', payload: updated });
+    }
+
+    const settings = getCloudDBSettings();
+    if (settings.enabled && settings.roomCode) {
+      current.filter((t) => t.assignedExamId === examId).forEach((t) => {
+        const taskRef = ref(database, `rooms/${settings.roomCode}/tasks/${t.id}`);
+        set(taskRef, null).catch(() => {});
+      });
     }
   } catch (e) {
     console.error(e);

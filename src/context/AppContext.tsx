@@ -13,7 +13,7 @@ import { QUESTIONS_DATA } from '../data/questionsData';
 import { EXAMS_DATA } from '../data/examsData';
 import { MATH_QUESTIONS_DATA } from '../data/mathQuestionsData';
 import { MATH_EXAMS_DATA } from '../data/mathExamsData';
-import { logAndBroadcastActivity } from '../services/realtimeSyncService';
+import { logAndBroadcastActivity, deleteRemoteTasksByExamId } from '../services/realtimeSyncService';
 import {
   pushUserDataToOnlineDB,
   fetchRoomDataFromOnlineDB,
@@ -578,6 +578,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDbExams((prev) => prev.filter((item) => item.id !== id));
     // Delete from Firebase DB
     deleteExamFromOnlineDB(id).catch((err) => console.warn('DB Exam delete error:', err));
+    // Clean up any assigned tasks referencing this deleted exam
+    deleteRemoteTasksByExamId(id);
   };
 
   // Attempts & Practice (Saved & Synced to Firebase Realtime DB)
