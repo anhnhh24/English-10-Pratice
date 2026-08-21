@@ -11,7 +11,9 @@ import {
   BookOpen,
   Trash2,
   Check,
+  Sparkles,
 } from 'lucide-react';
+import { AiQuestionExplainerModal } from '../common/AiQuestionExplainerModal';
 
 interface MistakeNotebookViewProps {
   onOpenAiTutor?: (q: Question) => void;
@@ -39,6 +41,7 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = () => {
   const [practiceIdx, setPracticeIdx] = useState<number>(0);
   const [chosenAnswer, setChosenAnswer] = useState<number | null>(null);
   const [hasChecked, setHasChecked] = useState<boolean>(false);
+  const [selectedQuestionForAi, setSelectedQuestionForAi] = useState<Question | null>(null);
 
   // Cleanly reset practice mode & topic filter when subject changes
   React.useEffect(() => {
@@ -392,7 +395,7 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = () => {
                   </div>
 
                   {/* Detailed explanation */}
-                  <div className="mt-3 p-3.5 bg-[#FAF9F6] rounded-xl text-xs text-[#3D3D2D] space-y-1.5 border border-[#EAE7E0]">
+                  <div className="mt-3 p-3.5 bg-[#FAF9F6] rounded-xl text-xs text-[#3D3D2D] space-y-2 border border-[#EAE7E0]">
                     <p className="leading-relaxed font-medium whitespace-pre-line">
                       <strong>Giải thích:</strong> {q.explanation}
                     </p>
@@ -401,12 +404,31 @@ export const MistakeNotebookView: React.FC<MistakeNotebookViewProps> = () => {
                         <strong>Công thức / Định lý:</strong> {q.grammarRule}
                       </p>
                     )}
+
+                    <div className="flex items-center justify-between pt-2 border-t border-[#EAE7E0] flex-wrap gap-2">
+                      <span className="text-[11px] text-[#8A8A70]">💡 Phân tích câu hỏi theo chuẩn tuyển sinh vào 10</span>
+                      <button
+                        onClick={() => setSelectedQuestionForAi(q)}
+                        className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                        <span>🤖 Nhờ AI Gia Sư Giảng Kỹ Câu Này</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           )}
         </div>
+      )}
+
+      {/* 🤖 AI Question Explainer Modal */}
+      {selectedQuestionForAi && (
+        <AiQuestionExplainerModal
+          question={selectedQuestionForAi}
+          onClose={() => setSelectedQuestionForAi(null)}
+        />
       )}
     </div>
   );

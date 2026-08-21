@@ -705,16 +705,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       examTitle: attempt.examTitle,
     });
 
-    // Automatically record mistakes
-    if (attempt && attempt.userAnswers && typeof attempt.userAnswers === 'object') {
-      Object.entries(attempt.userAnswers).forEach(([qId, chosenOpt]) => {
-        const q = getQuestionById(qId);
-        if (q) {
-          const isCorrect = chosenOpt === q.correctOption;
-          recordAnswerResult(qId, isCorrect);
-        }
-      });
-    }
+    // Automatically record mistakes for ALL questions in the exam (both wrong answers and unattempted/skipped questions)
+    const examObj = getExamById(attempt.examId);
+    const allExamQIds = (examObj?.questionIds && examObj.questionIds.length > 0)
+      ? examObj.questionIds
+      : Object.keys(attempt.userAnswers || {});
+
+    allExamQIds.forEach((qId) => {
+      const q = getQuestionById(qId);
+      if (q) {
+        const chosenOpt = attempt.userAnswers?.[qId];
+        const isCorrect = chosenOpt !== undefined && chosenOpt === q.correctOption;
+        recordAnswerResult(qId, isCorrect);
+      }
+    });
 
     return newAttempt;
   };

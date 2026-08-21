@@ -10,6 +10,7 @@ import {
   ExamEvaluationReport,
 } from '../../services/aiExamService';
 import { logAndBroadcastActivity } from '../../services/realtimeSyncService';
+import { AiQuestionExplainerModal } from '../common/AiQuestionExplainerModal';
 import confetti from 'canvas-confetti';
 import {
   Clock,
@@ -115,6 +116,10 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   const [draftExists, setDraftExists] = useState<boolean>(false);
   const [aiQuestionExplain, setAiQuestionExplain] = useState<Record<string, string>>({});
   const [aiQuestionLoading, setAiQuestionLoading] = useState<string | null>(null);
+  const [activeQuestionForAiExplainer, setActiveQuestionForAiExplainer] = useState<{
+    question: Question;
+    userSelectedOption?: number;
+  } | null>(null);
 
   const DRAFT_KEY = `edu10_exam_draft_${examId || selectedExamId}_${currentUser?.id || 'guest'}`;
 
@@ -1373,6 +1378,29 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                   {q.commonMistakeTip && (
                     <p className="text-[#E67E22] text-[11px] font-medium">💡 {q.commonMistakeTip}</p>
                   )}
+
+                  {/* AI Tutor & Bookmark Actions */}
+                  <div className="flex items-center justify-between pt-2.5 border-t border-[#EAE7E0] flex-wrap gap-2">
+                    <button
+                      onClick={() => toggleBookmark(q.id)}
+                      className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center space-x-1 cursor-pointer ${
+                        isBookmarked(q.id)
+                          ? 'bg-amber-100 border-amber-300 text-amber-900'
+                          : 'bg-white border-[#D9D2C5] text-[#5A5A40] hover:bg-[#FAF9F6]'
+                      }`}
+                    >
+                      <Bookmark className="w-3.5 h-3.5 fill-current" />
+                      <span>{isBookmarked(q.id) ? 'Đã lưu vào Bookmark' : 'Lưu câu này'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveQuestionForAiExplainer({ question: q, userSelectedOption: userChoice })}
+                      className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                      <span>🤖 Nhờ AI Gia Sư Giảng Kỹ Câu Này</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -1388,14 +1416,11 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                   <div className="w-8 h-8 rounded-xl bg-[#8BA888]/20 flex items-center justify-center text-[#5A5A40]">
                     📝
                   </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-[#3D3D2D]">Bảng Nháp & Ký Hiệu Nhanh</h3>
-                    <p className="text-[11px] text-[#8A8A70]">Nháp công thức, biến số hoặc phép tính tại đây</p>
-                  </div>
+                  <h4 className="font-bold text-sm text-[#3D3D2D]">Bảng nháp tính toán</h4>
                 </div>
                 <button
                   onClick={() => setShowScratchpad(false)}
-                  className="p-1.5 text-[#8A8A70] hover:text-[#3D3D2D] rounded-xl transition cursor-pointer"
+                  className="p-1 text-[#8A8A70] hover:text-[#3D3D2D] rounded-lg"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1415,7 +1440,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
               </div>
 
               <textarea
-                rows={6}
+                rows={8}
                 value={scratchpadText}
                 onChange={(e) => setScratchpadText(e.target.value)}
                 placeholder="Ghi chú nháp lời giải, phép tính hoặc nháp từ vựng..."
@@ -1438,6 +1463,15 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
               </div>
             </div>
           </div>
+        )}
+
+        {/* 🤖 AI Question Explainer Modal */}
+        {activeQuestionForAiExplainer && (
+          <AiQuestionExplainerModal
+            question={activeQuestionForAiExplainer.question}
+            userSelectedOption={activeQuestionForAiExplainer.userSelectedOption}
+            onClose={() => setActiveQuestionForAiExplainer(null)}
+          />
         )}
       </div>
     );

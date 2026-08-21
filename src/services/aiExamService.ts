@@ -975,3 +975,93 @@ export async function extractQuestionsFromText(
 
   return { exam, questions, rawQuestionCount: questions.length };
 }
+
+// ═════════════════════════════════════════════════════════════
+// 6. AI STEP-BY-STEP EXPLAINER (Hỏi AI Gia Sư Từng Câu)
+// ═════════════════════════════════════════════════════════════
+
+export interface AiQuestionExplanation {
+  approachMethod: string;
+  stepByStepSolution: string[];
+  trapAnalysis: string;
+  coreRuleOrFormula: string;
+  encouragement: string;
+}
+
+/**
+ * Ask AI Tutor to explain a question step-by-step for a Grade 9 student
+ */
+export async function explainQuestionWithAI(
+  apiKey: string,
+  question: Question,
+  userSelectedOption?: number,
+  onProgress?: (msg: string) => void
+): Promise<AiQuestionExplanation> {
+  const effectiveKey = (apiKey || '').trim() || getStoredApiKey();
+  if (!effectiveKey) throw new Error('Chưa có Gemini API Key.');
+
+  const isMath = question.subject === 'math';
+  const optLabels = ['A', 'B', 'C', 'D'];
+  const correctLabel = optLabels[question.correctOption] || 'A';
+  const userLabel =
+    userSelectedOption !== undefined && userSelectedOption >= 0 ? optLabels[userSelectedOption] : null;
+
+  const prompt = `Bạn là một Thầy/Cô giáo luyện thi vào Lớp 10 (Toán & Tiếng Anh) cực kỳ tận tâm, dễ hiểu, vui tính và truyền cảm hứng.
+Hãy giảng giải câu hỏi sau đây một cách chi tiết, từng bước (Step-by-Step) cho một học sinh lớp 9:
+
+MÔN HỌC: ${isMath ? 'Toán 9 vào 10' : 'Tiếng Anh 9 vào 10'}
+CHUYÊN ĐỀ: ${question.topicId}
+${question.passage ? `ĐOẠN VĂN/BỐI CẢNH:\n"${question.passage}"\n` : ''}
+CÂU HỎI:
+${question.content}
+
+CÁC PHƯƠNG ÁN LỰA CHỌN:
+${question.options.map((opt, i) => `${optLabels[i]}. ${opt}`).join('\n')}
+
+ĐÁP ÁN ĐÚNG: ${correctLabel}. ${question.options[question.correctOption]}
+${userLabel ? `HỌC SINH ĐÃ CHỌN: ${userLabel}. ${question.options[userSelectedOption!]}` : 'HỌC SINH CHƯA LÀM HOẶC LÀM SAI'}
+GHI CHÚ ĐỊNH LÝ CÓ SẴN: ${question.grammarRule || ''}
+LƯU Ý BẪY CÓ SẴN: ${question.commonMistakeTip || ''}
+
+YÊU CẦU ĐẦU RA JSON:
+Hãy trả về DUY NHẤT một chuỗi JSON thuần túy (không kèm markdown \`\`\`json) theo đúng cấu trúc sau:
+{
+  "approachMethod": "Tên dạng bài và hướng tư duy ban đầu (1-2 câu ngắn gọn, dễ nhớ)",
+  "stepByStepSolution": [
+    "Bước 1: ...",
+    "Bước 2: ...",
+    "Bước 3: ..."
+  ],
+  "trapAnalysis": "Phân tích vì sao học sinh hay bị lừa ở các phương án khác, chỉ rõ bẫy đề thi ở đâu",
+  "coreRuleOrFormula": "Công thức / Mẹo vàng cốt lõi cần thuộc lòng",
+  "encouragement": "Lời động viên ngắn gọn, truyền động lực cho học sinh"
+}`;
+
+  const result = await callGeminiApiWithFallback(
+    effectiveKey,
+    'gemini-flash-latest',
+    {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
+    },
+    onProgress
+  );
+
+  try {
+    const text = result.text.trim();
+    const cleanJson = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+    return JSON.parse(cleanJson);
+  } catch (e) {
+    return {
+      approachMethod: `Dạng bài: ${question.topicId.replace('math_', '').replace(/_/g, ' ')}`,
+      stepByStepSolution: [
+        `Đáp án đúng là ${correctLabel}: ${question.options[question.correctOption]}`,
+        question.explanation || 'Phân tích kỹ đề bài và áp dụng quy tắc cơ bản.',
+      ],
+      trapAnalysis: question.commonMistakeTip || 'Học sinh dễ nhầm lẫn do đọc không kỹ đề hoặc áp dụng sai công thức.',
+      coreRuleOrFormula: question.grammarRule || 'Nắm vững kiến thức trọng tâm trong sách giáo khoa.',
+      encouragement: 'Đừng nản lòng! Làm lại câu này vào ngày mai em nhé!',
+    };
+  }
+}
+
