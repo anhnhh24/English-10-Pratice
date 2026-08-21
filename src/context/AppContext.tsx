@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import {
   Question,
   Exam,
@@ -739,8 +739,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isBookmarked = (questionId: string) => bookmarks.includes(questionId);
 
-  // Compute Live Analytics (Filtered by current subject with NO fake mock fallback)
-  const computeAnalytics = () => {
+  // Compute Live Analytics (Memoized for peak performance, filtered by current subject)
+  const analytics = useMemo(() => {
     let totalSolved = 0;
     let totalCorrect = 0;
     const topicStats: Record<string, { solved: number; correct: number; accuracy: number }> = {};
@@ -789,12 +789,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
+    // Compute percentage for each topic
     Object.keys(topicStats).forEach((tId) => {
       const item = topicStats[tId];
       item.accuracy = item.solved > 0 ? Math.round((item.correct / item.solved) * 100) : 0;
     });
 
-    const overallAccuracy = totalSolved > 0 ? Math.round((totalCorrect / totalSolved) * 100) : 0;
+    const overallAccuracy =
+      totalSolved > 0 ? Math.round((totalCorrect / totalSolved) * 100) : 0;
+
     const averageExamScore =
       filteredAttempts.length > 0
         ? parseFloat(
@@ -802,7 +805,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           )
         : 0;
 
-    const activeMistakesCount = (Object.values(mistakes) as MistakeItem[]).filter(
+    const activeMistakesCount = (Object.values(mistakes || {}) as MistakeItem[]).filter(
       (m) => !m.mastered && (m.subject || 'english') === currentSubject
     ).length;
 
@@ -841,7 +844,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       strongestTopics: strongestTopics.length > 0 ? strongestTopics : defaultStrongest,
       recentAttempts: filteredAttempts.slice(0, 5),
     };
-  };
+  }, [examAttempts, practiceSessions, mistakes, currentSubject, questions]);
 
   const getUserScopedData = (userId: string): UserScopedData => {
     try {
@@ -943,7 +946,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bookmarks,
         toggleBookmark,
         isBookmarked,
-        analytics: computeAnalytics(),
+        analytics,
         seedDemoProgress,
         resetAllProgress,
       }}
