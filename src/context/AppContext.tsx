@@ -28,6 +28,12 @@ import {
   subscribeToRoomData,
   clearOnlineStudentData,
 } from '../services/cloudSyncService';
+import {
+  setCookie,
+  getCookie,
+  dispatchGlobalSync,
+  subscribeToGlobalSync,
+} from '../services/cookieService';
 
 interface UserScopedData {
   examAttempts: ExamAttempt[];
@@ -166,8 +172,10 @@ const INITIAL_DEMO_DATA: Record<string, UserScopedData> = {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // 1. Current Subject state
+  // 1. Current Subject state (Cookie + localStorage fallback)
   const [currentSubject, setCurrentSubject] = useState<SubjectId>(() => {
+    const cookieSubj = getCookie('edu10_subject');
+    if (cookieSubj === 'math' || cookieSubj === 'english') return cookieSubj as SubjectId;
     const saved = localStorage.getItem('edu10_current_subject');
     return (saved as SubjectId) || 'english';
   });
@@ -175,6 +183,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const switchSubject = (subj: SubjectId) => {
     setCurrentSubject(subj);
     localStorage.setItem('edu10_current_subject', subj);
+    setCookie('edu10_subject', subj);
+    dispatchGlobalSync('SUBJECT_CHANGED', subj);
   };
 
   // 2. Users state
@@ -185,7 +195,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [currentUser, setCurrentUser] = useState<UserAccount>(() => {
     const saved = localStorage.getItem('edu10_currentUser');
-    return saved ? JSON.parse(saved) : DEFAULT_USERS[0];
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    const cookieUid = getCookie('edu10_uid');
+    if (cookieUid) {
+      const match = DEFAULT_USERS.find((u) => u.id === cookieUid);
+      if (match) return match;
+    }
+    return DEFAULT_USERS[0];
   });
 
   // 3. User Scoped Data Helper
@@ -343,6 +363,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubRoom();
   }, [currentUser.id]);
 
+  // Global Sync Listener for Cross-Tab & Cross-Component Reactivity without page reload
+  useEffect(() => {
+    const unsub = subscribeToGlobalSync((event) => {
+      if (event.type === 'EXAMS_UPDATED') {
+        const savedGlobal = localStorage.getItem('edu10_global_custom_exams');
+        if (savedGlobal) {
+          try {
+            setGlobalCustomExams(JSON.parse(savedGlobal));
+          } catch (_) {}
+        }
+      } else if (event.type === 'QUESTIONS_UPDATED') {
+        const savedQ = localStorage.getItem('edu10_custom_questions');
+        if (savedQ) {
+          try {
+            setCustomQuestions(JSON.parse(savedQ));
+          } catch (_) {}
+        }
+      } else if (event.type === 'SUBJECT_CHANGED' && event.payload) {
+        setCurrentSubject(event.payload);
+      } else if (event.type === 'USER_CHANGED' && event.payload) {
+        if (event.payload.id !== currentUser.id) {
+          const uData = loadUserData(event.payload.id);
+          setCurrentUser(event.payload);
+          setExamAttempts(uData.examAttempts || []);
+          setPracticeSessions(uData.practiceSessions || []);
+          setMistakes(uData.mistakes || {});
+          setBookmarks(uData.bookmarks || []);
+          setCustomExams(uData.customExams || []);
+        }
+      }
+    });
+
+    return () => unsub();
+  }, [currentUser.id]);
+
   // Sync user data to localStorage and Online Cloud DB on changes
   useEffect(() => {
     const userData: UserScopedData = {
@@ -449,6 +504,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const switchUser = (userId: string, directUserObj?: UserAccount) => {
     const target = directUserObj || usersList.find((u) => u.id === userId) || DEFAULT_USERS[0];
     setCurrentUser(target);
+    localStorage.setItem('edu10_currentUser', JSON.stringify(target));
+    setCookie('edu10_uid', target.id);
 
     // Load target user's data
     const uData = loadUserData(target.id);
@@ -457,6 +514,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMistakes(uData.mistakes || {});
     setBookmarks(uData.bookmarks || []);
     setCustomExams(uData.customExams || []);
+
+    dispatchGlobalSync('USER_CHANGED', target);
   };
 
   const switchUserRole = (role: 'student' | 'admin') => {
@@ -515,6 +574,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     // Save to Firebase Realtime DB
     saveQuestionToOnlineDB(newQ).catch((err) => console.warn('DB Question save error:', err));
+    dispatchGlobalSync('QUESTIONS_UPDATED');
     return newQ;
   };
 
@@ -527,6 +587,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return updated;
     });
+    dispatchGlobalSync('QUESTIONS_UPDATED');
   };
 
   const deleteQuestion = (id: string) => {
@@ -535,6 +596,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBookmarks((prev) => prev.filter((bId) => bId !== id));
     // Delete from Firebase DB
     deleteQuestionFromOnlineDB(id).catch((err) => console.warn('DB Question delete error:', err));
+    dispatchGlobalSync('QUESTIONS_UPDATED');
   };
 
   const bulkImportQuestions = (newQuestions: (Question | (Omit<Question, 'id'> & { id?: string }))[]): number => {
@@ -552,6 +614,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       return [...toAdd, ...prev];
     });
+    dispatchGlobalSync('QUESTIONS_UPDATED');
     return formatted.length;
   };
 
@@ -578,6 +641,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     // Immediately persist to Firebase Realtime Database
     saveExamToOnlineDB(newExam).catch((err) => console.warn('DB Exam save error:', err));
+    dispatchGlobalSync('EXAMS_UPDATED');
     return newExam;
   };
 
@@ -595,6 +659,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
       return updated;
     });
+    dispatchGlobalSync('EXAMS_UPDATED');
   };
 
   const deleteExam = (id: string) => {
@@ -609,6 +674,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteExamFromOnlineDB(id).catch((err) => console.warn('DB Exam delete error:', err));
     // Clean up any assigned tasks referencing this deleted exam
     deleteRemoteTasksByExamId(id);
+    dispatchGlobalSync('EXAMS_UPDATED');
   };
 
   // Attempts & Practice (Saved & Synced to Firebase Realtime DB)
