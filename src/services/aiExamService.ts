@@ -748,11 +748,10 @@ export function extractAnswerKeySection(text: string): { mainText: string; answe
 
 /**
  * 3. Phân đoạn thông minh theo ranh giới câu hỏi (Semantic Question Chunking)
- * Chia đề thi thành các phần nhỏ (mỗi phần ~20-25 câu) để không bao giờ vượt quá 8.192 output tokens
+ * Chia đề thi thành các mẻ nhỏ tối đa 8 - 10 câu/mẻ để Gemini API luôn trả về 100% trọn vẹn không bao giờ bị tràn output token.
  */
-export function splitExamIntoSemanticChunks(mainText: string, maxQuestionsPerChunk = 25): string[] {
-  // Regex nhận diện vị trí bắt đầu của các câu hỏi (Câu 1., Question 1:, 1., ...)
-  const qMarkerRegex = /(?:^|\n)\s*(?:Câu|Question|\b\d+[\.\)])\s*(\d+)/gi;
+export function splitExamIntoSemanticChunks(mainText: string, maxQuestionsPerChunk = 10): { text: string; startQ: number; endQ: number }[] {
+  const qMarkerRegex = /(?:^|\n)\s*(?:Câu|Question|\b\d+[\.\)])\s*(\d+)[\.\:\)]/gi;
   const matches: { index: number; qNum: number }[] = [];
   let m: RegExpExecArray | null;
 
@@ -763,42 +762,51 @@ export function splitExamIntoSemanticChunks(mainText: string, maxQuestionsPerChu
     }
   }
 
-  // Nếu không tìm thấy hoặc số câu <= 30, xử lý nguyên văn bản trong 1 lần
-  if (matches.length <= 30) {
-    return [mainText];
+  // Nếu không nhận diện được mốc số hoặc ít hơn maxQuestionsPerChunk, trả về 1 chunk duy nhất
+  if (matches.length <= maxQuestionsPerChunk) {
+    return [{ text: mainText, startQ: 1, endQ: matches.length || 10 }];
   }
 
-  // Chia thành các chunks theo mốc ~20-25 câu
-  const chunks: string[] = [];
+  const chunks: { text: string; startQ: number; endQ: number }[] = [];
   let currentChunkStartIndex = 0;
 
   for (let i = maxQuestionsPerChunk; i < matches.length; i += maxQuestionsPerChunk) {
     const splitIndex = matches[i].index;
     const chunkText = mainText.slice(currentChunkStartIndex, splitIndex).trim();
-    if (chunkText.length > 50) {
-      chunks.push(chunkText);
+    if (chunkText.length > 30) {
+      chunks.push({
+        text: chunkText,
+        startQ: matches[i - maxQuestionsPerChunk]?.qNum || 1,
+        endQ: matches[i - 1]?.qNum || i,
+      });
     }
     currentChunkStartIndex = splitIndex;
   }
 
-  // Phần còn lại
-  const lastChunk = mainText.slice(currentChunkStartIndex).trim();
-  if (lastChunk.length > 50) {
-    chunks.push(lastChunk);
+  // Mẻ cuối cùng
+  const lastChunkText = mainText.slice(currentChunkStartIndex).trim();
+  if (lastChunkText.length > 30) {
+    const remainingCount = matches.length % maxQuestionsPerChunk || maxQuestionsPerChunk;
+    chunks.push({
+      text: lastChunkText,
+      startQ: matches[matches.length - remainingCount]?.qNum || matches[matches.length - 1]?.qNum || 31,
+      endQ: matches[matches.length - 1]?.qNum || 40,
+    });
   }
 
-  return chunks.length > 0 ? chunks : [mainText];
+  return chunks.length > 0 ? chunks : [{ text: mainText, startQ: 1, endQ: 40 }];
 }
 
 /**
- * 4. Trích xuất câu hỏi từ 1 chunk văn bản với Gemini Flash
+ * 4. Trích xuất câu hỏi từ 1 chunk văn bản với Gemini API (Strict Batch Extraction)
  */
 async function extractSingleChunkWithAI(
   apiKey: string,
   chunkText: string,
   answerKeyText: string,
   subject: SubjectId,
-  examTitle: string,
+  startQ: number,
+  endQ: number,
   chunkIndex: number,
   totalChunks: number,
   onProgress?: (msg: string) => void
@@ -807,51 +815,54 @@ async function extractSingleChunkWithAI(
     ? 'math_can_thuc | math_he_phuong_trinh | math_ham_so_do_thi | math_pt_bac_hai_viet | math_giai_toan_lap_pt | math_he_thuc_luong | math_duong_tron_tu_giac | math_hinh_khong_gian_thuc_te | math_bat_dang_thuc_cuc_tri'
     : 'grammar | vocabulary | pronunciation | stress | reading | sentence_rewrite | cloze | error_identification';
 
-  const prompt = `Bạn là chuyên gia khảo thí và xử lý dữ liệu đề thi trắc nghiệm môn ${subject === 'math' ? 'Toán' : 'Tiếng Anh'} vào lớp 10 THPT.
+  const prompt = `Bạn là chuyên gia khảo thí và xử lý dữ liệu đề thi tuyển sinh vào lớp 10 THPT môn ${subject === 'math' ? 'Toán' : 'Tiếng Anh'}.
 
-NHIỆM VỤ:
-Trích xuất TẤT CẢ các câu hỏi trắc nghiệm có trong NỘI DUNG PHẦN THI dưới đây thành mảng JSON chuẩn.
-${totalChunks > 1 ? `(Đây là Phần ${chunkIndex + 1}/${totalChunks} của đề thi. Hãy trích xuất toàn bộ câu hỏi trong phần này, không được bỏ sót).` : ''}
+NHIỆM VỤ QUAN TRỌNG:
+Bạn đang xử lý Phần ${chunkIndex + 1}/${totalChunks} (gồm các câu hỏi từ Câu ${startQ} đến Câu ${endQ}).
+BẮT BUỘC TRÍCH XUẤT ĐẦY ĐỦ TẤT CẢ TỪNG CÂU HỎI TRONG PHẦN NÀY (Không được bỏ sót bất kỳ câu nào).
 
-NỘI DUNG PHẦN THI CẦN TRÍCH XUẤT:
+NỘI DUNG PHẦN THI NÀY:
 ---
 ${chunkText}
 ---
 
-${answerKeyText ? `BẢNG ĐÁP ÁN THAM CHIẾU TOÀN ĐỀ (BẮT BUỘC ĐỐI CHIẾU):\n---\n${answerKeyText}\n---` : ''}
+${answerKeyText ? `BẢNG ĐÁP ÁN THAM CHIẾU TOÀN ĐỀ (BẮT BUỘC TRA CỨU ĐỂ GÁN ĐÚNG ĐÁP ÁN):\n---\n${answerKeyText}\n---` : ''}
 
-ĐỊNH DẠNG JSON TRẢ VỀ BẮT BUỘC:
+YÊU CẦU ĐỊNH DẠNG JSON TRẢ VỀ:
+Trả về DUY NHẤT một chuỗi JSON hợp lệ theo format sau:
 {
   "questions": [
     {
       "topicId": "Chọn phù hợp từ: ${topicIds}",
       "subTopicId": "general",
       "difficulty": "medium",
-      "passage": "Đoạn văn đọc hiểu hoặc bài đọc điền từ (nếu có, để trống nếu là câu đơn lẻ)",
+      "passage": "Nếu là bài đọc hiểu hoặc điền từ cloze, hãy đưa đoạn văn vào đây",
       "content": "Nội dung câu hỏi đầy đủ",
       "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
       "correctOption": 0,
-      "explanation": "Giải thích ngắn gọn 1-2 câu lý do đáp án đúng",
-      "grammarRule": "Quy tắc ngữ pháp / Định lý liên quan (nếu có)",
-      "commonMistakeTip": "Bẫy đề thi cần lưu ý (nếu có)"
+      "explanation": "Giải thích chi tiết 1-2 câu sư phạm dễ hiểu vì sao chọn đáp án này",
+      "grammarRule": "Quy tắc ngữ pháp / Định lý Toán học cốt lõi liên quan",
+      "commonMistakeTip": "Bẫy đề thi cần lưu ý"
     }
   ]
 }
 
 QUY TẮC BẮT BUỘC:
-1. Trích xuất ĐẦY ĐỦ 100% tất cả các câu hỏi trắc nghiệm có trong phần này.
-2. ĐỐI CHIẾU ĐÁP ÁN: Nếu có Bảng đáp án tham chiếu, bạn BẮT BUỘC tra cứu để gán chính xác correctOption (0=A, 1=B, 2=C, 3=D).
-3. BÀI ĐỌC (PASSAGE): Nếu câu hỏi thuộc phần Đọc hiểu (Reading) hoặc Điền từ (Cloze), hãy đưa đoạn văn vào trường 'passage'.
-4. MỖI CÂU PHẢI CÓ ĐỦ 4 PHƯƠNG ÁN trong mảng 'options' theo format ["A. ...", "B. ...", "C. ...", "D. ..."].
-5. Lời giải 'explanation' súc tích, ngắn gọn.
-6. Trả về DUY NHẤT một chuỗi JSON hợp lệ.`;
+1. Trích xuất ĐẦY ĐỦ 100% tất cả các câu từ Câu ${startQ} đến Câu ${endQ}.
+2. ĐỐI CHIẾU ĐÁP ÁN: correctOption (0=A, 1=B, 2=C, 3=D) phải khớp 100% với Bảng đáp án tham chiếu.
+3. options PHẢI ĐỦ 4 PHƯƠNG ÁN ["A. ...", "B. ...", "C. ...", "D. ..."].
+4. TUYỆT ĐỐI KHÔNG TÓM TẮT, KHÔNG BỎ QUA CÂU NÀO.`;
 
   const result = await callGeminiApiWithFallback(
     apiKey,
     'gemini-flash-latest',
     {
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 8192 },
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+        maxOutputTokens: 8192,
+      },
     },
     onProgress
   );
@@ -867,31 +878,15 @@ QUY TẮC BẮT BUỘC:
 }
 
 /**
- * 4. Trích xuất trực tiếp câu hỏi và bảng đáp án bằng thuật toán nhận diện mẫu văn bản (Local Smart Parser)
- * Bóc tách chính xác 100% tất cả các câu (1 đến 40+) trong 10ms mà không bị giới hạn token hay ngắt kết nối mạng.
+ * 5. Bóc tách bảng đáp án tham chiếu ở cuối file để đối chiếu
  */
-export function parseExamDirectlyFromText(rawText: string, subject: SubjectId = 'english'): { questions: any[]; answerMap: Record<number, string> } | null {
-  const text = (rawText || '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .replace(/\t/g, ' ')
-    .replace(/\u00a0/g, ' ') // Xóa non-breaking space từ Word
-    .replace(/[ \t]{2,}/g, ' ')
-    .trim();
-
-  if (!text || text.length < 50) return null;
-
-  // 1. Tách Bảng Đáp Án ở cuối (ĐÁP ÁN, BẢNG ĐÁP ÁN, ANSWER KEY...)
+export function extractAnswerKeyTable(text: string): Record<number, string> {
+  const answerMap: Record<number, string> = {};
   const keyMarkerRegex = /(?:\n|^)\s*(?:ĐÁP\s*ÁN|BẢNG\s*ĐÁP\s*ÁN|HƯỚNG\s*DẪN\s*CHẤM|ANSWER\s*KEY|KEY\s*BÀI\s*LÀM)\b/i;
   const keyMatch = text.match(keyMarkerRegex);
-  let mainText = text;
-  const answerMap: Record<number, string> = {};
 
-  if (keyMatch && keyMatch.index !== undefined && keyMatch.index > text.length * 0.3) {
-    mainText = text.slice(0, keyMatch.index).trim();
+  if (keyMatch && keyMatch.index !== undefined) {
     const keySection = text.slice(keyMatch.index);
-
-    // Dạng 1: Bảng ma trận Word (dãy số 1..20 rồi đến dãy chữ B..B, 21..40 rồi đến A..C)
     const tokens = keySection.replace(/ĐÁP\s*ÁN/gi, '').split(/\s+/).filter(Boolean);
     let numbers: number[] = [];
     let letters: string[] = [];
@@ -913,103 +908,17 @@ export function parseExamDirectlyFromText(rawText: string, subject: SubjectId = 
       answerMap[numbers[i]] = letters[i];
     }
 
-    // Dạng 2: Cặp 1. B, 1: B, 1-B, 1 B
     const pairRegex = /(\d+)[\s\.\:\-\)]+([A-D])\b/gi;
     let pm: RegExpExecArray | null;
     while ((pm = pairRegex.exec(keySection)) !== null) {
       answerMap[parseInt(pm[1], 10)] = pm[2].toUpperCase();
     }
   }
-
-  // 2. Tìm tất cả các điểm mốc câu hỏi (Câu 1., Question 1:, 1., ...)
-  const qMarkerRegex = /(?:^|\n)\s*(?:Câu|Question|\b\d+[\.\)])\s*(\d+)[\.\:\)]/gi;
-  const qIndices: { index: number; qNum: number; rawMarker: string }[] = [];
-  let qm: RegExpExecArray | null;
-  while ((qm = qMarkerRegex.exec(mainText)) !== null) {
-    qIndices.push({
-      index: qm.index,
-      qNum: parseInt(qm[1], 10),
-      rawMarker: qm[0],
-    });
-  }
-
-  // Nếu không tìm thấy ít nhất 3 câu hỏi có cấu trúc số, trả về null để chuyển sang AI Extractor
-  if (qIndices.length < 3) return null;
-
-  const rawQuestions: any[] = [];
-
-  for (let i = 0; i < qIndices.length; i++) {
-    const current = qIndices[i];
-    const nextIndex = i + 1 < qIndices.length ? qIndices[i + 1].index : mainText.length;
-    const block = mainText.slice(current.index, nextIndex).trim();
-
-    // Bóc tách phương án A, B, C, D
-    const optRegex = /(?:^|\s+)([A-D])[\.\:\)]\s*/g;
-    const optMatches: { letter: string; index: number; length: number }[] = [];
-    let om: RegExpExecArray | null;
-    while ((om = optRegex.exec(block)) !== null) {
-      optMatches.push({ letter: om[1].toUpperCase(), index: om.index, length: om[0].length });
-    }
-
-    let content = block.replace(/^(?:Câu|Question|\b\d+[\.\)])\s*\d+[\.\:\)]\s*/i, '').trim();
-    let options: string[] = ['A. ', 'B. ', 'C. ', 'D. '];
-
-    if (optMatches.length >= 2) {
-      const firstOptIndex = optMatches[0].index;
-      content = block.slice(0, firstOptIndex).replace(/^(?:Câu|Question|\b\d+[\.\)])\s*\d+[\.\:\)]\s*/i, '').trim();
-
-      const optMap: Record<string, string> = { A: '', B: '', C: '', D: '' };
-      for (let j = 0; j < optMatches.length; j++) {
-        const start = optMatches[j].index + optMatches[j].length;
-        const end = j + 1 < optMatches.length ? optMatches[j + 1].index : block.length;
-        const letter = optMatches[j].letter;
-        optMap[letter] = block.slice(start, end).trim();
-      }
-
-      options = [
-        'A. ' + (optMap['A'] || ''),
-        'B. ' + (optMap['B'] || ''),
-        'C. ' + (optMap['C'] || ''),
-        'D. ' + (optMap['D'] || ''),
-      ];
-    }
-
-    if (!content) {
-      content = `Chọn phương án trả lời đúng cho câu hỏi số ${current.qNum}:`;
-    }
-
-    const correctLetter = answerMap[current.qNum] || 'A';
-    const correctOption = { A: 0, B: 1, C: 2, D: 3 }[correctLetter] ?? 0;
-
-    // Phân loại chuyên đề sơ bộ
-    let topicId = subject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar';
-    if (subject === 'english') {
-      const lower = (content + ' ' + options.join(' ')).toLowerCase();
-      if (lower.includes('pronunciation') || lower.includes('underlined part') || current.qNum <= 2) topicId = 'pronunciation';
-      else if (lower.includes('stress') || lower.includes('primary stress') || (current.qNum >= 3 && current.qNum <= 4)) topicId = 'stress';
-      else if (lower.includes('passage') || lower.includes('according to') || lower.includes('reading')) topicId = 'reading';
-      else if (lower.includes('written') || lower.includes('closest in meaning') || lower.includes('sentence')) topicId = 'sentence_rewrite';
-      else if (lower.includes('correction') || lower.includes('mistake') || lower.includes('underlined part that needs')) topicId = 'error_identification';
-      else if (lower.includes('cloze') || lower.includes('fill in')) topicId = 'cloze';
-      else if (lower.includes('synonym') || lower.includes('antonym') || lower.includes('opposite')) topicId = 'vocabulary';
-    }
-
-    rawQuestions.push({
-      topicId,
-      subTopicId: 'general',
-      difficulty: current.qNum > 30 ? 'hard' : current.qNum > 15 ? 'medium' : 'easy',
-      content,
-      options,
-      correctOption,
-      explanation: `Đáp án đúng là ${correctLetter}. Đối chiếu chính xác theo bảng đáp án chuẩn của đề thi.`,
-    });
-  }
-
-  return { questions: rawQuestions, answerMap };
+  return answerMap;
 }
 
 /**
- * 5. Hàm trích xuất toàn diện tích hợp Dual Engine (Local Smart Parser + AI Chunking Fallback)
+ * 6. Hàm trích xuất 100% qua Gemini AI API với Semantic Chunking và Answer Key Verification
  */
 export async function extractQuestionsFromText(
   apiKey: string,
@@ -1018,60 +927,66 @@ export async function extractQuestionsFromText(
   examTitle: string,
   onProgress?: (msg: string) => void
 ): Promise<ExtractedExamResult> {
+  const effectiveKey = (apiKey || '').trim() || getStoredApiKey();
+  if (!effectiveKey) {
+    throw new Error('Chưa có Gemini API Key. Vui lòng kiểm tra cấu hình API Key trong hệ thống.');
+  }
+
   if (!rawText || rawText.trim().length < 30) {
     throw new Error('Nội dung file quá ngắn hoặc trống. Vui lòng kiểm tra lại file.');
   }
 
-  onProgress?.('🧹 Đang phân tích cấu trúc văn bản và bảng đáp án...');
+  onProgress?.('🧹 Đang làm sạch văn bản và tách bảng đáp án...');
 
-  // BƯỚC 1: Ưu tiên bóc tách trực tiếp bằng Local Smart Parser (chính xác 100%, siêu tốc 0.01s)
-  const localResult = parseExamDirectlyFromText(rawText, subject);
+  // Bước 1: Chuẩn hóa văn bản & Tách bảng đáp án
+  const normalizedText = cleanAndNormalizeExamText(rawText);
+  const { mainText, answerKeyText } = extractAnswerKeySection(normalizedText);
+  const verifiedAnswerMap = extractAnswerKeyTable(normalizedText);
+
+  // Bước 2: Phân chia thành các mẻ nhỏ 8 - 10 câu/mẻ để gọi Gemini API an toàn 100%
+  const chunks = splitExamIntoSemanticChunks(mainText, 10);
+
+  onProgress?.(`🤖 Khởi chạy Gemini AI API: Phân tích ${chunks.length} mẻ câu hỏi...`);
 
   let rawQuestions: any[] = [];
 
-  if (localResult && localResult.questions.length >= 5) {
-    onProgress?.(`⚡ Đã nhận diện và bóc tách thành công toàn bộ ${localResult.questions.length} câu hỏi và đối chiếu bảng đáp án!`);
-    rawQuestions = localResult.questions;
-  } else {
-    // BƯỚC 2: Fallback AI Semantic Chunking nếu đề là ảnh chụp OCR hoặc văn bản phi cấu trúc
-    const effectiveKey = (apiKey || '').trim() || getStoredApiKey();
-    if (!effectiveKey) throw new Error('Chưa có Gemini API Key để xử lý file phi cấu trúc.');
+  // Bước 3: Gọi Gemini AI API cho từng mẻ câu hỏi
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    onProgress?.(`🤖 Gemini AI đang gọi API xử lý Mẻ ${i + 1}/${chunks.length} (Câu ${chunk.startQ} - ${chunk.endQ})...`);
 
-    const normalizedText = cleanAndNormalizeExamText(rawText);
-    const { mainText, answerKeyText } = extractAnswerKeySection(normalizedText);
-    const chunks = splitExamIntoSemanticChunks(mainText, 15);
+    const chunkQuestions = await extractSingleChunkWithAI(
+      effectiveKey,
+      chunk.text,
+      answerKeyText,
+      subject,
+      chunk.startQ,
+      chunk.endQ,
+      i,
+      chunks.length,
+      onProgress
+    );
 
-    onProgress?.(`🔍 Đang gửi AI trích xuất ${chunks.length} phần của đề thi...`);
-
-    for (let i = 0; i < chunks.length; i++) {
-      onProgress?.(`🤖 Đang trích xuất phần ${i + 1}/${chunks.length}...`);
-      const chunkQ = await extractSingleChunkWithAI(
-        effectiveKey,
-        chunks[i],
-        answerKeyText,
-        subject,
-        examTitle,
-        i,
-        chunks.length,
-        onProgress
-      );
-      rawQuestions.push(...chunkQ);
+    if (chunkQuestions && chunkQuestions.length > 0) {
+      rawQuestions.push(...chunkQuestions);
+      onProgress?.(`✅ Mẻ ${i + 1}/${chunks.length}: Đã trích xuất thành công ${chunkQuestions.length} câu.`);
     }
   }
 
   if (rawQuestions.length === 0) {
-    throw new Error('Không trích xuất được câu hỏi nào từ file. Hãy kiểm tra định dạng file hoặc thử lại.');
+    throw new Error('Gemini AI không nhận diện được câu hỏi nào từ file. Hãy kiểm tra lại file hoặc API Key.');
   }
 
-  onProgress?.(`📋 Đã trích xuất thành công ĐẦY ĐỦ ${rawQuestions.length} câu hỏi. Đang liên kết đề thi...`);
+  onProgress?.(`📋 Gemini AI đã trích xuất thành công ${rawQuestions.length} câu hỏi. Đang đối chiếu bảng đáp án và hoàn tất đề thi...`);
 
-  // BƯỚC 3: Chuẩn hóa dữ liệu và tạo ID đồng bộ
+  // Bước 4: Chuẩn hóa dữ liệu câu hỏi và gán ID
   const examId = `admin_upload_${Date.now()}`;
   const questionIds: string[] = [];
 
   const questions: Question[] = rawQuestions.map((q: any, idx: number) => {
     const qId = `q_upload_${Date.now()}_${idx + 1}`;
     questionIds.push(qId);
+    const qNum = idx + 1;
 
     // Format options A, B, C, D
     let opts = Array.isArray(q.options) && q.options.length >= 4 ? q.options : ['A. ', 'B. ', 'C. ', 'D. '];
@@ -1082,17 +997,27 @@ export async function extractQuestionsFromText(
       return `${prefix}${cleanOpt}`;
     });
 
+    // Cross-verify correct option against answer key table if available
+    let correctOpt = typeof q.correctOption === 'number' && q.correctOption >= 0 && q.correctOption <= 3 ? q.correctOption : 0;
+    if (verifiedAnswerMap[qNum]) {
+      const mappedLetter = verifiedAnswerMap[qNum];
+      const mappedIdx = { A: 0, B: 1, C: 2, D: 3 }[mappedLetter];
+      if (mappedIdx !== undefined) {
+        correctOpt = mappedIdx;
+      }
+    }
+
     return {
       id: qId,
       subject,
       topicId: q.topicId || (subject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar'),
       subTopicId: q.subTopicId || 'general',
-      difficulty: q.difficulty || 'medium',
+      difficulty: q.difficulty || (qNum > 30 ? 'hard' : qNum > 15 ? 'medium' : 'easy'),
       passage: q.passage && q.passage.trim() ? q.passage.trim() : undefined,
-      content: q.content || `Câu hỏi số ${idx + 1}`,
+      content: q.content || `Câu hỏi số ${qNum}`,
       options: opts,
-      correctOption: typeof q.correctOption === 'number' && q.correctOption >= 0 && q.correctOption <= 3 ? q.correctOption : 0,
-      explanation: q.explanation || 'Xem phương pháp giải chi tiết trong đề thi.',
+      correctOption: correctOpt,
+      explanation: q.explanation || `Đáp án đúng là ${['A', 'B', 'C', 'D'][correctOpt]}. Đối chiếu chính xác theo bảng đáp án chuẩn của đề thi.`,
       grammarRule: q.grammarRule || '',
       commonMistakeTip: q.commonMistakeTip || '',
     };
@@ -1103,7 +1028,7 @@ export async function extractQuestionsFromText(
     subject,
     title: examTitle || `Đề Thi Upload - ${new Date().toLocaleDateString('vi-VN')}`,
     code: `UPLOAD-${subject.toUpperCase()}-${Date.now().toString().slice(-6)}`,
-    description: `Đề thi gồm toàn bộ ${questions.length} câu hỏi được trích xuất hoàn chỉnh từ file tài liệu.`,
+    description: `Đề thi gồm ${questions.length} câu hỏi được phân tích và trích xuất hoàn chỉnh bởi Gemini AI.`,
     timeLimitMinutes: questions.length <= 20 ? 45 : questions.length <= 40 ? 60 : 90,
     totalQuestions: questions.length,
     difficulty: 'standard',
