@@ -22,14 +22,17 @@ import {
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onOpenAuthModal: () => void;
+  onOpenAuthModal?: () => void;
+  onSwitchToLogin?: () => void;
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   isOpen,
   onClose,
   onOpenAuthModal,
+  onSwitchToLogin,
 }) => {
+  const triggerOpenAuth = onOpenAuthModal || onSwitchToLogin || (() => {});
   const {
     currentUser,
     usersList,
@@ -260,7 +263,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           <button
             onClick={() => {
               onClose();
-              onOpenAuthModal();
+              triggerOpenAuth();
             }}
             className="w-full py-2.5 bg-[#F5F2ED] hover:bg-[#EAE7E0] text-[#3D3D2D] font-bold text-xs rounded-xl border border-[#D9D2C5] transition cursor-pointer flex items-center justify-center space-x-2"
           >

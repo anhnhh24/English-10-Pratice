@@ -30,7 +30,7 @@ const LoadingSpinner = () => (
 );
 
 const AppContent: React.FC = () => {
-  const { currentSubject } = useApp();
+  const { currentSubject, currentUser } = useApp();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [targetModalOpen, setTargetModalOpen] = useState<boolean>(false);
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
@@ -120,7 +120,18 @@ const AppContent: React.FC = () => {
 
             {activeTab === 'bookmarks' && <BookmarksView />}
 
-            {activeTab === 'admin' && <AdminPanel />}
+            {activeTab === 'admin' && (
+              currentUser.role === 'admin' ? (
+                <AdminPanel />
+              ) : (
+                <Dashboard
+                  setActiveTab={setActiveTab}
+                  onStartExam={handleStartExam}
+                  onPracticeTopic={handlePracticeTopic}
+                  onOpenTargetModal={() => setTargetModalOpen(true)}
+                />
+              )
+            )}
           </Suspense>
         </div>
       </main>
@@ -137,7 +148,7 @@ const AppContent: React.FC = () => {
         onClose={() => setTargetModalOpen(false)}
       />
 
-      {/* Authentication Modal (Login / Register / 1-Click Demo Accounts) */}
+      {/* Authentication Modal (Login / Register) */}
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
@@ -147,6 +158,7 @@ const AppContent: React.FC = () => {
       <UserProfileModal
         isOpen={profileModalOpen}
         onClose={() => setProfileModalOpen(false)}
+        onOpenAuthModal={() => setAuthModalOpen(true)}
         onSwitchToLogin={() => setAuthModalOpen(true)}
       />
     </div>

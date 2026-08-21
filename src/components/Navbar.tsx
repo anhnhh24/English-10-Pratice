@@ -251,27 +251,25 @@ export const Navbar: React.FC<NavbarProps> = ({
             );
           })}
 
-          <button
-            onClick={() => setActiveTab('admin')}
-            id="sidebar-nav-admin"
-            className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
-              activeTab === 'admin'
-                ? `${theme.activeNavBg} text-white shadow-sm`
-                : 'text-[#1E293B] bg-[#FAF9F6] border border-[#CBD5E1] hover:bg-black/5'
-            }`}
-          >
-            <div className="flex items-center space-x-3">
-              <ShieldCheck className="w-4 h-4 text-[#2563EB]" />
-              <span>Dashboard Giám Sát</span>
-            </div>
-            <span
-              className={`px-2 py-0.5 text-[9px] font-extrabold rounded-full ${
-                currentUser.role === 'admin' ? 'bg-[#2563EB] text-white' : 'bg-black/10 text-[#1E293B]'
+          {currentUser.role === 'admin' && (
+            <button
+              onClick={() => setActiveTab('admin')}
+              id="sidebar-nav-admin"
+              className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
+                activeTab === 'admin'
+                  ? `${theme.activeNavBg} text-white shadow-sm`
+                  : 'text-[#1E293B] bg-[#FAF9F6] border border-[#CBD5E1] hover:bg-black/5'
               }`}
             >
-              {currentUser.role === 'admin' ? 'ADMIN' : 'Giám Sát'}
-            </span>
-          </button>
+              <div className="flex items-center space-x-3">
+                <ShieldCheck className="w-4 h-4 text-[#2563EB]" />
+                <span>Dashboard Giáo Viên</span>
+              </div>
+              <span className="px-2 py-0.5 text-[9px] font-extrabold rounded-full bg-[#2563EB] text-white">
+                ADMIN
+              </span>
+            </button>
+          )}
         </nav>
 
         {/* User Account & Goal Card (Bottom) */}
@@ -526,23 +524,25 @@ export const Navbar: React.FC<NavbarProps> = ({
               })}
             </div>
 
-            <button
-              onClick={() => {
-                setActiveTab('admin');
-                setMobileMenuOpen(false);
-              }}
-              className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
-                activeTab === 'admin'
-                  ? 'bg-[#5A5A40] text-white shadow-xs'
-                  : 'text-[#5A5A40] bg-[#FAF9F6] border border-[#D9D2C5]'
-              }`}
-            >
-              <div className="flex items-center space-x-2">
-                <ShieldCheck className="w-4 h-4 text-[#8BA888]" />
-                <span>Dashboard Giáo viên / Admin</span>
-              </div>
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            {currentUser.role === 'admin' && (
+              <button
+                onClick={() => {
+                  setActiveTab('admin');
+                  setMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'admin'
+                    ? 'bg-[#5A5A40] text-white shadow-xs'
+                    : 'text-[#5A5A40] bg-[#FAF9F6] border border-[#D9D2C5]'
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <ShieldCheck className="w-4 h-4 text-[#8BA888]" />
+                  <span>Dashboard Giáo Viên</span>
+                </div>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       )}
