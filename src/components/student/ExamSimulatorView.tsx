@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Exam, Question } from '../../types';
 import { TOPICS_META } from '../../data/topicsMeta';
@@ -110,6 +110,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   // Anti-Cheat: Tab Switch Detection State
   const [tabSwitchCount, setTabSwitchCount] = useState<number>(0);
   const [showTabWarning, setShowTabWarning] = useState<boolean>(false);
+  const isSubmittingRef = useRef<boolean>(false);
 
   // Focus Mode, Scratchpad & Auto-save Draft States
   const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
@@ -186,7 +187,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           // Broadcast alert to guardian / admin in real-time
           logAndBroadcastActivity({
             userId: currentUser.id,
-            userName: `${currentUser.name} (Em trai)`,
+            userName: currentUser.name,
             avatarColor: currentUser.avatarColor,
             subject: exam.subject || currentSubject,
             type: 'tab_switched',
@@ -209,21 +210,19 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
 
   // Timer effect
   useEffect(() => {
-    let timer: any;
-    if (stage === 'active' && timeLeft > 0) {
-      timer = setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            handleSubmitExam();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+    if (stage !== 'active') return;
+
+    if (timeLeft <= 0) {
+      handleSubmitExam();
+      return;
     }
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+
     return () => clearInterval(timer);
-  }, [stage, timeLeft]);
+  }, [stage, timeLeft <= 0]);
 
   const examQuestions = exam
     ? (exam.questionIds.map((id) => getQuestionById(id)).filter(Boolean) as Question[])
@@ -258,6 +257,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
       examTitle: targetExam.title,
     });
 
+    isSubmittingRef.current = false;
     setUserAnswers({});
     setFlaggedIds([]);
     setTimeLeft(targetExam.timeLimitMinutes * 60);
@@ -280,6 +280,8 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   };
 
   const handleSubmitExam = () => {
+    if (isSubmittingRef.current || stage === 'result') return;
+    isSubmittingRef.current = true;
     clearDraft();
     setShowSubmitModal(false);
     let correctCount = 0;

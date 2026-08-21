@@ -61,32 +61,24 @@ async function readImageWithOcr(file: File, onProgress?: (msg: string) => void):
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { inline_data: { mime_type: file.type || 'image/jpeg', data: base64 } },
-            {
-              text: 'Đây là ảnh chụp một đề thi trắc nghiệm. Hãy nhận dạng và ghi lại TOÀN BỘ nội dung văn bản trong ảnh, giữ nguyên cấu trúc câu hỏi và các đáp án A, B, C, D. Không thêm bất kỳ giải thích nào, chỉ ghi lại text như đã in trong đề.',
-            },
-          ],
-        },
-      ],
-      generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
-    }),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(`Gemini OCR lỗi (${response.status}): ${err?.error?.message || response.statusText}`);
-  }
-  const data = await response.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemini không nhận diện được nội dung trong ảnh.');
-  return text;
+  const payload = {
+    contents: [
+      {
+        parts: [
+          { inline_data: { mime_type: file.type || 'image/jpeg', data: base64 } },
+          {
+            text: 'Đây là ảnh chụp một đề thi trắc nghiệm. Hãy nhận dạng và ghi lại TOÀN BỘ nội dung văn bản trong ảnh, giữ nguyên cấu trúc câu hỏi và các đáp án A, B, C, D. Không thêm bất kỳ giải thích nào, chỉ ghi lại text như đã in trong đề.',
+          },
+        ],
+      },
+    ],
+    generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+  };
+
+  const { callGeminiApiWithFallback } = await import('./aiExamService');
+  const result = await callGeminiApiWithFallback(apiKey, 'gemini-3.5-flash-lite', payload, onProgress);
+  if (!result.text) throw new Error('Gemini không nhận diện được nội dung trong ảnh.');
+  return result.text;
 }
 
 export async function readFileAsText(file: File, onProgress?: (msg: string) => void): Promise<string> {

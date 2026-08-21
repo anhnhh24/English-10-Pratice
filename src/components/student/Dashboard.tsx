@@ -18,7 +18,7 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
-import { TabType } from './Navbar';
+import { TabType } from '../layout/Navbar';
 
 interface DashboardProps {
   setActiveTab: (tab: TabType) => void;

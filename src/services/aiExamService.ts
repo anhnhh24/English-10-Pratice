@@ -28,8 +28,8 @@ export const AVAILABLE_MODELS = [
 
 export const getStoredApiKey = (): string => {
   const envKey = (
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
-    (typeof import.meta !== 'undefined' && import.meta.env?.GEMINI_API_KEY) ||
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GEMINI_API_KEY) ||
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.GEMINI_API_KEY) ||
     ''
   ).trim();
   const localKey = (
@@ -42,8 +42,8 @@ export const getStoredApiKey = (): string => {
 
 export const isApiKeyFromEnv = (): boolean => {
   const envKey = (
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) ||
-    (typeof import.meta !== 'undefined' && import.meta.env?.GEMINI_API_KEY) ||
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GEMINI_API_KEY) ||
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.GEMINI_API_KEY) ||
     ''
   ).trim();
   return Boolean(envKey);
@@ -83,11 +83,11 @@ export async function callGeminiApiWithFallback(
   onProgress?: (msg: string) => void
 ): Promise<{ text: string; modelUsed: string }> {
   const modelsToTry = [
-    preferredModel || 'gemini-3.6-flash',
+    preferredModel || 'gemini-3.5-flash-lite',
+    'gemini-3.5-flash-lite',
     'gemini-3.6-flash',
     'gemini-3.7-flash',
     'gemini-3.5-flash',
-    'gemini-3.5-flash-lite',
     'gemma-4-26b-it',
     'gemma-4-31b-it',
   ].filter((v, i, a) => Boolean(v) && a.indexOf(v) === i);

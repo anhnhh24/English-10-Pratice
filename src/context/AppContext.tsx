@@ -747,7 +747,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
     dispatchGlobalSync('QUESTIONS_UPDATED');
-    return formatted.length;
+    return formatted.length; // Return total formatted count (caller uses this as an indicator of AI generation size)
   };
 
   // Exams (Saved & Synced to Firebase Realtime DB)
@@ -847,7 +847,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       examTitle: attempt.examTitle,
     });
 
-    // Automatically record mistakes for ALL questions in the exam (both wrong answers and unattempted/skipped questions)
+    // Record mistakes for ALL questions in the exam:
+    // - Wrong answers: increment wrongCount
+    // - Unattempted questions: also counted as wrong (not skipped silently)
+    // - Only use userAnswers keys as fallback if examObj not found
     const examObj = getExamById(attempt.examId);
     const allExamQIds = (examObj?.questionIds && examObj.questionIds.length > 0)
       ? examObj.questionIds
@@ -856,8 +859,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const results = allExamQIds.map((qId) => {
       const q = getQuestionById(qId);
       const chosenOpt = attempt.userAnswers?.[qId];
-      const isCorrect = q && chosenOpt !== undefined && chosenOpt === q.correctOption;
-      return { questionId: qId, isCorrect: !!isCorrect };
+      // Unattempted (chosenOpt === undefined) is treated as incorrect
+      const isCorrect = q !== undefined && chosenOpt !== undefined && chosenOpt === q.correctOption;
+      return { questionId: qId, isCorrect };
     });
     recordMultipleAnswerResults(results);
 
@@ -873,6 +877,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setPracticeSessions((prev) => [newSession, ...prev]);
 
+    const topicLabel = session.topicId
+      ? session.topicId.replace('math_', '').replace(/_/g, ' ')
+      : 'Tổng hợp phản xạ';
+
     // Log practice activity
     logAndBroadcastActivity({
       userId: currentUser.id,
@@ -881,19 +889,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       subject: session.subject || currentSubject,
       type: 'practice_completed',
       title: `Hoàn thành bài luyện tập ${session.subject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}`,
-      detail: `Đúng ${session.correctCount}/${session.totalQuestions} câu • Chuyên đề: ${session.topicId.replace('math_', '').replace(/_/g, ' ')}`,
+      detail: `Đúng ${session.correctCount}/${session.totalQuestions} câu • Chuyên đề: ${topicLabel}`,
       score: session.correctCount,
-      topicName: session.topicId,
+      topicName: session.topicId || 'general',
     });
-
-    if (session && session.userAnswers && typeof session.userAnswers === 'object') {
-      const results = Object.entries(session.userAnswers).map(([qId, chosenOpt]) => {
-        const q = getQuestionById(qId);
-        const isCorrect = q && chosenOpt === q.correctOption;
-        return { questionId: qId, isCorrect: !!isCorrect };
-      });
-      recordMultipleAnswerResults(results);
-    }
 
     return newSession;
   };
