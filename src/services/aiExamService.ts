@@ -18,10 +18,9 @@ export interface GeneratedExamResult {
 }
 
 export const AVAILABLE_MODELS = [
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Khuyên dùng - Nhanh & Chuẩn nhất)' },
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Ổn định, tốc độ cao)' },
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (Thế hệ mới)' },
-  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Suy luận sâu cho đề chuyên)' },
+  { id: 'gemini-flash-latest', name: 'Gemini Flash (Khuyên dùng - Nhanh & Chuẩn nhất)' },
+  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash (Thế hệ mới nhất)' },
+  { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash (Tốc độ cao & ổn định)' },
 ];
 
 export const getStoredApiKey = (): string => {
@@ -30,8 +29,12 @@ export const getStoredApiKey = (): string => {
     (typeof import.meta !== 'undefined' && import.meta.env?.GEMINI_API_KEY) ||
     ''
   ).trim();
-  const localKey = (localStorage.getItem('edu10_gemini_api_key') || '').trim();
-  return envKey || localKey || 'AIzaSyCPLq--cwxWORm4jPVNyrAW1b80cbBdAV4';
+  const localKey = (
+    localStorage.getItem('edu10_gemini_api_key') ||
+    localStorage.getItem('gemini_api_key') ||
+    ''
+  ).trim();
+  return localKey || envKey;
 };
 
 export const isApiKeyFromEnv = (): boolean => {
@@ -51,12 +54,23 @@ export const clearStoredApiKey = (): void => {
   localStorage.removeItem('edu10_gemini_api_key');
 };
 
-/**
- * Kiểm tra tính hợp lệ của API Key
- */
-export async function testGeminiApiKey(apiKey: string, model: string = 'gemini-2.5-flash'): Promise<{ success: boolean; message: string }> {
-  if (!apiKey || apiKey.trim() === '') {
-    return { success: false, message: 'Vui lòng nhập API Key trước khi kiểm tra.' };
+export function formatGeminiError(status: number, rawMessage: string): string {
+  const msg = rawMessage.toLowerCase();
+  if (msg.includes('leaked') || (status === 403 && (msg.includes('api key') || msg.includes('reported')))) {
+    return '⚠️ Mã API Key này đã bị Google vô hiệu hóa do bị lộ trên mạng/GitHub. Vui lòng tạo 1 API Key mới miễn phí tại https://aistudio.google.com/app/apikey và dán vào ô bên dưới.';
+  }
+  if (status === 400 || msg.includes('api_key_invalid') || msg.includes('invalid api key')) {
+    return '⚠️ Mã Gemini API Key không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại mã key.';
+  }
+  if (status === 429 || msg.includes('resource_exhausted') || msg.includes('quota')) {
+    return '⚠️ Đã đạt giới hạn số lượt gọi miễn phí của Gemini (Rate limit). Vui lòng đợi 30 giây rồi thử lại.';
+  }
+  return `Lỗi từ Gemini API (${status}): ${rawMessage}`;
+}
+
+export async function validateApiKey(apiKey: string, model: string = 'gemini-flash-latest'): Promise<{ success: boolean; message: string }> {
+  if (!apiKey || !apiKey.trim()) {
+    return { success: false, message: 'Vui lòng nhập API Key để kiểm tra' };
   }
 
   try {
@@ -73,7 +87,7 @@ export async function testGeminiApiKey(apiKey: string, model: string = 'gemini-2
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const errorMsg = errorData?.error?.message || response.statusText;
-      return { success: false, message: `Lỗi kết nối API (${response.status}): ${errorMsg}` };
+      return { success: false, message: formatGeminiError(response.status, errorMsg) };
     }
 
     return { success: true, message: 'API Key hoạt động hoàn hảo!' };
@@ -81,6 +95,8 @@ export async function testGeminiApiKey(apiKey: string, model: string = 'gemini-2
     return { success: false, message: `Lỗi mạng hoặc kết nối: ${err.message || 'Không xác định'}` };
   }
 }
+
+export const testGeminiApiKey = validateApiKey;
 
 /**
  * Phục hồi và phân tích JSON đề thi ngay cả khi chuỗi JSON bị ngắt quãng hoặc thiếu đóng ngoặc do giới hạn token
@@ -224,7 +240,7 @@ export async function generateExamWithAI(
   }
 
   const subject = config.subject || 'english';
-  const model = config.modelName || 'gemini-2.5-flash';
+  const model = config.modelName || 'gemini-flash-latest';
 
   onProgressUpdate?.(
     subject === 'math'
@@ -366,7 +382,7 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     const errorMsg = errorData?.error?.message || response.statusText;
-    throw new Error(`Lỗi từ Gemini API (${response.status}): ${errorMsg}`);
+    throw new Error(formatGeminiError(response.status, errorMsg));
   }
 
   onProgressUpdate?.('Đang xử lý và chuẩn hóa dữ liệu đề thi...');
@@ -563,7 +579,7 @@ export async function generateExamEvaluationWithAI(
   topicBreakdown: Record<string, { total: number; correct: number; wrong: number; name: string }>,
   wrongQuestionsList: { content: string; userChoice: string; correctChoice: string; topic: string; explanation: string }[],
   targetScore: number = 8.5,
-  modelName: string = 'gemini-2.5-flash',
+  modelName: string = 'gemini-flash-latest',
   subject: SubjectId = 'english'
 ): Promise<ExamEvaluationReport> {
   const effectiveKey = apiKey.trim() || getStoredApiKey();
@@ -637,7 +653,7 @@ Bạn PHẢI trả về DUY NHẤT một chuỗi JSON hợp lệ không bọc th
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     const errorMsg = errorData?.error?.message || response.statusText;
-    throw new Error(`Lỗi từ Gemini API (${response.status}): ${errorMsg}`);
+    throw new Error(formatGeminiError(response.status, errorMsg));
   }
 
   const responseData = await response.json();
@@ -727,7 +743,7 @@ LƯU Ý:
 - Giữ nguyên nội dung câu hỏi và các đáp án, không tự sửa hay đổi
 - Trả về JSON thuần túy, không markdown, không giải thích thêm`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(effectiveKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(effectiveKey)}`;
 
   onProgress?.('🤖 Gemini AI đang phân tích và chuẩn hoá câu hỏi...');
 
@@ -742,7 +758,7 @@ LƯU Ý:
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
-    throw new Error(`Lỗi Gemini API (${response.status}): ${errData?.error?.message || response.statusText}`);
+    throw new Error(formatGeminiError(response.status, errData?.error?.message || response.statusText));
   }
 
   const data = await response.json();

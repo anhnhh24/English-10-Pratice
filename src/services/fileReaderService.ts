@@ -61,7 +61,7 @@ async function readImageWithOcr(file: File, onProgress?: (msg: string) => void):
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(apiKey)}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

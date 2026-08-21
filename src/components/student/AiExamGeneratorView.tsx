@@ -214,7 +214,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
   // API Key State
   const [apiKey, setApiKey] = useState<string>('');
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-flash-latest');
   const [testingKey, setTestingKey] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{ success?: boolean; message?: string } | null>(null);
 
