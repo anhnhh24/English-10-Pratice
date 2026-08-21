@@ -232,6 +232,18 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
       return;
     }
 
+    // Broadcast exam started event
+    logAndBroadcastActivity({
+      userId: currentUser.id,
+      userName: currentUser.name,
+      avatarColor: currentUser.avatarColor,
+      subject: targetExam.subject || currentSubject,
+      type: 'exam_started',
+      title: `Bắt đầu làm bài thi ${targetExam.subject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}`,
+      detail: `Đề thi: "${targetExam.title}" (${targetQuestions.length} câu • ${targetExam.timeLimitMinutes} phút)`,
+      examTitle: targetExam.title,
+    });
+
     setUserAnswers({});
     setFlaggedIds([]);
     setTimeLeft(targetExam.timeLimitMinutes * 60);
