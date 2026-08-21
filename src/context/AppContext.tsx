@@ -667,7 +667,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Questions
-  const getQuestionById = (id: string) => allQuestions.find((q) => q.id === id);
+  const getQuestionById = (id: string): Question | undefined => {
+    // First look in the in-memory list (fast path)
+    const inMemory = allQuestions.find((q) => q.id === id);
+    if (inMemory) return inMemory;
+
+    // Fallback: read from localStorage in case bulkImportQuestions was called
+    // just before this render cycle and React state hasn't updated yet
+    try {
+      const raw = localStorage.getItem('edu10_custom_questions');
+      if (raw) {
+        const persisted: Question[] = JSON.parse(raw);
+        return persisted.find((q) => q.id === id);
+      }
+    } catch (_) {}
+    return undefined;
+  };
 
   const addQuestion = (q: (Omit<Question, 'id'> & { id?: string }) | Question): Question => {
     const newQ: Question = {

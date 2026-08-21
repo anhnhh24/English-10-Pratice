@@ -241,7 +241,9 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
       .filter(Boolean) as Question[];
 
     if (targetQuestions.length === 0) {
-      alert('Đề thi này chưa có dữ liệu câu hỏi hợp lệ trong hệ thống.');
+      // Questions may have been just imported (bulkImportQuestions) and state hasn't re-rendered yet.
+      // Wait one tick for React to commit the new state, then retry once.
+      setTimeout(() => handleStartExam(selectedId || idToUse), 150);
       return;
     }
 
