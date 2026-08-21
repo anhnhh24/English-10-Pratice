@@ -18,9 +18,11 @@ export interface GeneratedExamResult {
 }
 
 export const AVAILABLE_MODELS = [
-  { id: 'gemini-flash-latest', name: 'Gemini Flash (Khuyên dùng - Nhanh & Chuẩn nhất)' },
-  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash (Thế hệ mới nhất)' },
-  { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash (Tốc độ cao & ổn định)' },
+  { id: 'gemini-flash-latest', name: 'Gemini Flash (Mặc định - Nhanh & Ổn định nhất)' },
+  { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash (Thế hệ mới)' },
+  { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash (Tốc độ cao)' },
+  { id: 'gemma-4-31b-it', name: 'Gemma 4 31B IT (Model dự phòng khi Gemini quá tải)' },
+  { id: 'gemma-4-26b-a4b-it', name: 'Gemma 4 26B IT (Model nhẹ & phản hồi nhanh)' },
 ];
 
 export const getStoredApiKey = (): string => {
@@ -62,10 +64,71 @@ export function formatGeminiError(status: number, rawMessage: string): string {
   if (status === 400 || msg.includes('api_key_invalid') || msg.includes('invalid api key')) {
     return '⚠️ Mã Gemini API Key không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại mã key.';
   }
-  if (status === 429 || msg.includes('resource_exhausted') || msg.includes('quota')) {
-    return '⚠️ Đã đạt giới hạn số lượt gọi miễn phí của Gemini (Rate limit). Vui lòng đợi 30 giây rồi thử lại.';
+  if (status === 429 || msg.includes('resource_exhausted') || msg.includes('quota') || msg.includes('rate limit')) {
+    return '⚠️ Đang bị giới hạn số lượt gọi miễn phí tạm thời (Rate Limit). Hệ thống đang tự động kích hoạt model dự phòng hoặc vui lòng đợi 15-30 giây.';
   }
   return `Lỗi từ Gemini API (${status}): ${rawMessage}`;
+}
+
+/**
+ * Gọi API thông minh với cơ chế tự động chuyển model dự phòng khi model chính quá tải
+ */
+export async function callGeminiApiWithFallback(
+  apiKey: string,
+  preferredModel: string,
+  requestPayload: any,
+  onProgress?: (msg: string) => void
+): Promise<{ text: string; modelUsed: string }> {
+  const modelsToTry = [
+    preferredModel,
+    'gemini-flash-latest',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemma-4-31b-it',
+    'gemma-4-26b-a4b-it',
+  ].filter((v, i, a) => a.indexOf(v) === i);
+
+  let lastError: any = null;
+
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const currentModel = modelsToTry[i];
+    if (i > 0) {
+      onProgress?.(`⚡ Model ${modelsToTry[i - 1]} đang bận, tự động chuyển sang ${currentModel}...`);
+    }
+
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestPayload),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawText && rawText.trim()) {
+          return { text: rawText, modelUsed: currentModel };
+        }
+      }
+
+      const errorData = await response.json().catch(() => ({}));
+      const errorMsg = errorData?.error?.message || response.statusText;
+      lastError = new Error(formatGeminiError(response.status, errorMsg));
+
+      // Stop fallback on authentication/key leak errors
+      if (response.status === 400 || (response.status === 403 && (errorMsg.includes('API key') || errorMsg.includes('leaked')))) {
+        throw lastError;
+      }
+    } catch (err: any) {
+      lastError = err;
+      if (err.message && err.message.includes('vô hiệu hóa')) {
+        throw err;
+      }
+    }
+  }
+
+  throw lastError || new Error('Không thể kết nối đến máy chủ AI. Vui lòng thử lại sau giây lát.');
 }
 
 export async function validateApiKey(apiKey: string, model: string = 'gemini-flash-latest'): Promise<{ success: boolean; message: string }> {
@@ -74,25 +137,17 @@ export async function validateApiKey(apiKey: string, model: string = 'gemini-fla
   }
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const result = await callGeminiApiWithFallback(
+      apiKey,
+      model,
+      {
         contents: [{ parts: [{ text: 'Hello, reply with "OK".' }] }],
         generationConfig: { maxOutputTokens: 10 },
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMsg = errorData?.error?.message || response.statusText;
-      return { success: false, message: formatGeminiError(response.status, errorMsg) };
-    }
-
-    return { success: true, message: 'API Key hoạt động hoàn hảo!' };
+      }
+    );
+    return { success: true, message: `API Key hoạt động hoàn hảo! (Model: ${result.modelUsed})` };
   } catch (err: any) {
-    return { success: false, message: `Lỗi mạng hoặc kết nối: ${err.message || 'Không xác định'}` };
+    return { success: false, message: err.message || 'Lỗi mạng hoặc kết nối' };
   }
 }
 
@@ -367,33 +422,15 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
     },
   };
 
-  if (model.includes('2.5-flash') || model.includes('2.0-flash')) {
-    requestBody.generationConfig.thinkingConfig = {
-      thinkingBudget: 0,
-    };
-  }
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    const errorMsg = errorData?.error?.message || response.statusText;
-    throw new Error(formatGeminiError(response.status, errorMsg));
-  }
+  const result = await callGeminiApiWithFallback(
+    effectiveKey,
+    model,
+    requestBody,
+    onProgressUpdate
+  );
 
   onProgressUpdate?.('Đang xử lý và chuẩn hóa dữ liệu đề thi...');
-
-  const responseData = await response.json();
-  const rawText = responseData?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!rawText) {
-    throw new Error('Không nhận được phản hồi nội dung từ AI. Vui lòng thử lại.');
-  }
-
+  const rawText = result.text;
   const parsedData = tryParseOrRepairExamJson(rawText);
 
   if (!parsedData || !Array.isArray(parsedData.questions) || parsedData.questions.length === 0) {
@@ -636,29 +673,19 @@ Bạn PHẢI trả về DUY NHẤT một chuỗi JSON hợp lệ không bọc th
   "examTacticsTip": "Mẹo chiến thuật làm bài thi thực tế để không bị mất điểm oan"
 }`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(effectiveKey)}`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const result = await callGeminiApiWithFallback(
+    effectiveKey,
+    modelName,
+    {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
         responseMimeType: 'application/json',
         temperature: 0.6,
       },
-    }),
-  });
+    }
+  );
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    const errorMsg = errorData?.error?.message || response.statusText;
-    throw new Error(formatGeminiError(response.status, errorMsg));
-  }
-
-  const responseData = await response.json();
-  const rawText = responseData?.candidates?.[0]?.content?.parts?.[0]?.text;
-
+  const rawText = result.text;
   if (!rawText) {
     throw new Error('Không nhận được phản hồi đánh giá từ AI.');
   }
@@ -743,26 +770,19 @@ LƯU Ý:
 - Giữ nguyên nội dung câu hỏi và các đáp án, không tự sửa hay đổi
 - Trả về JSON thuần túy, không markdown, không giải thích thêm`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${encodeURIComponent(effectiveKey)}`;
-
   onProgress?.('🤖 Gemini AI đang phân tích và chuẩn hoá câu hỏi...');
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  const result = await callGeminiApiWithFallback(
+    effectiveKey,
+    'gemini-flash-latest',
+    {
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
-    }),
-  });
+    },
+    onProgress
+  );
 
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(formatGeminiError(response.status, errData?.error?.message || response.statusText));
-  }
-
-  const data = await response.json();
-  const rawJson = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const rawJson = result.text;
   if (!rawJson) throw new Error('AI không trả về kết quả. Thử lại sau.');
 
   onProgress?.('📋 Đang xử lý và import câu hỏi...');
