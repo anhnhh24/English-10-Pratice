@@ -246,6 +246,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [bookmarks, setBookmarks] = useState<string[]>(() => loadUserData(currentUser.id).bookmarks || []);
   const [customExams, setCustomExams] = useState<Exam[]>(() => loadUserData(currentUser.id).customExams || []);
 
+  // Local ref to prevent synchronization feedback loops when loading/syncing from cloud
+  const lastSyncedDataRef = useRef<string>('');
+  if (!lastSyncedDataRef.current) {
+    const initialData = loadUserData(currentUser.id);
+    lastSyncedDataRef.current = JSON.stringify({
+      examAttempts: initialData.examAttempts || [],
+      practiceSessions: initialData.practiceSessions || [],
+      mistakes: initialData.mistakes || {},
+      bookmarks: initialData.bookmarks || [],
+      customExams: initialData.customExams || [],
+    });
+  }
+
   // Global custom exams created on this device (so all user accounts can see/run them)
   const [globalCustomExams, setGlobalCustomExams] = useState<Exam[]>(() => {
     const saved = localStorage.getItem('edu10_global_custom_exams');
@@ -352,30 +365,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
+  // Helper to update state from cloud sync payload
+  const updateStatesFromCloud = (uData: any) => {
+    if (!uData) return;
+
+    // Pre-serialize matching payload to update the ref and prevent feedback loop pushes
+    lastSyncedDataRef.current = JSON.stringify({
+      examAttempts: uData.examAttempts || [],
+      practiceSessions: uData.practiceSessions || [],
+      mistakes: uData.mistakes || {},
+      bookmarks: uData.bookmarks || [],
+      customExams: uData.customExams || [],
+    });
+
+    if (Array.isArray(uData.examAttempts)) {
+      // Filter out legacy mock data if any
+      const cleanAttempts = uData.examAttempts.filter(
+        (a: any) => a.id && !a.id.startsWith('attempt_demo_')
+      );
+      setExamAttempts(cleanAttempts);
+    }
+    if (Array.isArray(uData.practiceSessions)) {
+      setPracticeSessions(uData.practiceSessions);
+    }
+    if (uData.mistakes && typeof uData.mistakes === 'object') {
+      setMistakes(uData.mistakes);
+    }
+    if (Array.isArray(uData.bookmarks)) {
+      setBookmarks(uData.bookmarks);
+    }
+    if (Array.isArray(uData.customExams)) {
+      setCustomExams(uData.customExams);
+    }
+  };
+
   // Subscribe to Student Data on DB for active currentUser
   useEffect(() => {
     const unsubStudent = subscribeToStudentData(currentUser.id, (cloudPayload) => {
       if (cloudPayload && cloudPayload.userData) {
-        const uData = cloudPayload.userData;
-        if (Array.isArray(uData.examAttempts)) {
-          // Filter out legacy mock data if any
-          const cleanAttempts = uData.examAttempts.filter(
-            (a: any) => a.id && !a.id.startsWith('attempt_demo_')
-          );
-          setExamAttempts(cleanAttempts);
-        }
-        if (Array.isArray(uData.practiceSessions)) {
-          setPracticeSessions(uData.practiceSessions);
-        }
-        if (uData.mistakes && typeof uData.mistakes === 'object') {
-          setMistakes(uData.mistakes);
-        }
-        if (Array.isArray(uData.bookmarks)) {
-          setBookmarks(uData.bookmarks);
-        }
-        if (Array.isArray(uData.customExams)) {
-          setCustomExams(uData.customExams);
-        }
+        updateStatesFromCloud(cloudPayload.userData);
       }
     });
 
@@ -392,15 +420,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               localStorage.setItem(getUserDataKey(stuId), JSON.stringify(payload.userData));
             } catch (_) {}
             if (stuId === currentUser.id) {
-              if (Array.isArray(payload.userData.examAttempts)) {
-                setExamAttempts(payload.userData.examAttempts);
-              }
-              if (Array.isArray(payload.userData.practiceSessions)) {
-                setPracticeSessions(payload.userData.practiceSessions);
-              }
-              if (payload.userData.mistakes) {
-                setMistakes(payload.userData.mistakes);
-              }
+              updateStatesFromCloud(payload.userData);
             }
           }
         });
@@ -433,6 +453,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (event.payload.id !== currentUser.id) {
           const uData = loadUserData(event.payload.id);
           setCurrentUser(event.payload);
+
+          lastSyncedDataRef.current = JSON.stringify({
+            examAttempts: uData.examAttempts || [],
+            practiceSessions: uData.practiceSessions || [],
+            mistakes: uData.mistakes || {},
+            bookmarks: uData.bookmarks || [],
+            customExams: uData.customExams || [],
+          });
+
           setExamAttempts(uData.examAttempts || []);
           setPracticeSessions(uData.practiceSessions || []);
           setMistakes(uData.mistakes || {});
@@ -454,6 +483,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       hasMountedRef.current = true;
       return;
     }
+    const currentSerialized = JSON.stringify({
+      examAttempts,
+      practiceSessions,
+      mistakes,
+      bookmarks,
+      customExams,
+    });
+
+    // Check if there is an actual local state change before writing to DB
+    if (lastSyncedDataRef.current && currentSerialized === lastSyncedDataRef.current) {
+      return;
+    }
+
+    lastSyncedDataRef.current = currentSerialized;
+
     const userData: UserScopedData = {
       examAttempts,
       practiceSessions,
@@ -563,6 +607,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Load target user's data
     const uData = loadUserData(target.id);
+
+    lastSyncedDataRef.current = JSON.stringify({
+      examAttempts: uData.examAttempts || [],
+      practiceSessions: uData.practiceSessions || [],
+      mistakes: uData.mistakes || {},
+      bookmarks: uData.bookmarks || [],
+      customExams: uData.customExams || [],
+    });
+
     setExamAttempts(uData.examAttempts || []);
     setPracticeSessions(uData.practiceSessions || []);
     setMistakes(uData.mistakes || {});
@@ -789,14 +842,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? examObj.questionIds
       : Object.keys(attempt.userAnswers || {});
 
-    allExamQIds.forEach((qId) => {
+    const results = allExamQIds.map((qId) => {
       const q = getQuestionById(qId);
-      if (q) {
-        const chosenOpt = attempt.userAnswers?.[qId];
-        const isCorrect = chosenOpt !== undefined && chosenOpt === q.correctOption;
-        recordAnswerResult(qId, isCorrect);
-      }
+      const chosenOpt = attempt.userAnswers?.[qId];
+      const isCorrect = q && chosenOpt !== undefined && chosenOpt === q.correctOption;
+      return { questionId: qId, isCorrect: !!isCorrect };
     });
+    recordMultipleAnswerResults(results);
 
     return newAttempt;
   };
@@ -824,16 +876,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     if (session && session.userAnswers && typeof session.userAnswers === 'object') {
-      Object.entries(session.userAnswers).forEach(([qId, chosenOpt]) => {
+      const results = Object.entries(session.userAnswers).map(([qId, chosenOpt]) => {
         const q = getQuestionById(qId);
-        if (q) {
-          const isCorrect = chosenOpt === q.correctOption;
-          recordAnswerResult(qId, isCorrect);
-        }
+        const isCorrect = q && chosenOpt === q.correctOption;
+        return { questionId: qId, isCorrect: !!isCorrect };
       });
+      recordMultipleAnswerResults(results);
     }
 
     return newSession;
+  };
+
+  // Mistake Notebook batch recorder to prevent state updates & logs in tight loops
+  const recordMultipleAnswerResults = (results: Array<{ questionId: string; isCorrect: boolean }>) => {
+    if (results.length === 0) return;
+
+    setMistakes((prev) => {
+      const nextMistakes = { ...prev };
+      const wrongCountMap: Record<string, number> = {};
+      let hasChanges = false;
+
+      results.forEach(({ questionId, isCorrect }) => {
+        const q = getQuestionById(questionId);
+        const qSubj = q?.subject || currentSubject;
+        const existing = prev[questionId];
+
+        if (!isCorrect) {
+          nextMistakes[questionId] = {
+            questionId,
+            subject: qSubj,
+            wrongCount: (existing?.wrongCount || 0) + 1,
+            lastAttemptDate: new Date().toISOString(),
+            consecutiveCorrect: 0,
+            mastered: false,
+            userNote: existing?.userNote,
+          };
+          wrongCountMap[qSubj] = (wrongCountMap[qSubj] || 0) + 1;
+          hasChanges = true;
+        } else {
+          if (existing) {
+            const newConsecutive = (existing.consecutiveCorrect || 0) + 1;
+            const isNowMastered = newConsecutive >= 2;
+            nextMistakes[questionId] = {
+              ...existing,
+              consecutiveCorrect: newConsecutive,
+              mastered: isNowMastered,
+              lastAttemptDate: new Date().toISOString(),
+            };
+            hasChanges = true;
+          }
+        }
+      });
+
+      // Log consolidated activity events for wrong answers
+      Object.entries(wrongCountMap).forEach(([subj, count]) => {
+        if (count > 0) {
+          logAndBroadcastActivity({
+            userId: currentUser.id,
+            userName: currentUser.name,
+            avatarColor: currentUser.avatarColor,
+            subject: subj as SubjectId,
+            type: 'question_wrong',
+            title: `Làm sai ${count} câu hỏi ${subj === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}`,
+            detail: `Lịch sử vừa ghi nhận thêm ${count} lỗi sai mới vào sổ tay ôn tập.`,
+            topicName: 'general',
+          });
+        }
+      });
+
+      return hasChanges ? nextMistakes : prev;
+    });
   };
 
   // Mistake Notebook
