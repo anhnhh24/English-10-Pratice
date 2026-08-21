@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { TOPICS_META } from '../data/topicsMeta';
 import { MATH_TOPICS_META } from '../data/mathTopicsMeta';
-import { DifficultyLevel, Question, TopicId, SubTopicId, Exam, UserAccount, SubjectId, RealtimeActivityEvent } from '../types';
+import { DifficultyLevel, Question, TopicId, SubTopicId, Exam, UserAccount, SubjectId, RealtimeActivityEvent, MistakeItem } from '../types';
 import {
   getStoredRealtimeActivities,
   subscribeToRealtimeActivities,
@@ -163,22 +163,22 @@ export const AdminPanel: React.FC = () => {
     const avgMath =
       mathAttempts.length > 0
         ? parseFloat((mathAttempts.reduce((s, a) => s + a.score, 0) / mathAttempts.length).toFixed(2))
-        : 8.0;
+        : 0;
 
     const avgEng =
       engAttempts.length > 0
         ? parseFloat((engAttempts.reduce((s, a) => s + a.score, 0) / engAttempts.length).toFixed(2))
-        : 8.2;
+        : 0;
 
-    const activeMistakes = Object.values(data.mistakes || {}).filter((m) => !m.mastered);
+    const activeMistakes = (Object.values(data.mistakes || {}) as MistakeItem[]).filter((m) => !m.mastered);
 
-    const totalQuestionsSolved = attempts.reduce((acc, a) => acc + (a.totalQuestions || 0), 0) + 15;
-    const totalCorrect = attempts.reduce((acc, a) => acc + (a.correctCount || 0), 0) + 12;
-    const accuracy = Math.round((totalCorrect / (totalQuestionsSolved || 1)) * 100);
+    const totalQuestionsSolved = attempts.reduce((acc, a) => acc + (a.totalQuestions || 0), 0);
+    const totalCorrect = attempts.reduce((acc, a) => acc + (a.correctCount || 0), 0);
+    const accuracy = totalQuestionsSolved > 0 ? Math.round((totalCorrect / totalQuestionsSolved) * 100) : 0;
 
     const targetMath = stu.targetScoreMath || stu.targetScore || 8.5;
     const targetEng = stu.targetScoreEnglish || stu.targetScore || 8.5;
-    const isTargetReached = avgMath >= targetMath - 0.5 && avgEng >= targetEng - 0.5;
+    const isTargetReached = (avgMath > 0 && avgMath >= targetMath - 0.5) && (avgEng > 0 && avgEng >= targetEng - 0.5);
 
     return {
       student: stu,
@@ -1527,7 +1527,7 @@ export const AdminPanel: React.FC = () => {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto no-scrollbar">
-                  {Object.values(getUserScopedData(selectedStudentForDetail.id).mistakes || {}).map((m, idx) => (
+                  {(Object.values(getUserScopedData(selectedStudentForDetail.id).mistakes || {}) as MistakeItem[]).map((m, idx) => (
                     <div key={idx} className="p-3 bg-[#FAF9F6] rounded-xl border border-[#EAE7E0] space-y-1 text-xs">
                       <div className="flex justify-between items-center">
                         <span className="px-2 py-0.5 bg-[#FDF2E9] text-[#E67E22] font-bold rounded text-[10px]">

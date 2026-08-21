@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   Question,
   Exam,
@@ -14,7 +14,19 @@ import { EXAMS_DATA } from '../data/examsData';
 import { MATH_QUESTIONS_DATA } from '../data/mathQuestionsData';
 import { MATH_EXAMS_DATA } from '../data/mathExamsData';
 import { logAndBroadcastActivity } from '../services/realtimeSyncService';
-import { pushUserDataToOnlineDB, fetchRoomDataFromOnlineDB } from '../services/cloudSyncService';
+import {
+  pushUserDataToOnlineDB,
+  fetchRoomDataFromOnlineDB,
+  saveExamToOnlineDB,
+  deleteExamFromOnlineDB,
+  subscribeToExamsFromOnlineDB,
+  saveQuestionToOnlineDB,
+  deleteQuestionFromOnlineDB,
+  subscribeToQuestionsFromOnlineDB,
+  saveExamAttemptToOnlineDB,
+  subscribeToStudentData,
+  clearOnlineStudentData,
+} from '../services/cloudSyncService';
 
 interface UserScopedData {
   examAttempts: ExamAttempt[];
@@ -58,14 +70,14 @@ interface AppContextType {
   deleteQuestion: (id: string) => void;
   bulkImportQuestions: (newQuestions: (Question | Omit<Question, 'id'>)[]) => number;
 
-  // Exams (combined official + math + user-created)
+  // Exams (combined official + math + user-created / DB-synced)
   exams: Exam[];
   getExamById: (id: string) => Exam | undefined;
   addExam: (e: Omit<Exam, 'id' | 'createdAt'> & { id?: string }) => Exam;
   updateExam: (id: string, e: Partial<Exam>) => void;
   deleteExam: (id: string) => void;
 
-  // Exam Attempts & Practice Sessions (Per User)
+  // Exam Attempts & Practice Sessions (Per User - Synced to DB)
   examAttempts: ExamAttempt[];
   saveExamAttempt: (attempt: Omit<ExamAttempt, 'id'>) => ExamAttempt;
   practiceSessions: PracticeSession[];
@@ -117,7 +129,7 @@ const DEFAULT_USERS: UserAccount[] = [
     targetScoreEnglish: 8.5,
     targetScoreMath: 8.5,
     targetSchool: 'THPT Chu Văn An (Hà Nội)',
-    streakDays: 7,
+    streakDays: 0,
     lastActiveDate: new Date().toISOString(),
     avatarColor: 'bg-indigo-600',
     createdAt: '2026-08-01',
@@ -132,164 +144,20 @@ const DEFAULT_USERS: UserAccount[] = [
     targetScoreEnglish: 10,
     targetScoreMath: 10,
     targetSchool: 'Hệ thống Giám Sát Học Tập',
-    streakDays: 45,
+    streakDays: 0,
     lastActiveDate: new Date().toISOString(),
     avatarColor: 'bg-emerald-600',
     createdAt: '2026-07-01',
   },
 ];
 
+// Clean blank data for all users (No fake mock attempts or fake mistakes)
 const INITIAL_DEMO_DATA: Record<string, UserScopedData> = {
   user_student_1: {
-    examAttempts: [
-      {
-        id: 'attempt_demo_1',
-        userId: 'user_student_1',
-        subject: 'english',
-        examId: 'exam_official_01',
-        examTitle: 'Đề Thi Thử Tuyển Sinh Vào Lớp 10 - Đề Chuẩn Số 01',
-        date: new Date(Date.now() - 3 * 86400000).toISOString(),
-        score: 7.75,
-        score100: 77.5,
-        correctCount: 16,
-        incorrectCount: 4,
-        unattemptedCount: 0,
-        totalQuestions: 20,
-        timeSpentSeconds: 2450,
-        userAnswers: {
-          q_pron_01: 3,
-          q_pron_02: 3,
-          q_pron_03: 0,
-          q_stress_01: 2,
-          q_stress_02: 2,
-          q_gram_01: 1,
-          q_gram_02: 0,
-          q_gram_03: 0,
-          q_pass_01: 1,
-          q_cond_01: 0,
-          q_cond_02: 2,
-          q_cond_04: 0,
-          q_rel_01: 0,
-          q_rel_02: 0,
-          q_rep_01: 1,
-          q_voc_01: 0,
-          q_rew_01: 0,
-          q_rew_02: 0,
-          q_err_01: 1,
-          q_cloze_01: 0,
-        },
-        flaggedQuestions: ['q_gram_03', 'q_rel_02'],
-      },
-      {
-        id: 'attempt_demo_math_1',
-        userId: 'user_student_1',
-        subject: 'math',
-        examId: 'math_exam_official_01',
-        examTitle: 'Đề Thi Thử Tuyển Sinh Vào Lớp 10 Môn Toán - Đề Chuẩn Số 01 (Sở GD&ĐT)',
-        date: new Date(Date.now() - 2 * 86400000).toISOString(),
-        score: 8.5,
-        score100: 85,
-        correctCount: 10,
-        incorrectCount: 2,
-        unattemptedCount: 0,
-        totalQuestions: 12,
-        timeSpentSeconds: 2980,
-        userAnswers: {
-          q_math_can_01: 0,
-          q_math_can_02: 0,
-          q_math_can_03: 0,
-          q_math_he_01: 0,
-          q_math_ham_01: 0,
-          q_math_ham_02: 0,
-          q_math_viet_01: 0,
-          q_math_lap_pt_01: 0,
-          q_math_he_thuc_01: 0,
-          q_math_tron_01: 0,
-          q_math_kg_01: 1,
-          q_math_bdt_01: 1,
-        },
-        flaggedQuestions: ['q_math_bdt_01'],
-      },
-      {
-        id: 'attempt_demo_2',
-        userId: 'user_student_1',
-        subject: 'english',
-        examId: 'exam_speed_sprint_03',
-        examTitle: 'Đề Luyện Tốc Độ 30 Phút - Bứt Phá Ngữ Âm & Từ Vựng',
-        date: new Date(Date.now() - 86400000).toISOString(),
-        score: 8.5,
-        score100: 85,
-        correctCount: 10,
-        incorrectCount: 2,
-        unattemptedCount: 0,
-        totalQuestions: 12,
-        timeSpentSeconds: 1120,
-        userAnswers: {
-          q_pron_01: 3,
-          q_pron_02: 3,
-          q_pron_03: 2,
-          q_stress_01: 2,
-          q_stress_02: 2,
-          q_stress_03: 1,
-          q_voc_01: 0,
-          q_voc_02: 1,
-          q_voc_03: 1,
-          q_voc_04: 2,
-          q_voc_05: 0,
-          q_voc_06: 0,
-        },
-        flaggedQuestions: ['q_voc_04'],
-      },
-    ],
+    examAttempts: [],
     practiceSessions: [],
-    mistakes: {
-      q_pron_03: {
-        questionId: 'q_pron_03',
-        subject: 'english',
-        wrongCount: 2,
-        lastAttemptDate: new Date(Date.now() - 3 * 86400000).toISOString(),
-        consecutiveCorrect: 0,
-        mastered: false,
-        userNote: 'Nhớ gốc từ Hy Lạp đọc là /k/ (chemical, Christmas), chỉ có champion đọc /tʃ/.',
-      },
-      q_gram_03: {
-        questionId: 'q_gram_03',
-        subject: 'english',
-        wrongCount: 1,
-        lastAttemptDate: new Date(Date.now() - 3 * 86400000).toISOString(),
-        consecutiveCorrect: 0,
-        mastered: false,
-        userNote: 'Mệnh đề thời gian với as soon as không dùng will!',
-      },
-      q_rel_02: {
-        questionId: 'q_rel_02',
-        subject: 'english',
-        wrongCount: 2,
-        lastAttemptDate: new Date(Date.now() - 2 * 86400000).toISOString(),
-        consecutiveCorrect: 0,
-        mastered: false,
-        userNote: 'Sau dấu phẩy cấm kỵ dùng THAT. Có động từ IS phía sau nên phải dùng WHICH.',
-      },
-      q_math_bdt_01: {
-        questionId: 'q_math_bdt_01',
-        subject: 'math',
-        wrongCount: 1,
-        lastAttemptDate: new Date(Date.now() - 2 * 86400000).toISOString(),
-        consecutiveCorrect: 0,
-        mastered: false,
-        userNote: 'Áp dụng Cauchy cho x và 9/x: Min = 2√(x . 9/x) = 6 khi x = 3.',
-      },
-      q_math_kg_01: {
-        questionId: 'q_math_kg_01',
-        subject: 'math',
-        wrongCount: 1,
-        lastAttemptDate: new Date(Date.now() - 2 * 86400000).toISOString(),
-        consecutiveCorrect: 0,
-        mastered: false,
-        userNote: 'Đường sinh hình nón l = √(r² + h²) = √(3² + 4²) = 5cm.',
-      },
-    },
-    bookmarks: ['q_rel_02', 'q_math_viet_02', 'q_math_bdt_01'],
+    mistakes: {},
+    bookmarks: [],
     customExams: [],
   },
 };
@@ -326,7 +194,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const raw = localStorage.getItem(getUserDataKey(userId));
     if (raw) {
       try {
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        // Sanitize legacy mock attempts if any exist in local storage
+        if (parsed.examAttempts && Array.isArray(parsed.examAttempts)) {
+          parsed.examAttempts = parsed.examAttempts.filter(
+            (a: any) => a.id && !a.id.startsWith('attempt_demo_')
+          );
+        }
+        return parsed;
       } catch (e) {
         // fallback
       }
@@ -341,11 +216,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Active User Data States
-  const [examAttempts, setExamAttempts] = useState<ExamAttempt[]>(() => loadUserData(currentUser.id).examAttempts);
-  const [practiceSessions, setPracticeSessions] = useState<PracticeSession[]>(() => loadUserData(currentUser.id).practiceSessions);
-  const [mistakes, setMistakes] = useState<Record<string, MistakeItem>>(() => loadUserData(currentUser.id).mistakes);
-  const [bookmarks, setBookmarks] = useState<string[]>(() => loadUserData(currentUser.id).bookmarks);
-  const [customExams, setCustomExams] = useState<Exam[]>(() => loadUserData(currentUser.id).customExams);
+  const [examAttempts, setExamAttempts] = useState<ExamAttempt[]>(() => loadUserData(currentUser.id).examAttempts || []);
+  const [practiceSessions, setPracticeSessions] = useState<PracticeSession[]>(() => loadUserData(currentUser.id).practiceSessions || []);
+  const [mistakes, setMistakes] = useState<Record<string, MistakeItem>>(() => loadUserData(currentUser.id).mistakes || {});
+  const [bookmarks, setBookmarks] = useState<string[]>(() => loadUserData(currentUser.id).bookmarks || []);
+  const [customExams, setCustomExams] = useState<Exam[]>(() => loadUserData(currentUser.id).customExams || []);
+
+  // Online DB Exams
+  const [dbExams, setDbExams] = useState<Exam[]>([]);
 
   // Custom User Questions
   const [customQuestions, setCustomQuestions] = useState<Question[]>(() => {
@@ -360,12 +238,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ...customQuestions,
   ];
 
-  // Base Exam Bank (English + Math + Custom)
-  const allExams: Exam[] = [
+  // Base Exam Bank (English + Math + DB-synced / Custom exams)
+  // De-duplicate exams by ID
+  const allExamsMap = new Map<string, Exam>();
+  [
     ...EXAMS_DATA.map((e) => ({ ...e, subject: 'english' as SubjectId })),
     ...MATH_EXAMS_DATA.map((e) => ({ ...e, subject: 'math' as SubjectId })),
     ...customExams,
-  ];
+    ...dbExams,
+  ].forEach((e) => {
+    allExamsMap.set(e.id, e);
+  });
+  const allExams: Exam[] = Array.from(allExamsMap.values());
+
+  // Subscribe to Firebase DB in real-time for Exams, Questions, and Student Data
+  useEffect(() => {
+    // 1. Subscribe to Exams on DB
+    const unsubExams = subscribeToExamsFromOnlineDB((cloudExams) => {
+      if (cloudExams && Array.isArray(cloudExams)) {
+        setDbExams(cloudExams);
+      }
+    });
+
+    // 2. Subscribe to Custom Questions on DB
+    const unsubQuestions = subscribeToQuestionsFromOnlineDB((cloudQuestions) => {
+      if (cloudQuestions && Array.isArray(cloudQuestions) && cloudQuestions.length > 0) {
+        setCustomQuestions((prev) => {
+          const existingIds = new Set(cloudQuestions.map((q) => q.id));
+          const localOnly = prev.filter((p) => !existingIds.has(p.id));
+          return [...cloudQuestions, ...localOnly];
+        });
+      }
+    });
+
+    return () => {
+      unsubExams();
+      unsubQuestions();
+    };
+  }, []);
+
+  // Subscribe to Student Data on DB for active currentUser
+  useEffect(() => {
+    const unsubStudent = subscribeToStudentData(currentUser.id, (cloudPayload) => {
+      if (cloudPayload && cloudPayload.userData) {
+        const uData = cloudPayload.userData;
+        if (Array.isArray(uData.examAttempts)) {
+          // Filter out legacy mock data if any
+          const cleanAttempts = uData.examAttempts.filter(
+            (a: any) => a.id && !a.id.startsWith('attempt_demo_')
+          );
+          setExamAttempts(cleanAttempts);
+        }
+        if (Array.isArray(uData.practiceSessions)) {
+          setPracticeSessions(uData.practiceSessions);
+        }
+        if (uData.mistakes && typeof uData.mistakes === 'object') {
+          setMistakes(uData.mistakes);
+        }
+        if (Array.isArray(uData.bookmarks)) {
+          setBookmarks(uData.bookmarks);
+        }
+        if (Array.isArray(uData.customExams)) {
+          setCustomExams(uData.customExams);
+        }
+      }
+    });
+
+    return () => unsubStudent();
+  }, [currentUser.id]);
 
   // Sync user data to localStorage and Online Cloud DB on changes
   useEffect(() => {
@@ -450,7 +390,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       targetScoreEnglish: data.targetScoreEnglish || data.targetScore || 8.5,
       targetScoreMath: data.targetScoreMath || data.targetScore || 8.5,
       targetSchool: data.targetSchool || 'THPT Chu Văn An / Kim Liên',
-      streakDays: 1,
+      streakDays: 0,
       lastActiveDate: new Date().toISOString(),
       avatarColor: 'bg-emerald-600',
       createdAt: new Date().toISOString().split('T')[0],
@@ -462,7 +402,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logout = () => {
-    // Revert to demo student 1 or guest
     switchUser(DEFAULT_USERS[0].id);
   };
 
@@ -520,17 +459,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `q_custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     };
     setCustomQuestions((prev) => [newQ, ...prev]);
+    // Save to Firebase Realtime DB
+    saveQuestionToOnlineDB(newQ).catch((err) => console.warn('DB Question save error:', err));
     return newQ;
   };
 
   const updateQuestion = (id: string, q: Partial<Question>) => {
-    setCustomQuestions((prev) => prev.map((item) => (item.id === id ? { ...item, ...q } : item)));
+    setCustomQuestions((prev) => {
+      const updated = prev.map((item) => (item.id === id ? { ...item, ...q } : item));
+      const target = updated.find((item) => item.id === id);
+      if (target) {
+        saveQuestionToOnlineDB(target).catch((err) => console.warn('DB Question update error:', err));
+      }
+      return updated;
+    });
   };
 
   const deleteQuestion = (id: string) => {
     setCustomQuestions((prev) => prev.filter((item) => item.id !== id));
     removeMistake(id);
     setBookmarks((prev) => prev.filter((bId) => bId !== id));
+    // Delete from Firebase DB
+    deleteQuestionFromOnlineDB(id).catch((err) => console.warn('DB Question delete error:', err));
   };
 
   const bulkImportQuestions = (newQuestions: (Question | Omit<Question, 'id'>)[]): number => {
@@ -542,12 +492,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCustomQuestions((prev) => {
       const existingIds = new Set(prev.map((p) => p.id));
       const toAdd = formatted.filter((f) => !existingIds.has(f.id));
+      // Save each new question to DB
+      toAdd.forEach((item) => {
+        saveQuestionToOnlineDB(item).catch(() => {});
+      });
       return [...toAdd, ...prev];
     });
     return formatted.length;
   };
 
-  // Exams
+  // Exams (Saved & Synced to Firebase Realtime DB)
   const getExamById = (id: string) => allExams.find((e) => e.id === id);
 
   const addExam = (e: Omit<Exam, 'id' | 'createdAt'> & { id?: string }): Exam => {
@@ -562,18 +516,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const filtered = prev.filter((item) => item.id !== newExam.id);
       return [newExam, ...filtered];
     });
+    // Immediately persist to Firebase Realtime Database
+    saveExamToOnlineDB(newExam).catch((err) => console.warn('DB Exam save error:', err));
     return newExam;
   };
 
   const updateExam = (id: string, e: Partial<Exam>) => {
-    setCustomExams((prev) => prev.map((item) => (item.id === id ? { ...item, ...e } : item)));
+    setCustomExams((prev) => {
+      const updated = prev.map((item) => (item.id === id ? { ...item, ...e } : item));
+      const target = updated.find((item) => item.id === id);
+      if (target) {
+        saveExamToOnlineDB(target).catch((err) => console.warn('DB Exam update error:', err));
+      }
+      return updated;
+    });
   };
 
   const deleteExam = (id: string) => {
     setCustomExams((prev) => prev.filter((item) => item.id !== id));
+    setDbExams((prev) => prev.filter((item) => item.id !== id));
+    // Delete from Firebase DB
+    deleteExamFromOnlineDB(id).catch((err) => console.warn('DB Exam delete error:', err));
   };
 
-  // Attempts & Practice
+  // Attempts & Practice (Saved & Synced to Firebase Realtime DB)
   const saveExamAttempt = (attempt: Omit<ExamAttempt, 'id'>): ExamAttempt => {
     const newAttempt: ExamAttempt = {
       ...attempt,
@@ -582,6 +548,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `attempt_${Date.now()}`,
     };
     setExamAttempts((prev) => [newAttempt, ...prev]);
+
+    // Save directly to Firebase Realtime Database
+    saveExamAttemptToOnlineDB(currentUser.id, newAttempt).catch((err) =>
+      console.warn('DB saveExamAttempt error:', err)
+    );
 
     // Automatically log and broadcast activity in real-time
     logAndBroadcastActivity({
@@ -720,7 +691,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isBookmarked = (questionId: string) => bookmarks.includes(questionId);
 
-  // Compute Live Analytics (Filtered by current subject)
+  // Compute Live Analytics (Filtered by current subject with NO fake mock fallback)
   const computeAnalytics = () => {
     let totalSolved = 0;
     let totalCorrect = 0;
@@ -771,28 +742,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       item.accuracy = item.solved > 0 ? Math.round((item.correct / item.solved) * 100) : 0;
     });
 
-    const overallAccuracy = totalSolved > 0 ? Math.round((totalCorrect / totalSolved) * 100) : 80;
+    const overallAccuracy = totalSolved > 0 ? Math.round((totalCorrect / totalSolved) * 100) : 0;
     const averageExamScore =
       filteredAttempts.length > 0
         ? parseFloat(
             (filteredAttempts.reduce((acc, curr) => acc + curr.score, 0) / filteredAttempts.length).toFixed(2)
           )
-        : 8.2;
+        : 0;
 
-    const activeMistakesCount = Object.values(mistakes).filter(
+    const activeMistakesCount = (Object.values(mistakes) as MistakeItem[]).filter(
       (m) => !m.mastered && (m.subject || 'english') === currentSubject
     ).length;
 
     const penalty = Math.min(1.2, activeMistakesCount * 0.15);
-    const targetScore =
-      currentSubject === 'math'
-        ? currentUser.targetScoreMath || currentUser.targetScore
-        : currentUser.targetScoreEnglish || currentUser.targetScore;
 
-    const predictedGrade10Score = Math.max(
-      5.0,
-      Math.min(9.8, parseFloat((averageExamScore * 0.9 + 0.8 - penalty * 0.4).toFixed(1)))
-    );
+    // If no attempts or solved questions yet, predicted grade 10 score is 0 (clean state)
+    const predictedGrade10Score =
+      filteredAttempts.length > 0 || totalSolved > 0
+        ? Math.max(
+            1.0,
+            Math.min(10.0, parseFloat((averageExamScore * 0.9 + 0.8 - penalty * 0.4).toFixed(1)))
+          )
+        : 0;
 
     const topicArray = Object.keys(topicStats)
       .map((tId) => ({ topicId: tId as TopicId, ...topicStats[tId] }))
@@ -808,8 +779,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currentSubject === 'math' ? ['math_can_thuc', 'math_he_thuc_luong'] : ['pronunciation', 'vocabulary'];
 
     return {
-      totalSolved: totalSolved || (currentSubject === 'math' ? 24 : 32),
-      totalCorrect: totalCorrect || (currentSubject === 'math' ? 20 : 26),
+      totalSolved,
+      totalCorrect,
       overallAccuracy,
       averageExamScore,
       predictedGrade10Score,
@@ -828,9 +799,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (e) {
       console.error(e);
-    }
-    if (INITIAL_DEMO_DATA[userId]) {
-      return INITIAL_DEMO_DATA[userId];
     }
     return {
       examAttempts: [],
@@ -858,8 +826,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const seedDemoProgress = () => {
-    localStorage.clear();
-    window.location.reload();
+    resetAllProgress();
   };
 
   const resetAllProgress = () => {
@@ -867,6 +834,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPracticeSessions([]);
     setMistakes({});
     setBookmarks([]);
+    setCustomExams([]);
+    setCustomQuestions([]);
+    
+    // Clear localStorage for user
+    try {
+      localStorage.removeItem(getUserDataKey(currentUser.id));
+      localStorage.removeItem('edu10_custom_questions');
+    } catch (_) {}
+
+    // Reset online DB state to clean blank data
+    clearOnlineStudentData(currentUser.id).catch((err) =>
+      console.warn('DB clear error:', err)
+    );
   };
 
   return (
@@ -928,3 +908,4 @@ export const useApp = () => {
   }
   return context;
 };
+

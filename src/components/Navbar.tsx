@@ -56,7 +56,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const { currentSubject, switchSubject, currentUser, mistakes, bookmarks, analytics } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const activeMistakesCount = Object.values(mistakes).filter(
+  const activeMistakesCount = (Object.values(mistakes) as MistakeItem[]).filter(
     (m) => !m.mastered && (m.subject || 'english') === currentSubject
   ).length;
   const bookmarksCount = bookmarks.length;

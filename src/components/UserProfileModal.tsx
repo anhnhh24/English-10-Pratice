@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { MistakeItem } from '../types';
 import {
   X,
   User,
@@ -15,6 +16,7 @@ import {
   BookMarked,
   Calculator,
   Languages,
+  RotateCcw,
 } from 'lucide-react';
 
 interface UserProfileModalProps {
@@ -37,6 +39,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     examAttempts,
     mistakes,
     bookmarks,
+    resetAllProgress,
   } = useApp();
 
   const [name, setName] = useState(currentUser.name);
@@ -74,7 +77,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     onOpenAuthModal();
   };
 
-  const activeMistakesCount = Object.values(mistakes).filter((m) => !m.mastered).length;
+  const handleResetData = () => {
+    if (confirm('Bạn có chắc chắn muốn xóa toàn bộ dữ liệu lịch sử làm bài, điểm thi và sổ câu sai về data trắng (0 dữ liệu)?')) {
+      resetAllProgress();
+      alert('Đã xóa tất cả dữ liệu về data trắng thành công!');
+    }
+  };
+
+  const activeMistakesCount = (Object.values(mistakes) as MistakeItem[]).filter((m) => !m.mastered).length;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-6 overflow-y-auto animate-in fade-in duration-200">
@@ -275,13 +285,25 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             })}
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="w-full mt-2 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold text-xs rounded-2xl transition flex items-center justify-center space-x-2 cursor-pointer"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Đăng Xuất Tài Khoản</span>
-          </button>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <button
+              onClick={handleResetData}
+              type="button"
+              className="py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold text-xs rounded-2xl transition flex items-center justify-center space-x-1.5 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Xóa Về Data Trắng</span>
+            </button>
+
+            <button
+              onClick={handleLogout}
+              type="button"
+              className="py-2.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-bold text-xs rounded-2xl transition flex items-center justify-center space-x-1.5 cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Đăng Xuất</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

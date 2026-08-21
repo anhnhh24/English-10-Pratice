@@ -1,9 +1,11 @@
 /**
  * Cloud Database Synchronization Service — Firebase Realtime Database
  * Real cross-device sync between guardian (admin) and student (Hoàng Hà)
+ * Persistent online storage for Exams, Question Bank, Test Attempts, and Progress
  */
-import { database, ref, set, get, onValue, off } from './firebaseConfig';
+import { database, ref, set, get, onValue, off, remove } from './firebaseConfig';
 import type { DataSnapshot } from 'firebase/database';
+import { Exam, Question, ExamAttempt } from '../types';
 
 export interface CloudDBSettings {
   enabled: boolean;
@@ -49,6 +51,10 @@ export function saveCloudDBSettings(settings: Partial<CloudDBSettings>): CloudDB
   return updated;
 }
 
+// ═════════════════════════════════════════════════════════════
+// 1. STUDENT PROGRESS & ATTEMPTS DB SYNC
+// ═════════════════════════════════════════════════════════════
+
 /**
  * Push student data to Firebase Realtime Database
  */
@@ -67,7 +73,7 @@ export async function pushUserDataToOnlineDB(
     userProfile: userProfile || null,
     userData,
     updatedAt: new Date().toISOString(),
-    deviceInfo: navigator.userAgent.slice(0, 80),
+    deviceInfo: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 80) : 'Web App',
   };
 
   try {
@@ -77,12 +83,64 @@ export async function pushUserDataToOnlineDB(
     return { success: true, message: '✅ Đã đồng bộ lên Firebase Realtime DB thành công!' };
   } catch (err: any) {
     console.error('Firebase push error:', err);
-    // Fallback: save to localStorage backup
     try {
       localStorage.setItem(`edu10_cloud_backup_${settings.roomCode}_${userId}`, JSON.stringify(payload));
     } catch (_) {}
     return { success: false, message: `❌ Lỗi đồng bộ: ${err.message || 'Không kết nối được Firebase'}` };
   }
+}
+
+/**
+ * Save single exam attempt directly to online DB
+ */
+export async function saveExamAttemptToOnlineDB(
+  userId: string,
+  attempt: ExamAttempt
+): Promise<{ success: boolean; message: string }> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) {
+    return { success: false, message: 'Cloud DB chưa được kích hoạt' };
+  }
+
+  try {
+    // 1. Save to global room attempts list
+    const attemptRef = ref(database, `rooms/${settings.roomCode}/examAttempts/${attempt.id}`);
+    await set(attemptRef, {
+      ...attempt,
+      userId,
+      savedAt: new Date().toISOString(),
+    });
+
+    // 2. Also save to user specific attempts map
+    const userAttemptRef = ref(database, `rooms/${settings.roomCode}/students/${userId}/userData/examAttemptsMap/${attempt.id}`);
+    await set(userAttemptRef, attempt);
+
+    return { success: true, message: 'Đã lưu lịch sử làm bài vào DB thành công' };
+  } catch (err: any) {
+    console.error('Firebase saveExamAttempt error:', err);
+    return { success: false, message: err.message };
+  }
+}
+
+/**
+ * Subscribe to real-time changes for a specific student on Firebase
+ */
+export function subscribeToStudentData(
+  userId: string,
+  callback: (data: any) => void
+): () => void {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return () => {};
+
+  const dbRef = ref(database, `rooms/${settings.roomCode}/students/${userId}`);
+  const handler = (snapshot: DataSnapshot) => {
+    if (snapshot.exists()) {
+      callback(snapshot.val());
+    }
+  };
+
+  onValue(dbRef, handler);
+  return () => off(dbRef, 'value', handler);
 }
 
 /**
@@ -115,28 +173,6 @@ export async function fetchRoomDataFromOnlineDB(): Promise<{
 }
 
 /**
- * Subscribe to real-time changes for a specific student on Firebase
- * Returns unsubscribe function
- */
-export function subscribeToStudentData(
-  userId: string,
-  callback: (data: any) => void
-): () => void {
-  const settings = getCloudDBSettings();
-  if (!settings.enabled || !settings.roomCode) return () => {};
-
-  const dbRef = ref(database, `rooms/${settings.roomCode}/students/${userId}`);
-  const handler = (snapshot: DataSnapshot) => {
-    if (snapshot.exists()) {
-      callback(snapshot.val());
-    }
-  };
-
-  onValue(dbRef, handler);
-  return () => off(dbRef, 'value', handler);
-}
-
-/**
  * Subscribe to real-time changes for ALL students in the room
  */
 export function subscribeToRoomData(
@@ -156,6 +192,176 @@ export function subscribeToRoomData(
   return () => off(dbRef, 'value', handler);
 }
 
+// ═════════════════════════════════════════════════════════════
+// 2. EXAMS DB SYNC (Save, Update, Delete & Subscribe)
+// ═════════════════════════════════════════════════════════════
+
+/**
+ * Save or update an exam on Firebase Realtime Database
+ */
+export async function saveExamToOnlineDB(exam: Exam): Promise<{ success: boolean; message: string }> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) {
+    return { success: false, message: 'Cloud DB chưa được kích hoạt' };
+  }
+
+  try {
+    const examRef = ref(database, `rooms/${settings.roomCode}/exams/${exam.id}`);
+    await set(examRef, {
+      ...exam,
+      updatedAt: new Date().toISOString(),
+    });
+    return { success: true, message: 'Đã lưu đề thi lên DB thành công' };
+  } catch (err: any) {
+    console.error('Firebase saveExam error:', err);
+    return { success: false, message: err.message || 'Lỗi lưu đề thi lên DB' };
+  }
+}
+
+/**
+ * Delete an exam from Firebase Realtime Database
+ */
+export async function deleteExamFromOnlineDB(examId: string): Promise<{ success: boolean; message: string }> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) {
+    return { success: false, message: 'Cloud DB chưa được kích hoạt' };
+  }
+
+  try {
+    const examRef = ref(database, `rooms/${settings.roomCode}/exams/${examId}`);
+    await remove(examRef);
+    return { success: true, message: 'Đã xóa đề thi trên DB' };
+  } catch (err: any) {
+    console.error('Firebase deleteExam error:', err);
+    return { success: false, message: err.message || 'Lỗi xóa đề thi trên DB' };
+  }
+}
+
+/**
+ * Subscribe to real-time changes for exams from Firebase Realtime DB
+ */
+export function subscribeToExamsFromOnlineDB(
+  callback: (exams: Exam[]) => void
+): () => void {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return () => {};
+
+  const examsRef = ref(database, `rooms/${settings.roomCode}/exams`);
+  const handler = (snapshot: DataSnapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      if (data && typeof data === 'object') {
+        const examsList = Object.values(data) as Exam[];
+        callback(examsList);
+      }
+    } else {
+      callback([]);
+    }
+  };
+
+  onValue(examsRef, handler);
+  return () => off(examsRef, 'value', handler);
+}
+
+// ═════════════════════════════════════════════════════════════
+// 3. QUESTIONS DB SYNC (Custom / Imported questions)
+// ═════════════════════════════════════════════════════════════
+
+/**
+ * Save custom question to Firebase Realtime Database
+ */
+export async function saveQuestionToOnlineDB(question: Question): Promise<{ success: boolean; message: string }> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) {
+    return { success: false, message: 'Cloud DB chưa được kích hoạt' };
+  }
+
+  try {
+    const qRef = ref(database, `rooms/${settings.roomCode}/questions/${question.id}`);
+    await set(qRef, {
+      ...question,
+      updatedAt: new Date().toISOString(),
+    });
+    return { success: true, message: 'Đã lưu câu hỏi lên DB' };
+  } catch (err: any) {
+    console.error('Firebase saveQuestion error:', err);
+    return { success: false, message: err.message || 'Lỗi lưu câu hỏi lên DB' };
+  }
+}
+
+/**
+ * Delete custom question from Firebase Realtime Database
+ */
+export async function deleteQuestionFromOnlineDB(questionId: string): Promise<{ success: boolean; message: string }> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) {
+    return { success: false, message: 'Cloud DB chưa được kích hoạt' };
+  }
+
+  try {
+    const qRef = ref(database, `rooms/${settings.roomCode}/questions/${questionId}`);
+    await remove(qRef);
+    return { success: true, message: 'Đã xóa câu hỏi trên DB' };
+  } catch (err: any) {
+    console.error('Firebase deleteQuestion error:', err);
+    return { success: false, message: err.message || 'Lỗi xóa câu hỏi' };
+  }
+}
+
+/**
+ * Subscribe to real-time changes for custom questions
+ */
+export function subscribeToQuestionsFromOnlineDB(
+  callback: (questions: Question[]) => void
+): () => void {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return () => {};
+
+  const qRef = ref(database, `rooms/${settings.roomCode}/questions`);
+  const handler = (snapshot: DataSnapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      if (data && typeof data === 'object') {
+        const questionsList = Object.values(data) as Question[];
+        callback(questionsList);
+      }
+    } else {
+      callback([]);
+    }
+  };
+
+  onValue(qRef, handler);
+  return () => off(qRef, 'value', handler);
+}
+
+// ═════════════════════════════════════════════════════════════
+// 4. CLEAR DATA & CONNECTION HELPERS
+// ═════════════════════════════════════════════════════════════
+
+/**
+ * Reset student data on DB to clean blank state
+ */
+export async function clearOnlineStudentData(userId: string): Promise<boolean> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return false;
+
+  try {
+    const emptyUserData = {
+      examAttempts: [],
+      practiceSessions: [],
+      mistakes: {},
+      bookmarks: [],
+      customExams: [],
+    };
+    const dbRef = ref(database, `rooms/${settings.roomCode}/students/${userId}/userData`);
+    await set(dbRef, emptyUserData);
+    return true;
+  } catch (err) {
+    console.error('Failed to clear online student data:', err);
+    return false;
+  }
+}
+
 /**
  * Check Firebase connection status
  */
@@ -167,3 +373,4 @@ export function subscribeToConnectionStatus(callback: (connected: boolean) => vo
   onValue(connRef, handler);
   return () => off(connRef, 'value', handler);
 }
+

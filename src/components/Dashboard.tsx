@@ -167,7 +167,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <h3 className="text-2xl sm:text-3xl font-bold text-[#5A5A40]">{analytics.totalSolved}</h3>
           </div>
           <p className="text-[10px] sm:text-[11px] text-[#8BA888] font-semibold mt-1.5">
-            +18% so với tuần trước
+            {analytics.totalSolved > 0 ? `${analytics.totalCorrect}/${analytics.totalSolved} câu đúng` : 'Chưa có lượt giải'}
           </p>
         </div>
 
@@ -189,7 +189,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-[2rem] shadow-xs border border-[#EAE7E0] flex flex-col justify-between">
           <div>
             <p className="text-[10px] sm:text-xs uppercase font-bold text-[#8A8A70] mb-0.5">Điểm dự đoán vào 10</p>
-            <h3 className="text-2xl sm:text-3xl font-bold text-[#5A5A40]">{analytics.predictedGrade10Score}đ</h3>
+            <h3 className="text-2xl sm:text-3xl font-bold text-[#5A5A40]">
+              {analytics.predictedGrade10Score > 0 ? `~${analytics.predictedGrade10Score}đ` : '--'}
+            </h3>
           </div>
           <p className="text-[10px] sm:text-[11px] text-[#8BA888] font-semibold mt-1.5">
             Mục tiêu: {currentSubjectTarget}đ
@@ -213,7 +215,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </h3>
           </div>
           <p className="text-[10px] sm:text-[11px] text-[#E8E2D9] mt-1.5">
-            Điểm TB: <strong>{analytics.averageExamScore.toFixed(1)}/10</strong>
+            Điểm TB: <strong>{analytics.averageExamScore > 0 ? `${analytics.averageExamScore.toFixed(1)}/10` : '--/10'}</strong>
           </p>
         </div>
       </section>

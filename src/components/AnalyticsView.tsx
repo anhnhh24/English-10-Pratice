@@ -68,7 +68,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
               Dự đoán Điểm Vào 10
             </p>
             <div className="text-4xl font-extrabold text-[#5A5A40] mt-0.5">
-              ~{analytics.predictedGrade10Score.toFixed(1)}
+              {analytics.predictedGrade10Score > 0 ? `~${analytics.predictedGrade10Score.toFixed(1)}` : '--'}
             </div>
             <p className="text-[11px] text-[#8BA888] font-bold mt-0.5">
               Mục tiêu: {subjectTargetScore}/10
@@ -108,7 +108,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
             <span>Điểm thi thử TB</span>
           </div>
           <div className="text-2xl font-bold text-[#5A5A40]">
-            {analytics.averageExamScore.toFixed(1)}/10
+            {analytics.averageExamScore > 0 ? `${analytics.averageExamScore.toFixed(1)}/10` : '--/10'}
           </div>
           <p className="text-[11px] text-[#8BA888] font-semibold mt-1">
             Qua {subjectExamAttempts.length} lượt làm bài
