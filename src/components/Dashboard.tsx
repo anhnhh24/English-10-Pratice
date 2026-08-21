@@ -10,13 +10,12 @@ import {
   Zap,
   Target,
   Flame,
-  Award,
   Sparkles,
-  BookOpen,
   ArrowRight,
-  Wand2,
-  Calculator,
   Compass,
+  CheckCircle2,
+  AlertCircle,
+  TrendingUp,
 } from 'lucide-react';
 import { TabType } from './Navbar';
 
@@ -35,417 +34,413 @@ export const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const { currentSubject, currentUser, examAttempts, mistakes, analytics, getQuestionById } = useApp();
 
-  const currentTopicsMeta = currentSubject === 'math' ? MATH_TOPICS_META : TOPICS_META;
-  const defaultExamId = currentSubject === 'math' ? 'math_exam_official_01' : 'exam_official_01';
-  const defaultPracticeTopic = currentSubject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar';
+  const isMath = currentSubject === 'math';
+  const currentTopicsMeta = isMath ? MATH_TOPICS_META : TOPICS_META;
+  const defaultExamId = isMath ? 'math_exam_official_01' : 'exam_official_01';
 
+  // Real Subject Attempts & Mistakes
+  const filteredAttempts = examAttempts.filter(
+    (a) => (a.subject || 'english') === currentSubject
+  );
   const activeMistakes = (Object.values(mistakes) as MistakeItem[]).filter(
     (m) => !m.mastered && (m.subject || 'english') === currentSubject
   );
   const activeMistakesCount = activeMistakes.length;
 
   const currentSubjectTarget =
-    currentSubject === 'math'
-      ? currentUser.targetScoreMath || currentUser.targetScore
-      : currentUser.targetScoreEnglish || currentUser.targetScore;
+    isMath
+      ? currentUser.targetScoreMath || currentUser.targetScore || 8.5
+      : currentUser.targetScoreEnglish || currentUser.targetScore || 8.5;
 
-  const isMath = currentSubject === 'math';
-  const theme = {
-    primaryBg: isMath ? 'bg-[#1E3A8A]' : 'bg-[#5A5A40]',
-    primaryText: isMath ? 'text-[#1E3A8A]' : 'text-[#5A5A40]',
-    accentColor: isMath ? 'text-[#2563EB]' : 'text-[#8BA888]',
-    accentBg: isMath ? 'bg-[#2563EB]' : 'bg-[#8BA888]',
-    cardBorder: isMath ? 'border-blue-100' : 'border-[#D9D2C5]',
-    bannerGradient: isMath
-      ? 'bg-gradient-to-r from-[#1E3A8A] via-[#1E40AF] to-[#2563EB]'
-      : 'bg-[#5A5A40]',
-  };
+  // Real dynamic focus topic from weakest topics or first topic
+  const dynamicFocusTopicId =
+    analytics.weakestTopics && analytics.weakestTopics.length > 0
+      ? analytics.weakestTopics[0]
+      : isMath
+      ? 'math_pt_bac_hai_viet'
+      : 'grammar';
+
+  const dynamicFocusTopic =
+    currentTopicsMeta.find((t) => t.id === dynamicFocusTopicId) || currentTopicsMeta[0];
+
+  // Remote assigned tasks for this student
+  const pendingTasks = getStoredRemoteTasks().filter(
+    (t) => !t.completed && (t.recipientUserId === 'all' || t.recipientUserId === currentUser.id)
+  );
 
   return (
-    <div className="space-y-4 sm:space-y-6 pb-6">
-      {/* 1. Header Greeting */}
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-        <div>
-          <div className="flex items-center space-x-2">
-            <h2 className={`text-xl sm:text-2xl lg:text-3xl font-bold ${isMath ? 'text-[#0F172A]' : 'text-[#3D3D2D]'}`}>
+    <div className="space-y-5 pb-8 max-w-5xl mx-auto">
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* 1. GREETING & FOCUS BANNER (Gọn gàng, tinh tế)              */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <header className="bg-white p-5 sm:p-7 rounded-[2rem] border border-[#EAE7E0] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+            <h2 className="text-xl sm:text-2xl font-extrabold text-[#3D3D2D]">
               Chào {currentUser.name}! 👋
             </h2>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${isMath ? 'bg-blue-50 border border-blue-200 text-[#1E3A8A]' : 'bg-[#FAF9F6] border border-[#D9D2C5] text-[#5A5A40]'}`}>
-              {currentSubject === 'math' ? '📐 Môn Toán 10' : '🇬🇧 Môn Tiếng Anh 10'}
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                isMath
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                  : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              }`}
+            >
+              {isMath ? '📐 Môn Toán 9 Vào 10' : '🇬🇧 Môn Tiếng Anh 9 Vào 10'}
             </span>
           </div>
-          <p className="text-[#64748B] text-xs sm:text-sm mt-1">
-            {currentSubject === 'math' ? (
-              <>
-                Hôm nay chúng ta cần tập trung vào phần{' '}
-                <span className="text-[#1E3A8A] font-semibold underline decoration-blue-400">
-                  Phương trình bậc hai & Định lý Vi-ét
-                </span>
+
+          <p className="text-xs sm:text-sm text-[#64748B]">
+            {activeMistakesCount > 0 ? (
+              <span>
+                Bạn đang có{' '}
+                <strong className="text-[#E67E22]">{activeMistakesCount} câu cần ôn lại</strong> trong Sổ
+                câu sai để không bị mất điểm đáng tiếc.
+              </span>
+            ) : analytics.totalSolved > 0 ? (
+              <span>
+                Đang học tốt! Hãy duy trì luyện đề và củng cố chuyên đề{' '}
+                <strong className={isMath ? 'text-blue-700' : 'text-[#5A5A40]'}>
+                  {dynamicFocusTopic.nameVi}
+                </strong>
                 .
-              </>
+              </span>
             ) : (
-              <>
-                Hôm nay chúng ta cần tập trung vào phần{' '}
-                <span className="text-[#5A5A40] font-semibold underline decoration-[#8BA888]">
-                  Mệnh đề quan hệ & Câu điều kiện
-                </span>
-                .
-              </>
+              <span>
+                Bắt đầu làm bài kiểm tra hoặc luyện nhanh 10 câu để đánh giá lực học hiện tại nhé.
+              </span>
             )}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setActiveTab('study_path')}
-            className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-2xl text-xs font-bold transition cursor-pointer shadow-2xs ${
-              isMath
-                ? 'bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900'
-                : 'bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900'
-            }`}
-          >
-            <Compass className="w-4 h-4 text-blue-600" />
-            <span>Lộ trình vào 10</span>
-          </button>
-
-          <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-white border border-[#CBD5E1] rounded-2xl text-xs font-semibold text-[#334155] shadow-2xs">
+        {/* Quick Goal & Streak Badges */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl text-xs font-bold text-[#3D3D2D]">
             <Flame className="w-4 h-4 text-[#E67E22] fill-[#E67E22]" />
-            <span>{currentUser.streakDays} ngày liên tiếp</span>
+            <span>{currentUser.streakDays || 0} ngày liên tiếp</span>
           </div>
 
           <button
             onClick={onOpenTargetModal}
-            className="flex items-center space-x-1.5 px-3 py-1.5 bg-white hover:bg-black/5 border border-[#CBD5E1] rounded-2xl text-xs font-bold text-[#334155] transition cursor-pointer shadow-2xs"
+            className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#FAF9F6] hover:bg-[#F5F2ED] border border-[#EAE7E0] rounded-xl text-xs font-bold text-[#3D3D2D] transition cursor-pointer"
+            title="Đổi mục tiêu điểm số"
           >
-            <Target className={`w-4 h-4 ${theme.accentColor}`} />
-            <span>
-              Mục tiêu {currentSubject === 'math' ? 'Toán' : 'Anh'}: {currentSubjectTarget}đ
-            </span>
+            <Target className="w-4 h-4 text-emerald-600" />
+            <span>Mục tiêu: {currentSubjectTarget}đ</span>
           </button>
         </div>
       </header>
 
-      {/* Assigned Tasks Widget */}
-      {(() => {
-        const pendingTasks = getStoredRemoteTasks().filter(
-          (t) => !t.completed && (t.recipientUserId === 'all' || t.recipientUserId === currentUser.id)
-        );
-        if (pendingTasks.length === 0) return null;
-
-        return (
-          <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-4 sm:p-5 rounded-2xl sm:rounded-[2rem] shadow-md space-y-2 animate-in fade-in">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <span className="text-lg">📌</span>
-                <h3 className="font-bold text-sm sm:text-base">Nhiệm vụ anh vừa giao cho Hà ({pendingTasks.length})</h3>
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* 2. NHIỆM VỤ ANH TRAI / GIÁO VIÊN GIAO (Nổi bật khi có bài) */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {pendingTasks.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-5 rounded-[2rem] shadow-md space-y-3 animate-in fade-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="text-xl">📌</span>
+              <div>
+                <h3 className="font-extrabold text-sm sm:text-base">
+                  Nhiệm vụ anh vừa giao cho bạn ({pendingTasks.length} bài)
+                </h3>
+                <p className="text-[11px] text-amber-100">Hoàn thành để được anh xem lại bài giải</p>
               </div>
-              <span className="px-2.5 py-0.5 bg-white/20 text-xs font-bold rounded-full">Cần làm ngay</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-              {pendingTasks.slice(0, 2).map((t) => (
-                <div key={t.id} className="p-3 bg-white/10 backdrop-blur-xs rounded-xl border border-white/20 text-xs space-y-1">
-                  <p className="font-bold text-white flex items-center justify-between">
-                    <span>{t.title}</span>
-                    <span className="text-[10px] text-amber-200">{t.senderName}</span>
-                  </p>
-                  <p className="text-white/80 text-[11px] italic line-clamp-1">"{t.message}"</p>
-                  <button
-                    onClick={() => {
-                      if (t.assignedExamId) onStartExam(t.assignedExamId);
-                      else if (t.assignedTopicId) onPracticeTopic(t.assignedTopicId);
-                    }}
-                    className="mt-1 px-3 py-1 bg-white text-amber-900 font-bold text-[11px] rounded-lg hover:bg-amber-50 transition cursor-pointer"
-                  >
-                    Bắt đầu làm ngay →
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* AI Exam Generator Feature Spotlight Banner */}
-      <div className={`${theme.bannerGradient} text-white p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-[2.5rem] shadow-md relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all duration-300`}>
-        <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-white/10 to-transparent pointer-events-none" />
-        <div className="space-y-1.5 z-10">
-          <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 bg-white/20 rounded-full text-[10px] sm:text-[11px] font-bold text-white">
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            <span>
-              AI Exam Generator: {currentSubject === 'math' ? 'Môn Toán Học 10' : 'Môn Tiếng Anh 10'}
+            <span className="px-2.5 py-1 bg-white/20 text-xs font-extrabold rounded-xl backdrop-blur-xs">
+              Cần làm ngay
             </span>
           </div>
-          <h3 className="text-lg sm:text-xl lg:text-2xl font-bold tracking-tight">
-            {currentSubject === 'math'
-              ? 'Tạo đề thi thử môn Toán vào 10 tùy chỉnh theo yêu cầu riêng'
-              : 'Tạo đề thi tùy chỉnh theo yêu cầu riêng với Gemini AI'}
-          </h3>
-          <p className="text-xs text-white/80 max-w-xl leading-relaxed">
-            {currentSubject === 'math'
-              ? 'Tự chọn số câu, độ khó, chuyên đề Đại số, Hình học hoặc Bất đẳng thức. AI biên soạn đề chuẩn ma trận kèm lời giải chi tiết từng bước.'
-              : 'Tự chọn chủ đề ngữ pháp, từ vựng hoặc đọc hiểu. AI sẽ biên soạn bộ câu hỏi mới hoàn toàn kèm giải thích chi tiết từng câu.'}
-          </p>
-        </div>
 
-        <button
-          onClick={() => setActiveTab('ai_generator')}
-          id="dashboard-btn-create-exam"
-          className="z-10 px-5 sm:px-6 py-2.5 sm:py-3 bg-white text-[#1E293B] hover:bg-white/90 rounded-2xl text-xs sm:text-sm font-bold shadow-sm transition flex items-center space-x-2 shrink-0 cursor-pointer"
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {pendingTasks.map((t) => (
+              <div
+                key={t.id}
+                className="p-4 bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 text-xs space-y-2 flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between font-bold text-white mb-1">
+                    <span className="truncate pr-2">{t.title}</span>
+                    <span className="text-[10px] text-amber-200 shrink-0 font-normal">
+                      {t.senderName || 'Người giám sát'}
+                    </span>
+                  </div>
+                  <p className="text-white/90 text-[11px] italic line-clamp-2">"{t.message}"</p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (t.assignedExamId) onStartExam(t.assignedExamId);
+                    else if (t.assignedTopicId) onPracticeTopic(t.assignedTopicId);
+                    else onStartExam(defaultExamId);
+                  }}
+                  className="w-full py-2 bg-white text-orange-800 font-extrabold text-xs rounded-xl hover:bg-orange-50 transition cursor-pointer flex items-center justify-center space-x-1 shadow-xs"
+                >
+                  <span>Bắt đầu làm ngay</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* 3. 4 THỐNG KÊ REAL-DATA (100% số liệu thật)                */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {/* Metric 1: Real Exam Score Average */}
+        <div
+          onClick={() => setActiveTab('mock_exam')}
+          className={`p-4 sm:p-5 rounded-2xl sm:rounded-[2rem] text-white flex flex-col justify-between shadow-xs cursor-pointer transition hover:opacity-95 ${
+            isMath ? 'bg-[#1E3A8A]' : 'bg-[#5A5A40]'
+          }`}
         >
-          <span>Khám phá ngay</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* 2. Four Key Stat Metric Cards */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-        {/* Card 1: Questions Solved */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-[2rem] shadow-xs border border-[#EAE7E0] flex flex-col justify-between">
           <div>
-            <p className="text-[10px] sm:text-xs uppercase font-bold text-[#8A8A70] mb-0.5">
-              Câu {currentSubject === 'math' ? 'Toán' : 'Anh'} đã làm
-            </p>
-            <h3 className="text-2xl sm:text-3xl font-bold text-[#5A5A40]">{analytics.totalSolved}</h3>
+            <span className="text-[10px] uppercase font-bold text-white/70 block">
+              Điểm thi thử TB
+            </span>
+            <div className="text-2xl sm:text-3xl font-black mt-1">
+              {filteredAttempts.length > 0 ? `${analytics.averageExamScore.toFixed(1)}đ` : '--'}
+            </div>
           </div>
-          <p className="text-[10px] sm:text-[11px] text-[#8BA888] font-semibold mt-1.5">
-            {analytics.totalSolved > 0 ? `${analytics.totalCorrect}/${analytics.totalSolved} câu đúng` : 'Chưa có lượt giải'}
+          <p className="text-[11px] text-white/80 mt-2">
+            Đã nộp: <strong>{filteredAttempts.length} đề thi</strong>
           </p>
         </div>
 
-        {/* Card 2: Accuracy */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-[2rem] shadow-xs border border-[#EAE7E0] flex flex-col justify-between">
+        {/* Metric 2: Real Solved Count */}
+        <div className="bg-white p-4 sm:p-5 rounded-2xl sm:rounded-[2rem] border border-[#EAE7E0] shadow-xs flex flex-col justify-between">
           <div>
-            <p className="text-[10px] sm:text-xs uppercase font-bold text-[#8A8A70] mb-0.5">Độ chính xác</p>
-            <h3 className="text-2xl sm:text-3xl font-bold text-[#5A5A40]">{analytics.overallAccuracy}%</h3>
+            <span className="text-[10px] uppercase font-bold text-[#8A8A70] block">
+              Câu {isMath ? 'Toán' : 'Tiếng Anh'} đã làm
+            </span>
+            <div className="text-2xl sm:text-3xl font-black text-[#3D3D2D] mt-1">
+              {analytics.totalSolved}
+            </div>
           </div>
-          <div className="w-full bg-[#F5F2ED] h-1.5 rounded-full mt-2 sm:mt-3 overflow-hidden">
+          <p className="text-[11px] text-emerald-700 font-semibold mt-2">
+            {analytics.totalSolved > 0
+              ? `✓ ${analytics.totalCorrect}/${analytics.totalSolved} câu đúng`
+              : 'Chưa có lượt giải'}
+          </p>
+        </div>
+
+        {/* Metric 3: Real Overall Accuracy */}
+        <div className="bg-white p-4 sm:p-5 rounded-2xl sm:rounded-[2rem] border border-[#EAE7E0] shadow-xs flex flex-col justify-between">
+          <div>
+            <span className="text-[10px] uppercase font-bold text-[#8A8A70] block">Độ chính xác</span>
+            <div className="text-2xl sm:text-3xl font-black text-[#3D3D2D] mt-1">
+              {analytics.overallAccuracy}%
+            </div>
+          </div>
+          <div className="w-full bg-[#FAF9F6] h-1.5 rounded-full mt-2 overflow-hidden border border-[#EAE7E0]">
             <div
-              className="bg-[#E67E22] h-full rounded-full transition-all duration-500"
+              className={`h-full rounded-full transition-all duration-500 ${
+                analytics.overallAccuracy >= 80
+                  ? 'bg-emerald-500'
+                  : analytics.overallAccuracy >= 60
+                  ? 'bg-amber-500'
+                  : 'bg-[#E67E22]'
+              }`}
               style={{ width: `${analytics.overallAccuracy}%` }}
             />
           </div>
         </div>
 
-        {/* Card 3: Streak */}
-        <div className="bg-white p-3.5 sm:p-5 rounded-2xl sm:rounded-[2rem] shadow-xs border border-[#EAE7E0] flex flex-col justify-between">
-          <div>
-            <p className="text-[10px] sm:text-xs uppercase font-bold text-[#8A8A70] mb-0.5">Điểm dự đoán vào 10</p>
-            <h3 className="text-2xl sm:text-3xl font-bold text-[#5A5A40]">
-              {analytics.predictedGrade10Score > 0 ? `~${analytics.predictedGrade10Score}đ` : '--'}
-            </h3>
-          </div>
-          <p className="text-[10px] sm:text-[11px] text-[#8BA888] font-semibold mt-1.5">
-            Mục tiêu: {currentSubjectTarget}đ
-          </p>
-        </div>
-
-        {/* Card 4: Exam Attempts */}
+        {/* Metric 4: Real Mistakes Count */}
         <div
-          onClick={() => setActiveTab('mock_exam')}
-          className="bg-[#5A5A40] p-3.5 sm:p-5 rounded-2xl sm:rounded-[2rem] shadow-sm text-white flex flex-col justify-between cursor-pointer hover:bg-[#3D3D2D] transition"
+          onClick={() => setActiveTab('mistakes')}
+          className="bg-white p-4 sm:p-5 rounded-2xl sm:rounded-[2rem] border border-[#EAE7E0] shadow-xs flex flex-col justify-between cursor-pointer hover:border-[#E67E22] transition"
         >
           <div>
-            <p className="text-[10px] sm:text-xs uppercase font-bold text-white/70 mb-0.5">
-              Đề {currentSubject === 'math' ? 'Toán' : 'Anh'} đã thi
-            </p>
-            <h3 className="text-2xl sm:text-3xl font-bold">
-              {examAttempts
-                .filter((a) => (a.subject || 'english') === currentSubject)
-                .length.toString()
-                .padStart(2, '0')}
-            </h3>
+            <span className="text-[10px] uppercase font-bold text-[#8A8A70] block">
+              Sổ câu sai cần chữa
+            </span>
+            <div className="text-2xl sm:text-3xl font-black text-[#E67E22] mt-1">
+              {activeMistakesCount} <span className="text-xs font-bold text-[#8A8A70]">câu</span>
+            </div>
           </div>
-          <p className="text-[10px] sm:text-[11px] text-[#E8E2D9] mt-1.5">
-            Điểm TB: <strong>{analytics.averageExamScore > 0 ? `${analytics.averageExamScore.toFixed(1)}/10` : '--/10'}</strong>
+          <p className="text-[11px] text-[#8A8A70] mt-2">
+            {activeMistakesCount > 0 ? 'Bấm để mở và luyện lại →' : '🎉 Không có câu sai tồn đọng'}
           </p>
         </div>
-      </section>
-
-      {/* 3. Quick Action Buttons */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-        <button
-          onClick={() => onStartExam(defaultExamId)}
-          className="p-3.5 sm:p-4 bg-white hover:bg-[#FAF9F6] border border-[#EAE7E0] hover:border-[#D9D2C5] rounded-2xl sm:rounded-[2rem] shadow-xs text-left transition cursor-pointer group"
-        >
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[#F5F2ED] text-[#5A5A40] flex items-center justify-center mb-2.5 group-hover:bg-[#5A5A40] group-hover:text-white transition">
-            <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5" />
-          </div>
-          <h4 className="font-bold text-xs sm:text-sm text-[#3D3D2D] leading-tight">
-            Thi thử Đề chuẩn
-          </h4>
-          <p className="text-[10px] sm:text-[11px] text-[#8A8A70] mt-0.5">
-            {currentSubject === 'math' ? '12 câu / 60 phút' : '50 câu / 60 phút'}
-          </p>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('quick_blitz')}
-          className="p-3.5 sm:p-4 bg-white hover:bg-[#FAF9F6] border border-[#EAE7E0] hover:border-[#D9D2C5] rounded-2xl sm:rounded-[2rem] shadow-xs text-left transition cursor-pointer group"
-        >
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[#F5F2ED] text-[#E67E22] flex items-center justify-center mb-2.5 group-hover:bg-[#E67E22] group-hover:text-white transition">
-            <Zap className="w-4 h-4 sm:w-5 sm:h-5" />
-          </div>
-          <h4 className="font-bold text-xs sm:text-sm text-[#3D3D2D] leading-tight">
-            Luyện Nhanh 10 câu
-          </h4>
-          <p className="text-[10px] sm:text-[11px] text-[#8A8A70] mt-0.5">
-            {currentSubject === 'math' ? 'Phản xạ công thức' : 'Phản xạ ngẫu nhiên'}
-          </p>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('vocab')}
-          className="p-3.5 sm:p-4 bg-white hover:bg-[#FAF9F6] border border-[#EAE7E0] hover:border-[#D9D2C5] rounded-2xl sm:rounded-[2rem] shadow-xs text-left transition cursor-pointer group"
-        >
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[#F5F2ED] text-[#8BA888] flex items-center justify-center mb-2.5 group-hover:bg-[#8BA888] group-hover:text-white transition">
-            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
-          </div>
-          <h4 className="font-bold text-xs sm:text-sm text-[#3D3D2D] leading-tight">
-            {currentSubject === 'math' ? 'Flashcard Công thức' : 'Flashcard Từ vựng'}
-          </h4>
-          <p className="text-[10px] sm:text-[11px] text-[#8A8A70] mt-0.5">
-            {currentSubject === 'math' ? 'Vi-ét, Hình, BĐT & Casio' : 'Unit 1-12 Lớp 9'}
-          </p>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('lessons')}
-          className="p-3.5 sm:p-4 bg-white hover:bg-[#FAF9F6] border border-[#EAE7E0] hover:border-[#D9D2C5] rounded-2xl sm:rounded-[2rem] shadow-xs text-left transition cursor-pointer group"
-        >
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[#F5F2ED] text-[#5A5A40] flex items-center justify-center mb-2.5 group-hover:bg-[#5A5A40] group-hover:text-white transition">
-            <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
-          </div>
-          <h4 className="font-bold text-xs sm:text-sm text-[#3D3D2D] leading-tight">
-            {currentSubject === 'math' ? 'Sổ tay Công thức' : 'Lý thuyết & Mẹo'}
-          </h4>
-          <p className="text-[10px] sm:text-[11px] text-[#8A8A70] mt-0.5">
-            {currentSubject === 'math' ? 'Đại số & Hình học 9' : 'Công thức trọng tâm'}
-          </p>
-        </button>
       </div>
 
-      {/* 4. Main 2-Column Section (Progress by Topic & Mistake Notebook Sidebar) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        {/* Left Topic Mastery Card (2 cols) */}
-        <div className="lg:col-span-2 bg-white rounded-2xl sm:rounded-[2.5rem] p-4 sm:p-6 lg:p-8 shadow-xs border border-[#EAE7E0] flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4 sm:mb-6">
-              <h4 className="text-base sm:text-lg font-bold text-[#3D3D2D]">
-                Tiến độ theo chuyên đề môn {currentSubject === 'math' ? 'Toán' : 'Tiếng Anh'}
-              </h4>
-              <button
-                onClick={() => setActiveTab('topic_practice')}
-                className="text-xs text-[#5A5A40] font-bold hover:underline cursor-pointer"
-              >
-                Xem tất cả chuyên đề
-              </button>
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* 4. 3 KHỐI TRỌNG TÂM HỌC TẬP (Simple & Focused Action Hub)    */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Pillar 1: Thi Thử Tuyển Sinh */}
+        <div className="bg-white p-5 sm:p-6 rounded-[2rem] border border-[#EAE7E0] shadow-xs flex flex-col justify-between space-y-4">
+          <div className="space-y-2">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center">
+              <GraduationCap className="w-5 h-5" />
             </div>
-
-            <div className="space-y-3.5">
-              {currentTopicsMeta.slice(0, 5).map((topic) => {
-                const stat = analytics.topicStats[topic.id] || { solved: 0, accuracy: 0 };
-                const pct = stat.accuracy || (currentSubject === 'math' ? 75 : 65);
-                const barColor =
-                  pct >= 80 ? 'bg-[#8BA888]' : pct >= 60 ? 'bg-[#E8C07D]' : 'bg-[#E67E22]';
-
-                return (
-                  <div key={topic.id} className="space-y-1">
-                    <div className="flex justify-between text-xs sm:text-sm">
-                      <span className="font-semibold text-[#4A4A4A]">{topic.nameVi}</span>
-                      <span className="font-bold text-[#5A5A40]">{pct}%</span>
-                    </div>
-                    <div className="h-2.5 sm:h-3 bg-[#F5F2ED] rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${barColor}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <h3 className="font-extrabold text-base text-[#3D3D2D]">1. Thi Thử Đề Chuẩn</h3>
+            <p className="text-xs text-[#64748B] leading-relaxed">
+              Làm đề thi thử chuẩn cấu trúc vào 10 (bấm giờ thi thật, tự động chấm điểm và chữa câu sai).
+            </p>
           </div>
 
-          {/* Remedial suggestion bottom banner */}
-          <div className="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-[#F5F2ED]">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-              <div>
-                <p className="text-xs sm:text-sm font-bold text-[#3D3D2D]">Gợi ý ôn luyện từ hệ thống</p>
-                <p className="text-[11px] sm:text-xs text-[#8A8A70] italic">
-                  {currentSubject === 'math'
-                    ? 'Tập trung ôn Định lý Vi-ét và Tứ giác nội tiếp để nắm chắc 4.5 điểm thi vào 10'
-                    : 'Dựa trên điểm số Mệnh đề quan hệ & Viết lại câu còn cần khắc phục'}
-                </p>
-              </div>
-              <button
-                onClick={() => onPracticeTopic(defaultPracticeTopic)}
-                className="w-full sm:w-auto bg-[#5A5A40] hover:bg-[#3D3D2D] text-white px-5 sm:px-6 py-2.5 rounded-full text-xs font-bold shadow-xs transition cursor-pointer shrink-0 text-center"
-              >
-                Luyện tập ngay
-              </button>
-            </div>
+          <div className="space-y-2 pt-2 border-t border-[#F5F2ED]">
+            <button
+              onClick={() => onStartExam(defaultExamId)}
+              className={`w-full py-2.5 rounded-xl text-xs font-extrabold text-white transition cursor-pointer flex items-center justify-center space-x-1.5 shadow-xs ${
+                isMath ? 'bg-[#1E3A8A] hover:bg-[#1E40AF]' : 'bg-[#5A5A40] hover:bg-[#3D3D2D]'
+              }`}
+            >
+              <span>Vào thi đề số 01</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={() => setActiveTab('ai_generator')}
+              className="w-full py-2 bg-[#FAF9F6] hover:bg-[#F5F2ED] border border-[#D9D2C5] text-[#3D3D2D] rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center space-x-1"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+              <span>AI tạo đề riêng</span>
+            </button>
           </div>
         </div>
 
-        {/* Right Mistake Notebook Preview (1 col) */}
-        <div className="bg-[#FAF9F6] rounded-2xl sm:rounded-[2.5rem] p-4 sm:p-6 border border-[#EAE7E0] flex flex-col justify-between space-y-4">
-          <div>
-            <div className="flex justify-between items-center mb-3 sm:mb-4">
-              <h4 className="text-sm sm:text-base lg:text-lg font-bold text-[#3D3D2D]">
-                Sổ câu sai môn {currentSubject === 'math' ? 'Toán' : 'Anh'} ({activeMistakesCount})
-              </h4>
-              <button
-                onClick={() => setActiveTab('mistakes')}
-                className="text-xs text-[#E67E22] font-bold hover:underline cursor-pointer"
-              >
-                Xem tất cả
-              </button>
+        {/* Pillar 2: Luyện Phản Xạ Nhanh & Chuyên Đề */}
+        <div className="bg-white p-5 sm:p-6 rounded-[2rem] border border-[#EAE7E0] shadow-xs flex flex-col justify-between space-y-4">
+          <div className="space-y-2">
+            <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center">
+              <Zap className="w-5 h-5" />
             </div>
-
-            {/* List of 3 sample mistakes */}
-            <div className="space-y-2.5">
-              {activeMistakes.length === 0 ? (
-                <div className="p-4 sm:p-6 bg-white rounded-2xl border border-[#EAE7E0] text-center text-xs text-[#8A8A70]">
-                  🎉 Tuyệt vời! Bạn không có câu sai môn {currentSubject === 'math' ? 'Toán' : 'Anh'}.
-                </div>
-              ) : (
-                activeMistakes.slice(0, 3).map((item) => {
-                  const q = getQuestionById(item.questionId);
-                  if (!q) return null;
-                  return (
-                    <div
-                      key={item.questionId}
-                      onClick={() => setActiveTab('mistakes')}
-                      className="p-3 sm:p-4 bg-white rounded-2xl border border-red-100 shadow-2xs hover:border-[#E67E22] transition cursor-pointer space-y-1"
-                    >
-                      <p className="text-[10px] text-[#E67E22] font-bold uppercase">
-                        {q.topicId.replace('math_', '').replace(/_/g, ' ')} • Sai {item.wrongCount} lần
-                      </p>
-                      <p className="text-xs line-clamp-2 italic text-[#4A4A4A]">'{q.content}'</p>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+            <h3 className="font-extrabold text-base text-[#3D3D2D]">2. Luyện Nhanh 10 Câu</h3>
+            <p className="text-xs text-[#64748B] leading-relaxed">
+              Luyện phản xạ công thức, nhận biết dạng bài trong 5 phút để tạo thói quen làm bài nhanh.
+            </p>
           </div>
 
-          {/* System status pill */}
-          <div className="mt-2 bg-[#F2F0EB] p-3 rounded-2xl flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-[#8BA888] rounded-full"></div>
-              <span className="text-[10px] font-bold text-[#8A8A70] uppercase">
-                {currentSubject === 'math' ? 'Đề Toán chuẩn 2026' : 'Đề Anh chuẩn 2026'}
-              </span>
-            </div>
+          <div className="space-y-2 pt-2 border-t border-[#F5F2ED]">
             <button
-              onClick={() => onStartExam(defaultExamId)}
-              className="text-[10px] font-bold text-[#5A5A40] hover:underline cursor-pointer"
+              onClick={() => setActiveTab('quick_blitz')}
+              className="w-full py-2.5 bg-[#E67E22] hover:bg-[#D35400] text-white rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center justify-center space-x-1.5 shadow-xs"
             >
-              Làm ngay →
+              <span>Bắt đầu 10 câu nhanh</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={() => onPracticeTopic(dynamicFocusTopic.id)}
+              className="w-full py-2 bg-[#FAF9F6] hover:bg-[#F5F2ED] border border-[#D9D2C5] text-[#3D3D2D] rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center space-x-1"
+            >
+              <Compass className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="truncate">Luyện: {dynamicFocusTopic.nameVi.slice(0, 18)}...</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Pillar 3: Sổ Câu Sai & Flashcard */}
+        <div className="bg-white p-5 sm:p-6 rounded-[2rem] border border-[#EAE7E0] shadow-xs flex flex-col justify-between space-y-4">
+          <div className="space-y-2">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+              <BookMarked className="w-5 h-5" />
+            </div>
+            <h3 className="font-extrabold text-base text-[#3D3D2D]">3. Sổ Câu Sai & Ghi Nhớ</h3>
+            <p className="text-xs text-[#64748B] leading-relaxed">
+              Đọc lại phân tích bẫy sai và ôn flashcard công thức để đảm bảo không bị trừ điểm oan.
+            </p>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-[#F5F2ED]">
+            <button
+              onClick={() => setActiveTab('mistakes')}
+              className="w-full py-2.5 bg-[#FAF9F6] hover:bg-[#F5F2ED] border border-[#EAE7E0] text-[#3D3D2D] rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center justify-center space-x-1.5"
+            >
+              <span>Mở Sổ câu sai ({activeMistakesCount})</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={() => setActiveTab('vocab')}
+              className="w-full py-2 bg-[#FAF9F6] hover:bg-[#F5F2ED] border border-[#D9D2C5] text-[#3D3D2D] rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center space-x-1"
+            >
+              <span>🗂️ Flashcard {isMath ? 'công thức' : 'từ vựng'}</span>
             </button>
           </div>
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* 5. TIẾN ĐỘ CHUYÊN ĐỀ (100% Real Data, Clean State)         */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <section className="bg-white p-5 sm:p-7 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED]">
+          <div>
+            <h3 className="font-extrabold text-base text-[#3D3D2D]">
+              Độ nắm vững các chuyên đề {isMath ? 'Toán 9' : 'Tiếng Anh 9'}
+            </h3>
+            <p className="text-xs text-[#8A8A70]">Tỷ lệ chính xác theo bài làm thực tế của bạn</p>
+          </div>
+
+          <button
+            onClick={() => setActiveTab('topic_practice')}
+            className="text-xs font-extrabold text-[#5A5A40] hover:underline cursor-pointer"
+          >
+            Xem tất cả chuyên đề →
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          {currentTopicsMeta.slice(0, 6).map((topic) => {
+            const stat = analytics.topicStats[topic.id] || { solved: 0, accuracy: 0 };
+            const hasDone = stat.solved > 0;
+            const accuracy = stat.accuracy;
+
+            return (
+              <div
+                key={topic.id}
+                onClick={() => onPracticeTopic(topic.id)}
+                className="p-3.5 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] hover:border-[#D9D2C5] transition cursor-pointer flex items-center justify-between text-xs"
+              >
+                <div className="min-w-0 pr-3">
+                  <p className="font-bold text-[#3D3D2D] truncate">{topic.nameVi}</p>
+                  <p className="text-[10px] text-[#8A8A70]">
+                    {hasDone ? `Đã làm ${stat.solved} câu` : 'Chưa luyện tập'}
+                  </p>
+                </div>
+
+                <div className="flex items-center space-x-2 shrink-0">
+                  {hasDone ? (
+                    <>
+                      <div className="w-16 bg-[#E8E2D9] h-2 rounded-full overflow-hidden hidden sm:block">
+                        <div
+                          className={`h-full rounded-full ${
+                            accuracy >= 80
+                              ? 'bg-emerald-500'
+                              : accuracy >= 60
+                              ? 'bg-amber-500'
+                              : 'bg-[#E67E22]'
+                          }`}
+                          style={{ width: `${accuracy}%` }}
+                        />
+                      </div>
+                      <span
+                        className={`font-black ${
+                          accuracy >= 80
+                            ? 'text-emerald-700'
+                            : accuracy >= 60
+                            ? 'text-amber-700'
+                            : 'text-[#E67E22]'
+                        }`}
+                      >
+                        {accuracy}%
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-[#8A8A70] italic">Luyện ngay →</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 };
+
