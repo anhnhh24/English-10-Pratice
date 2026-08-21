@@ -49,8 +49,23 @@ import {
   HeartHandshake,
   Database,
   Cloud,
+  Upload,
+  FileText,
+  Wand2,
 } from 'lucide-react';
 import { CloudSyncModal } from './CloudSyncModal';
+import {
+  generateExamWithAI,
+  extractQuestionsFromText,
+  getStoredApiKey,
+  ExamGenerationConfig,
+} from '../services/aiExamService';
+import {
+  readFileAsText,
+  detectFileType,
+  formatFileSize,
+  getFileIcon,
+} from '../services/fileReaderService';
 
 export const AdminPanel: React.FC = () => {
   const {
@@ -140,6 +155,114 @@ export const AdminPanel: React.FC = () => {
   const [examDesc, setExamDesc] = useState<string>('');
   const [examTime, setExamTime] = useState<number>(60);
   const [selectedQIds, setSelectedQIds] = useState<string[]>([]);
+
+  // ── AI Tạo Đề Modal ──────────────────────────────────────────
+  const [showAiCreateModal, setShowAiCreateModal] = useState<boolean>(false);
+  const [aiCreateSubject, setAiCreateSubject] = useState<SubjectId>('math');
+  const [aiCreatePrompt, setAiCreatePrompt] = useState<string>('');
+  const [aiCreateCount, setAiCreateCount] = useState<number>(10);
+  const [aiCreateDiff, setAiCreateDiff] = useState<'standard' | 'advanced' | 'challenge'>('standard');
+  const [aiCreateLoading, setAiCreateLoading] = useState<boolean>(false);
+  const [aiCreateProgress, setAiCreateProgress] = useState<string>('');
+  const [aiCreateResult, setAiCreateResult] = useState<{ examId: string; questionCount: number } | null>(null);
+  const [aiCreateError, setAiCreateError] = useState<string>('');
+
+  const handleAiCreateExam = async () => {
+    setAiCreateLoading(true);
+    setAiCreateError('');
+    setAiCreateResult(null);
+    try {
+      const apiKey = getStoredApiKey();
+      const config: ExamGenerationConfig = {
+        subject: aiCreateSubject,
+        totalQuestions: aiCreateCount,
+        difficulty: aiCreateDiff,
+        timeLimitMinutes: aiCreateCount <= 10 ? 45 : 60,
+        customPrompt: aiCreatePrompt,
+        title: `Đề AI ${aiCreateSubject === 'math' ? 'Toán' : 'Anh'} - ${new Date().toLocaleDateString('vi-VN')}`,
+      };
+      const result = await generateExamWithAI(apiKey, config, setAiCreateProgress);
+      // Save to app via addExam + add questions
+      result.questions.forEach((q) => addQuestion(q));
+      addExam(result.exam);
+      setAiCreateResult({ examId: result.exam.id, questionCount: result.questions.length });
+    } catch (e: any) {
+      setAiCreateError(e.message || 'Lỗi không xác định');
+    } finally {
+      setAiCreateLoading(false);
+    }
+  };
+
+  // ── Upload & Extract Modal ─────────────────────────────────────
+  const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
+  const [uploadSubject, setUploadSubject] = useState<SubjectId>('math');
+  const [uploadTitle, setUploadTitle] = useState<string>('');
+  const [uploadFileContent, setUploadFileContent] = useState<string>('');
+  const [uploadFileName, setUploadFileName] = useState<string>('');
+  const [uploadFileMeta, setUploadFileMeta] = useState<{ name: string; size: string; type: string } | null>(null);
+  const [uploadLoading, setUploadLoading] = useState<boolean>(false);
+  const [uploadReading, setUploadReading] = useState<boolean>(false);
+  const [uploadProgress, setUploadProgress] = useState<string>('');
+  const [uploadResult, setUploadResult] = useState<{ examId: string; questionCount: number } | null>(null);
+  const [uploadError, setUploadError] = useState<string>('');
+
+  const handleFileRead = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadFileName(file.name);
+    setUploadTitle(file.name.replace(/\.[^.]+$/, ''));
+    setUploadError('');
+    setUploadResult(null);
+    setUploadReading(true);
+    setUploadFileMeta({
+      name: file.name,
+      size: formatFileSize(file.size),
+      type: detectFileType(file),
+    });
+
+    try {
+      const extractedText = await readFileAsText(file, (msg) => {
+        setUploadProgress(msg);
+      });
+      if (!extractedText.trim()) {
+        throw new Error('Nội dung file đọc được bị trống. Vui lòng kiểm tra lại hoặc thử dán text trực tiếp.');
+      }
+      setUploadFileContent(extractedText);
+      setUploadProgress('');
+    } catch (err: any) {
+      setUploadError(err.message || 'Không thể đọc nội dung file.');
+      setUploadProgress('');
+    } finally {
+      setUploadReading(false);
+    }
+  };
+
+  const handleExtractAndImport = async () => {
+    if (!uploadFileContent.trim() && !uploadTitle.trim()) {
+      setUploadError('Vui lòng upload file hoặc dán nội dung đề thi vào ô bên dưới.');
+      return;
+    }
+    setUploadLoading(true);
+    setUploadError('');
+    setUploadResult(null);
+    try {
+      const apiKey = getStoredApiKey();
+      const result = await extractQuestionsFromText(
+        apiKey,
+        uploadFileContent,
+        uploadSubject,
+        uploadTitle || 'Đề Thi Upload',
+        setUploadProgress
+      );
+      result.questions.forEach((q) => addQuestion(q));
+      addExam(result.exam);
+      setUploadResult({ examId: result.exam.id, questionCount: result.rawQuestionCount });
+    } catch (e: any) {
+      setUploadError(e.message || 'Lỗi không xác định khi trích xuất');
+    } finally {
+      setUploadLoading(false);
+    }
+  };
 
   // Real-time Activity Subscription
   useEffect(() => {
@@ -1295,18 +1418,86 @@ export const AdminPanel: React.FC = () => {
       {/* ========================================================================= */}
       {activeAdminTab === 'exams' && (
         <div className="space-y-4 animate-in fade-in">
-          <div className="flex justify-between items-center bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-sm">
+          {/* Header */}
+          <div className="flex flex-wrap justify-between items-center bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-sm gap-2">
             <h3 className="text-sm font-bold text-[#3D3D2D]">Danh sách Đề thi Tuyển sinh ({exams.length})</h3>
-            <button
-              onClick={() => {
-                setSelectedQIds(questions.slice(0, 12).map((q) => q.id));
-                setShowExamModal(true);
-              }}
-              className="px-4 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Tạo đề thi mới</span>
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setShowAiCreateModal(true)}
+                className="px-4 py-2 bg-gradient-to-r from-[#1E3A8A] to-[#2563EB] hover:opacity-90 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
+              >
+                <Wand2 className="w-4 h-4" />
+                <span>🤖 AI Tạo Đề Mới</span>
+              </button>
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
+              >
+                <Upload className="w-4 h-4" />
+                <span>📄 Upload & Trích Xuất</span>
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedQIds(questions.slice(0, 12).map((q) => q.id));
+                  setShowExamModal(true);
+                }}
+                className="px-4 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tạo đề thủ công</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2 Feature Card Banners */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* AI Create Card */}
+            <div className="bg-gradient-to-br from-[#1E3A8A] to-[#3B82F6] text-white p-5 rounded-[2rem] shadow-md space-y-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center">
+                  <Wand2 className="w-5 h-5 text-amber-300" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm">🤖 AI Tạo Đề Nhanh</h4>
+                  <p className="text-[11px] text-blue-100">Gemini AI biên soạn đề chuẩn kèm lời giải chi tiết</p>
+                </div>
+              </div>
+              <ul className="text-[11px] text-blue-100 space-y-1 pl-1">
+                <li>✓ Chọn môn (Toán / Tiếng Anh), số câu, độ khó</li>
+                <li>✓ Nhập yêu cầu trọng tâm riêng (tuỳ chỉnh)</li>
+                <li>✓ Tự động lưu đề + câu hỏi vào hệ thống</li>
+              </ul>
+              <button
+                onClick={() => setShowAiCreateModal(true)}
+                className="w-full py-2 bg-white text-[#1E3A8A] font-bold text-xs rounded-xl hover:bg-blue-50 transition cursor-pointer"
+              >
+                Tạo đề với AI →
+              </button>
+            </div>
+
+            {/* Upload Extract Card */}
+            <div className="bg-gradient-to-br from-amber-600 to-orange-500 text-white p-5 rounded-[2rem] shadow-md space-y-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-amber-200" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm">📄 Upload Đề & AI Extract</h4>
+                  <p className="text-[11px] text-orange-100">Upload file đề, AI tự đọc và import câu hỏi</p>
+                </div>
+              </div>
+              <ul className="text-[11px] text-orange-100 space-y-1 pl-1">
+                <li>✓ Hỗ trợ file .txt, .md hoặc dán văn bản trực tiếp</li>
+                <li>✓ AI trích xuất câu hỏi trắc nghiệm tự động</li>
+                <li>✓ Import vào hệ thống & giao bài cho em ngay</li>
+              </ul>
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="w-full py-2 bg-white text-orange-700 font-bold text-xs rounded-xl hover:bg-orange-50 transition cursor-pointer"
+              >
+                Upload đề thi →
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2091,6 +2282,270 @@ export const AdminPanel: React.FC = () => {
         isOpen={showCloudModal}
         onClose={() => setShowCloudModal(false)}
       />
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* 🤖 MODAL: AI TẠO ĐỀ NHANH                                  */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {showAiCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-[2.5rem] max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-5 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
+              <div className="flex items-center space-x-2">
+                <div className="w-9 h-9 rounded-2xl bg-blue-100 flex items-center justify-center">
+                  <Wand2 className="w-5 h-5 text-blue-700" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#3D3D2D] text-base">🤖 AI Tạo Đề Mới</h3>
+                  <p className="text-[11px] text-[#8A8A70]">Gemini AI biên soạn đề thi & lời giải chi tiết</p>
+                </div>
+              </div>
+              <button onClick={() => { setShowAiCreateModal(false); setAiCreateResult(null); setAiCreateError(''); }} className="text-[#8A8A70] hover:text-red-500 cursor-pointer">✕</button>
+            </div>
+
+            {aiCreateResult ? (
+              <div className="text-center space-y-4 py-4">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                  <span className="text-3xl">✅</span>
+                </div>
+                <h4 className="font-bold text-[#3D3D2D] text-lg">Tạo đề thành công!</h4>
+                <p className="text-sm text-[#5A5A40]">AI đã tạo <strong>{aiCreateResult.questionCount} câu hỏi</strong> và lưu vào hệ thống.</p>
+                <div className="flex gap-3 justify-center">
+                  <button onClick={() => { setAiCreateResult(null); setAiCreatePrompt(''); }} className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 cursor-pointer">Tạo đề khác</button>
+                  <button onClick={() => { setShowAiCreateModal(false); setAiCreateResult(null); setActiveAdminTab('exams'); }} className="px-5 py-2 bg-[#F5F2ED] text-[#3D3D2D] rounded-xl text-sm font-bold hover:bg-[#EAE7E0] cursor-pointer">Xem danh sách</button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Subject */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Môn học</label>
+                  <div className="flex gap-2">
+                    {(['math', 'english'] as SubjectId[]).map((s) => (
+                      <button key={s} onClick={() => setAiCreateSubject(s)}
+                        className={`flex-1 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${aiCreateSubject === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-[#F5F2ED] text-[#5A5A40] border-[#EAE7E0]'}`}>
+                        {s === 'math' ? '📐 Toán học' : '🇬🇧 Tiếng Anh'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Số câu & Độ khó */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Số câu hỏi</label>
+                    <select value={aiCreateCount} onChange={(e) => setAiCreateCount(Number(e.target.value))}
+                      className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm text-[#3D3D2D] focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                      {[5, 10, 15, 20, 25, 30].map((n) => <option key={n} value={n}>{n} câu</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Độ khó</label>
+                    <select value={aiCreateDiff} onChange={(e) => setAiCreateDiff(e.target.value as any)}
+                      className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm text-[#3D3D2D] focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                      <option value="standard">Cơ bản (Trung bình)</option>
+                      <option value="advanced">Khá - Giỏi</option>
+                      <option value="challenge">Phân loại (Khó)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Custom Prompt */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Yêu cầu trọng tâm (tuỳ chọn)</label>
+                  <textarea
+                    value={aiCreatePrompt}
+                    onChange={(e) => setAiCreatePrompt(e.target.value)}
+                    rows={3}
+                    placeholder={aiCreateSubject === 'math'
+                      ? 'Ví dụ: Tập trung vào hệ phương trình, Vi-ét và hình học đường tròn. Tăng tỉ lệ câu khó...'
+                      : 'Ví dụ: Tập trung ngữ pháp thì hoàn thành và câu điều kiện. Có cả dạng cloze test...'}
+                    className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-blue-400 focus:outline-none placeholder:text-[#C5C0B5]"
+                  />
+                </div>
+
+                {/* Error */}
+                {aiCreateError && (
+                  <div className="bg-red-50 text-red-700 text-xs font-medium p-3 rounded-xl border border-red-200">
+                    ⚠️ {aiCreateError}
+                  </div>
+                )}
+
+                {/* Progress */}
+                {aiCreateLoading && (
+                  <div className="bg-blue-50 text-blue-700 text-xs font-medium p-3 rounded-xl border border-blue-200 flex items-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                    <span>{aiCreateProgress || 'Đang khởi tạo...'}</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleAiCreateExam}
+                  disabled={aiCreateLoading}
+                  className="w-full py-3 bg-gradient-to-r from-[#1E3A8A] to-[#2563EB] text-white font-bold text-sm rounded-2xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
+                >
+                  {aiCreateLoading ? '⏳ AI đang tạo đề...' : `🚀 Tạo ${aiCreateCount} câu hỏi ngay`}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* 📄 MODAL: UPLOAD ĐỀ & AI EXTRACT                           */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-[2.5rem] max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-5 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
+              <div className="flex items-center space-x-2">
+                <div className="w-9 h-9 rounded-2xl bg-amber-100 flex items-center justify-center">
+                  <Upload className="w-5 h-5 text-amber-700" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#3D3D2D] text-base">📄 Upload Đề & AI Extract</h3>
+                  <p className="text-[11px] text-[#8A8A70]">AI tự đọc file và trích xuất câu hỏi trắc nghiệm</p>
+                </div>
+              </div>
+              <button onClick={() => { setShowUploadModal(false); setUploadResult(null); setUploadError(''); setUploadFileContent(''); setUploadFileName(''); }} className="text-[#8A8A70] hover:text-red-500 cursor-pointer">✕</button>
+            </div>
+
+            {uploadResult ? (
+              <div className="text-center space-y-4 py-4">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                  <span className="text-3xl">✅</span>
+                </div>
+                <h4 className="font-bold text-[#3D3D2D] text-lg">Import thành công!</h4>
+                <p className="text-sm text-[#5A5A40]">AI đã trích xuất <strong>{uploadResult.questionCount} câu hỏi</strong> và lưu vào hệ thống.</p>
+                <div className="flex gap-3 justify-center">
+                  <button onClick={() => { setUploadResult(null); setUploadFileContent(''); setUploadFileName(''); setUploadTitle(''); }} className="px-5 py-2 bg-amber-600 text-white rounded-xl text-sm font-bold hover:bg-amber-700 cursor-pointer">Upload thêm</button>
+                  <button onClick={() => { setShowUploadModal(false); setUploadResult(null); setActiveAdminTab('exams'); }} className="px-5 py-2 bg-[#F5F2ED] text-[#3D3D2D] rounded-xl text-sm font-bold hover:bg-[#EAE7E0] cursor-pointer">Xem danh sách</button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Subject */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Môn học của đề</label>
+                  <div className="flex gap-2">
+                    {(['math', 'english'] as SubjectId[]).map((s) => (
+                      <button key={s} onClick={() => setUploadSubject(s)}
+                        className={`flex-1 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${uploadSubject === s ? 'bg-amber-600 text-white border-amber-600' : 'bg-[#F5F2ED] text-[#5A5A40] border-[#EAE7E0]'}`}>
+                        {s === 'math' ? '📐 Toán học' : '🇬🇧 Tiếng Anh'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tên đề */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Tên đề thi</label>
+                  <input type="text" value={uploadTitle} onChange={(e) => setUploadTitle(e.target.value)}
+                    placeholder="Ví dụ: Đề Thi Thử Toán HK2 2024 - Trường ABC"
+                    className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-400 focus:outline-none" />
+                </div>
+
+                {/* Upload Zone */}
+                <div>
+                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5 flex items-center justify-between">
+                    <span>Chọn file đề thi bất kỳ</span>
+                    <span className="text-[10px] text-[#8A8A70]">PDF • Word (.docx) • Ảnh • TXT</span>
+                  </label>
+                  <label className="flex flex-col items-center justify-center w-full min-h-[100px] p-4 border-2 border-dashed border-amber-300 bg-amber-50/70 hover:bg-amber-100/70 rounded-2xl cursor-pointer transition">
+                    <Upload className="w-6 h-6 text-amber-600 mb-1.5" />
+                    {uploadReading ? (
+                      <div className="flex items-center space-x-2 text-xs font-bold text-amber-800">
+                        <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+                        <span>{uploadProgress || 'Đang đọc và phân tích file...'}</span>
+                      </div>
+                    ) : uploadFileMeta ? (
+                      <div className="text-center space-y-0.5">
+                        <span className="text-xs font-bold text-amber-900 flex items-center justify-center space-x-1">
+                          <span>{uploadFileMeta.type === 'pdf' ? '📕' : uploadFileMeta.type === 'docx' ? '📝' : uploadFileMeta.type === 'image' ? '🖼️' : '📄'}</span>
+                          <span>{uploadFileMeta.name}</span>
+                        </span>
+                        <span className="text-[10px] text-amber-700 font-medium">({uploadFileMeta.size} • Đã đọc xong nội dung)</span>
+                      </div>
+                    ) : (
+                      <div className="text-center space-y-1">
+                        <span className="text-xs text-amber-800 font-bold">
+                          Nhấn để chọn file đề thi (hoặc kéo thả vào đây)
+                        </span>
+                        <div className="flex items-center justify-center gap-1.5 text-[10px] text-amber-600">
+                          <span className="px-1.5 py-0.5 bg-amber-200/60 rounded">PDF</span>
+                          <span className="px-1.5 py-0.5 bg-amber-200/60 rounded">Word</span>
+                          <span className="px-1.5 py-0.5 bg-amber-200/60 rounded">Ảnh đề thi (OCR)</span>
+                          <span className="px-1.5 py-0.5 bg-amber-200/60 rounded">TXT</span>
+                        </div>
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept=".txt,.md,.pdf,.docx,.doc,image/*,.png,.jpg,.jpeg,.webp"
+                      onChange={handleFileRead}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {/* Paste / Extracted Content */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold text-[#5A5A40]">
+                      Nội dung văn bản đề thi (AI sẽ đọc phần này)
+                    </label>
+                    {uploadFileContent && (
+                      <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        ✓ {uploadFileContent.length.toLocaleString()} ký tự
+                      </span>
+                    )}
+                  </div>
+                  <textarea
+                    value={uploadFileContent}
+                    onChange={(e) => setUploadFileContent(e.target.value)}
+                    rows={5}
+                    placeholder={'Dán nội dung đề thi hoặc upload file ở trên...\n\nVí dụ:\nCâu 1. Cho hàm số y = 2x - 3...\nA. Đồng biến   B. Nghịch biến   C. Hằng số   D. Vô nghiệm\n\nCâu 2. ...'}
+                    className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-xs font-mono resize-none focus:ring-2 focus:ring-amber-400 focus:outline-none placeholder:text-[#C5C0B5] bg-[#FAF9F5]"
+                  />
+                </div>
+
+                {/* Note */}
+                <div className="bg-amber-50/80 text-amber-900 text-[11px] p-3 rounded-xl border border-amber-200 flex items-start space-x-2">
+                  <span className="text-sm">💡</span>
+                  <div>
+                    <strong>Hỗ trợ toàn diện:</strong> File Word (.docx), PDF scan, ảnh chụp đề thi trên giấy (Gemini Vision tự động nhận diện chữ), hoặc dán văn bản trực tiếp. AI sẽ tự động phân tách câu hỏi, 4 đáp án A/B/C/D và tạo lời giải.
+                  </div>
+                </div>
+
+                {/* Error */}
+                {uploadError && (
+                  <div className="bg-red-50 text-red-700 text-xs font-medium p-3 rounded-xl border border-red-200">
+                    ⚠️ {uploadError}
+                  </div>
+                )}
+
+                {/* Progress */}
+                {uploadLoading && (
+                  <div className="bg-amber-50 text-amber-700 text-xs font-medium p-3 rounded-xl border border-amber-200 flex items-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                    <span>{uploadProgress || 'Đang xử lý...'}</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleExtractAndImport}
+                  disabled={uploadLoading || (!uploadFileContent.trim())}
+                  className="w-full py-3 bg-gradient-to-r from-amber-600 to-orange-500 text-white font-bold text-sm rounded-2xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
+                >
+                  {uploadLoading ? '⏳ AI đang đọc đề...' : '🔍 Trích Xuất & Import Câu Hỏi'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

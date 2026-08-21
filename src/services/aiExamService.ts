@@ -642,3 +642,139 @@ Bạn PHẢI trả về DUY NHẤT một chuỗi JSON hợp lệ không bọc th
 
   return parsed;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// EXTRACT QUESTIONS FROM UPLOADED FILE TEXT (Admin Upload Feature)
+// ═══════════════════════════════════════════════════════════════
+
+export interface ExtractedExamResult {
+  exam: Exam;
+  questions: Question[];
+  rawQuestionCount: number;
+}
+
+/**
+ * Dùng Gemini AI để trích xuất câu hỏi trắc nghiệm từ nội dung văn bản (đề thi upload)
+ * Hỗ trợ: text thuần, nội dung PDF/docx đã được đọc thành text
+ */
+export async function extractQuestionsFromText(
+  apiKey: string,
+  rawText: string,
+  subject: SubjectId,
+  examTitle: string,
+  onProgress?: (msg: string) => void
+): Promise<ExtractedExamResult> {
+  const effectiveKey = (apiKey || '').trim() || getStoredApiKey();
+  if (!effectiveKey) throw new Error('Chưa có Gemini API Key.');
+  if (!rawText || rawText.trim().length < 30) throw new Error('Nội dung file quá ngắn hoặc trống. Vui lòng kiểm tra lại file.');
+
+  onProgress?.('🔍 AI đang đọc và phân tích nội dung đề thi...');
+
+  const topicIds = subject === 'math'
+    ? 'math_can_thuc | math_he_phuong_trinh | math_ham_so_do_thi | math_pt_bac_hai_viet | math_giai_toan_lap_pt | math_he_thuc_luong | math_duong_tron_tu_giac | math_hinh_khong_gian_thuc_te | math_bat_dang_thuc_cuc_tri'
+    : 'grammar | vocabulary | pronunciation | stress | reading | sentence_rewrite | cloze | error_identification';
+
+  const prompt = `Bạn là chuyên gia đọc và trích xuất câu hỏi từ đề thi. Tôi sẽ cung cấp nội dung một đề thi ${subject === 'math' ? 'Toán' : 'Tiếng Anh'} vào lớp 10. 
+
+Nhiệm vụ của bạn: Trích xuất TẤT CẢ câu hỏi trắc nghiệm (có 4 đáp án A, B, C, D) từ văn bản và trả về JSON chuẩn.
+
+NỘI DUNG ĐỀ THI:
+---
+${rawText.slice(0, 8000)}
+---
+
+ĐỊNH DẠNG JSON TRẢ VỀ (bắt buộc - chỉ JSON, không có text thêm):
+{
+  "title": "${examTitle}",
+  "code": "UPLOAD-${subject.toUpperCase()}-${Date.now().toString().slice(-6)}",
+  "description": "Đề thi được trích xuất từ file upload bởi Admin",
+  "difficulty": "standard",
+  "timeLimitMinutes": 60,
+  "questions": [
+    {
+      "topicId": "Chọn phù hợp từ: ${topicIds}",
+      "subTopicId": "general",
+      "difficulty": "medium",
+      "content": "Nội dung câu hỏi đầy đủ",
+      "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+      "correctOption": 0,
+      "explanation": "Giải thích ngắn gọn tại sao đáp án đúng",
+      "grammarRule": "Quy tắc/công thức liên quan (nếu có)",
+      "commonMistakeTip": "Bẫy thường gặp (nếu có)"
+    }
+  ]
+}
+
+LƯU Ý:
+- Chỉ lấy câu hỏi trắc nghiệm 4 đáp án A/B/C/D, bỏ qua câu tự luận
+- correctOption: 0=A, 1=B, 2=C, 3=D
+- Nếu không xác định được đáp án đúng, đặt correctOption = 0 và ghi vào explanation "Cần kiểm tra lại đáp án"
+- Giữ nguyên nội dung câu hỏi và các đáp án, không tự sửa hay đổi
+- Trả về JSON thuần túy, không markdown, không giải thích thêm`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(effectiveKey)}`;
+
+  onProgress?.('🤖 Gemini AI đang phân tích và chuẩn hoá câu hỏi...');
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
+    }),
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(`Lỗi Gemini API (${response.status}): ${errData?.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  const rawJson = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!rawJson) throw new Error('AI không trả về kết quả. Thử lại sau.');
+
+  onProgress?.('📋 Đang xử lý và import câu hỏi...');
+
+  const parsed = tryParseOrRepairExamJson(rawJson);
+  if (!parsed || !Array.isArray(parsed.questions) || parsed.questions.length === 0) {
+    throw new Error('Không trích xuất được câu hỏi nào từ file. Hãy kiểm tra định dạng file hoặc thử với đề thi khác.');
+  }
+
+  const examId = `admin_upload_${Date.now()}`;
+  const questionIds: string[] = [];
+  const questions: Question[] = parsed.questions.map((q: any, idx: number) => {
+    const qId = `q_upload_${Date.now()}_${idx}`;
+    questionIds.push(qId);
+    return {
+      id: qId,
+      subject,
+      topicId: q.topicId || (subject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar'),
+      subTopicId: q.subTopicId || 'general',
+      difficulty: q.difficulty || 'medium',
+      content: q.content || '',
+      options: Array.isArray(q.options) ? q.options : ['A. ...', 'B. ...', 'C. ...', 'D. ...'],
+      correctOption: typeof q.correctOption === 'number' ? q.correctOption : 0,
+      explanation: q.explanation || 'Xem đáp án trong đề thi gốc.',
+      grammarRule: q.grammarRule || '',
+      commonMistakeTip: q.commonMistakeTip || '',
+    };
+  });
+
+  const exam: Exam = {
+    id: examId,
+    subject,
+    title: parsed.title || examTitle,
+    code: parsed.code || `UPLOAD-${Date.now().toString().slice(-6)}`,
+    description: parsed.description || 'Đề thi được upload và trích xuất bởi Admin.',
+    timeLimitMinutes: parsed.timeLimitMinutes || 60,
+    totalQuestions: questions.length,
+    difficulty: 'standard',
+    questionIds,
+    isOfficialFormat: false,
+    createdAt: new Date().toISOString().split('T')[0],
+    creatorUserId: 'user_admin_1',
+  };
+
+  return { exam, questions, rawQuestionCount: questions.length };
+}
