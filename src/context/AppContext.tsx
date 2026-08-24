@@ -935,7 +935,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // ─── deleteExamAttempt ───────────────────────────────────────────
   /**
    * Delete a specific exam attempt.
-   * - If userId is provided (admin deleting for another user), update that user's localStorage
+   * - If userId is provided (admin deleting for another user), update that user's localStorage and Firebase
    * - Otherwise deletes from current user's state
    */
   const deleteExamAttempt = (attemptId: string, userId?: string) => {
@@ -944,23 +944,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (targetUserId === currentUser.id) {
       // Update live state for current user
       setExamAttempts((prev) => prev.filter((a) => a.id !== attemptId));
-    } else {
-      // Admin deleting for another user — update their localStorage
-      try {
-        const raw = localStorage.getItem(`edu10_userdata_${targetUserId}`);
-        if (raw) {
-          const userData = JSON.parse(raw);
-          userData.examAttempts = (userData.examAttempts || []).filter(
-            (a: ExamAttempt) => a.id !== attemptId
-          );
-          localStorage.setItem(`edu10_userdata_${targetUserId}`, JSON.stringify(userData));
-        }
-      } catch (_) {}
     }
-    // Delete from Firebase
+
+    // Always update target user's stored data and push to Firebase
+    try {
+      const raw = localStorage.getItem(`edu10_userdata_${targetUserId}`);
+      if (raw) {
+        const userData = JSON.parse(raw);
+        userData.examAttempts = (userData.examAttempts || []).filter(
+          (a: ExamAttempt) => a.id !== attemptId
+        );
+        localStorage.setItem(`edu10_userdata_${targetUserId}`, JSON.stringify(userData));
+        pushUserDataToOnlineDB(targetUserId, userData).catch((err) =>
+          console.warn('Firebase pushUserData after delete attempt error:', err)
+        );
+      }
+    } catch (_) {}
+
+    // Delete from Firebase global attempt index
     deleteExamAttemptFromOnlineDB(targetUserId, attemptId).catch((err) =>
       console.warn('DB deleteExamAttempt error:', err)
     );
+
+    dispatchGlobalSync('ATTEMPTS_UPDATED', { userId: targetUserId, attemptId });
   };
 
   // Attempts & Practice (Saved & Synced to Firebase Realtime DB)

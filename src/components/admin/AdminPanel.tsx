@@ -14,6 +14,7 @@ import {
   logAndBroadcastActivity,
   sendRemotePing,
 } from '../../services/realtimeSyncService';
+import { subscribeToGlobalSync } from '../../services/cookieService';
 import { fetchRoomDataFromOnlineDB } from '../../services/cloudSyncService';
 import { ScorePill, SubjectBadge, EmptyState } from '../common';
 import {
@@ -136,6 +137,7 @@ export const AdminPanel: React.FC = () => {
   const [submissionSearchQuery, setSubmissionSearchQuery] = useState<string>('');
   const [submissionSubjectFilter, setSubmissionSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
   const [submissionStudentFilter, setSubmissionStudentFilter] = useState<string>('all');
+  const [submissionRev, setSubmissionRev] = useState<number>(0);
 
   // Detailed Exam Attempt Review State (Admin xem chi tiết bài làm của học sinh)
   const [selectedAttemptForReview, setSelectedAttemptForReview] = useState<{
@@ -403,9 +405,16 @@ export const AdminPanel: React.FC = () => {
       });
     });
 
+    const unsubscribeSync = subscribeToGlobalSync((event) => {
+      if (event.type === 'ATTEMPTS_UPDATED' || event.type === 'EXAMS_UPDATED' || event.type === 'USER_CHANGED') {
+        setSubmissionRev((r) => r + 1);
+      }
+    });
+
     return () => {
       unsubscribeActivities();
       unsubscribeTasks();
+      unsubscribeSync();
     };
   }, []);
 
@@ -2326,6 +2335,7 @@ export const AdminPanel: React.FC = () => {
                         onClick={() => {
                           if (confirm(`Xóa lần thi "${sub.examTitle}" của ${sub.studentName}?\nHành động này không thể hoàn tác.`)) {
                             deleteExamAttempt(sub.id, sub.studentId);
+                            setSubmissionRev((r) => r + 1);
                           }
                         }}
                         className="p-2.5 text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 rounded-2xl hover:bg-red-50 transition cursor-pointer shrink-0"
