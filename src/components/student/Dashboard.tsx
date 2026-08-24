@@ -33,7 +33,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onPracticeTopic,
   onOpenTargetModal,
 }) => {
-  const { currentSubject, currentUser, examAttempts, mistakes, analytics, getQuestionById, exams } = useApp();
+  const { currentSubject, currentUser, examAttempts, mistakes, analytics, getQuestionById, exams, allExams, switchSubject } = useApp();
 
   const isMath = currentSubject === 'math';
   const currentTopicsMeta = isMath ? MATH_TOPICS_META : TOPICS_META;
@@ -43,6 +43,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [tasks, setTasks] = useState<RemoteTaskAssignment[]>(() => getStoredRemoteTasks());
 
   useEffect(() => {
+    setTasks(getStoredRemoteTasks());
+
     const unsub = subscribeToRemoteTasks((newTask) => {
       setTasks((prev) => {
         const filtered = prev.filter((t) => t.id !== newTask.id);
@@ -59,7 +61,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       unsub();
       window.removeEventListener('storage', handleStorage);
     };
-  }, []);
+  }, [currentUser]);
 
   // Real Subject Attempts & Mistakes
   const filteredAttempts = examAttempts.filter(
@@ -86,13 +88,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const dynamicFocusTopic =
     currentTopicsMeta.find((t) => t.id === dynamicFocusTopicId) || currentTopicsMeta[0];
 
-  // Remote assigned tasks for this student (Filter out completed tasks & deleted exams)
+  // Remote assigned tasks for this student (Filter out completed tasks & deleted exams across all subjects)
   const pendingTasks = tasks.filter((t) => {
     if (t.completed) return false;
     if (t.recipientUserId !== 'all' && t.recipientUserId !== currentUser.id) return false;
-    // If task is bound to an exam, ensure the exam still exists in current exams
+    // If task is bound to an exam, ensure the exam still exists in current global exam bank
     if (t.assignedExamId) {
-      const examExists = exams.some((e) => e.id === t.assignedExamId);
+      const examExists = (allExams || []).some((e) => e.id === t.assignedExamId);
       if (!examExists) return false;
     }
     return true;
@@ -216,6 +218,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
                 <button
                   onClick={() => {
+                    if (t.subject) switchSubject(t.subject);
                     if (t.assignedExamId) onStartExam(t.assignedExamId);
                     else if (t.assignedTopicId) onPracticeTopic(t.assignedTopicId);
                     else onStartExam(defaultExamId);

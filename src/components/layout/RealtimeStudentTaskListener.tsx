@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { RemoteTaskAssignment, RemotePing } from '../../types';
 import {
+  getStoredRemoteTasks,
   subscribeToRemoteTasks,
   markRemoteTaskCompleted,
   subscribeToRemotePings,
@@ -24,6 +25,20 @@ export const RealtimeStudentTaskListener: React.FC<RealtimeStudentTaskListenerPr
   const [dismissedPingIds, setDismissedPingIds] = useState<string[]>([]);
 
   useEffect(() => {
+    // Check if there are any existing pending tasks for this student
+    if (currentUser.role === 'student') {
+      const existingTasks = getStoredRemoteTasks();
+      const pendingTask = existingTasks.find(
+        (t) =>
+          !t.completed &&
+          (t.recipientUserId === 'all' || t.recipientUserId === currentUser.id) &&
+          !dismissedTaskIds.includes(t.id)
+      );
+      if (pendingTask) {
+        setActiveTask(pendingTask);
+      }
+    }
+
     const unsubTask = subscribeToRemoteTasks((task) => {
       if (
         (task.recipientUserId === 'all' || task.recipientUserId === currentUser.id) &&

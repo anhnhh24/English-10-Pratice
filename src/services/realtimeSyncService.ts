@@ -4,6 +4,7 @@
  */
 import { database, ref, set, get, onValue, push, off, onChildAdded, query, limitToLast } from './firebaseConfig';
 import { getCloudDBSettings } from './cloudSyncService';
+import { dispatchGlobalSync, subscribeToGlobalSync } from './cookieService';
 import { RealtimeActivityEvent, RemoteTaskAssignment, RemotePing } from '../types';
 import type { DataSnapshot } from 'firebase/database';
 
@@ -212,6 +213,9 @@ export function broadcastRemoteTask(
         console.warn('Firebase task push failed:', err)
       );
     }
+
+    // 5. Global Reactive Bus
+    dispatchGlobalSync('TASKS_UPDATED', newTask);
   } catch (e) {
     console.error('Error assigning remote task:', e);
   }
@@ -220,7 +224,7 @@ export function broadcastRemoteTask(
 }
 
 /**
- * Subscribe to remote task assignments from Firebase + BroadcastChannel
+ * Subscribe to remote task assignments from Firebase + BroadcastChannel + GlobalSyncBus
  * Uses onChildAdded to only receive NEW tasks.
  */
 export function subscribeToRemoteTasks(
@@ -255,6 +259,14 @@ export function subscribeToRemoteTasks(
     broadcastChannel.addEventListener('message', handleBroadcastMessage);
     cleanups.push(() => broadcastChannel?.removeEventListener('message', handleBroadcastMessage));
   }
+
+  // 1c. Global Reactive Sync Bus
+  const unsubSync = subscribeToGlobalSync((event) => {
+    if (event.type === 'TASKS_UPDATED' && event.payload) {
+      safeCallback(event.payload);
+    }
+  });
+  cleanups.push(unsubSync);
 
   // 2. Firebase (cross-device!) — subscribe to new tasks only
   const settings = getCloudDBSettings();
@@ -305,6 +317,8 @@ export function markRemoteTaskCompleted(taskId: string): void {
         console.warn('Firebase task complete update failed:', err)
       );
     }
+
+    dispatchGlobalSync('TASKS_UPDATED');
   } catch (e) {
     console.error(e);
   }
@@ -328,6 +342,8 @@ export function toggleRemoteTaskCompleted(taskId: string): boolean {
         console.warn('Firebase task complete update failed:', err)
       );
     }
+
+    dispatchGlobalSync('TASKS_UPDATED');
     return newStatus;
   } catch (e) {
     console.error(e);
@@ -355,6 +371,8 @@ export function deleteRemoteTask(taskId: string): void {
         console.warn('Firebase task delete failed:', err)
       );
     }
+
+    dispatchGlobalSync('TASKS_UPDATED');
   } catch (e) {
     console.error(e);
   }
