@@ -96,9 +96,12 @@ export const AdminPanel: React.FC = () => {
     switchUser,
     register,
     toggleUserLock,
+    updateUserByAdmin,
+    deleteUser,
     getUserScopedData,
     saveTeacherNote,
     getTeacherNote,
+    deleteTeacherNote,
     questions,
     exams,
     getQuestionById,
@@ -107,7 +110,9 @@ export const AdminPanel: React.FC = () => {
     updateQuestion,
     deleteQuestion,
     addExam,
+    updateExam,
     deleteExam,
+    deleteExamAttempt,
   } = useApp();
 
   const [activeAdminTab, setActiveAdminTab] = useState<'overview' | 'tasks' | 'submissions' | 'exams' | 'students' | 'questions' | 'realtime_pulse'>('overview');
@@ -200,8 +205,9 @@ export const AdminPanel: React.FC = () => {
   const [grammarRule, setGrammarRule] = useState<string>('');
   const [commonMistakeTip, setCommonMistakeTip] = useState<string>('');
 
-  // Exam form
+  // Exam form — shared between Create and Edit
   const [showExamModal, setShowExamModal] = useState<boolean>(false);
+  const [editingExam, setEditingExam] = useState<Exam | null>(null); // null = create mode
   const [examSubject, setExamSubject] = useState<SubjectId>('math');
   const [examTitle, setExamTitle] = useState<string>('');
   const [examCode, setExamCode] = useState<string>('DE-10-M04');
@@ -210,6 +216,16 @@ export const AdminPanel: React.FC = () => {
   const [selectedQIds, setSelectedQIds] = useState<string[]>([]);
   const [examSubjectFilter, setExamSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
   const [searchExamQuery, setSearchExamQuery] = useState<string>('');
+
+  // Edit Student Modal
+  const [showEditStudentModal, setShowEditStudentModal] = useState<boolean>(false);
+  const [editStudentTarget, setEditStudentTarget] = useState<UserAccount | null>(null);
+  const [editStudentName, setEditStudentName] = useState<string>('');
+  const [editStudentPassword, setEditStudentPassword] = useState<string>('');
+  const [editStudentSchool, setEditStudentSchool] = useState<string>('');
+  const [editStudentTargetMath, setEditStudentTargetMath] = useState<number>(8.5);
+  const [editStudentTargetEng, setEditStudentTargetEng] = useState<number>(8.5);
+  const [editStudentMsg, setEditStudentMsg] = useState<string | null>(null);
 
   // ── Gemini API Key Management State ─────────────────────────
   const [showGeminiKeyModal, setShowGeminiKeyModal] = useState<boolean>(false);
@@ -745,6 +761,68 @@ export const AdminPanel: React.FC = () => {
     });
   };
 
+  // ── Open Edit Exam Modal with prefilled data ─────────────────────────────
+  const handleOpenEditExam = (ex: Exam) => {
+    setEditingExam(ex);
+    setExamSubject((ex.subject || 'english') as SubjectId);
+    setExamTitle(ex.title);
+    setExamCode(ex.code);
+    setExamDesc(ex.description);
+    setExamTime(ex.timeLimitMinutes);
+    setSelectedQIds(ex.questionIds || []);
+    setShowExamModal(true);
+  };
+
+  const handleOpenCreateExam = () => {
+    setEditingExam(null);
+    setExamTitle('');
+    setExamCode('DE-10-M04');
+    setExamDesc('');
+    setExamTime(60);
+    setSelectedQIds([]);
+    setExamSubject('math');
+    setShowExamModal(true);
+  };
+
+  // ── Open Edit Student Modal ─────────────────────────────────────
+  const handleOpenEditStudent = (stu: UserAccount) => {
+    setEditStudentTarget(stu);
+    setEditStudentName(stu.name);
+    setEditStudentPassword(stu.password || '');
+    setEditStudentSchool(stu.targetSchool || '');
+    setEditStudentTargetMath(stu.targetScoreMath || stu.targetScore || 8.5);
+    setEditStudentTargetEng(stu.targetScoreEnglish || stu.targetScore || 8.5);
+    setEditStudentMsg(null);
+    setShowEditStudentModal(true);
+  };
+
+  const handleSaveEditStudent = () => {
+    if (!editStudentTarget) return;
+    updateUserByAdmin(editStudentTarget.id, {
+      name: editStudentName.trim() || editStudentTarget.name,
+      ...(editStudentPassword.trim() ? { password: editStudentPassword.trim() } : {}),
+      targetSchool: editStudentSchool.trim() || editStudentTarget.targetSchool,
+      targetScoreMath: editStudentTargetMath,
+      targetScoreEnglish: editStudentTargetEng,
+      targetScore: Math.max(editStudentTargetMath, editStudentTargetEng),
+    });
+    setEditStudentMsg('Đã lưu thông tin học sinh thành công!');
+    setTimeout(() => setShowEditStudentModal(false), 1200);
+  };
+
+  const handleDeleteStudent = (stu: UserAccount) => {
+    if (!confirm(`Bạn có chắc muốn XÓA tài khoản học sinh "${stu.name}"?\nDữ liệu học tập sẽ bị xóa và không thể khôi phục.`)) return;
+    deleteUser(stu.id);
+    if (selectedStudentForDetail?.id === stu.id) setSelectedStudentForDetail(null);
+  };
+
+  // ── Teacher Note Delete ──────────────────────────────────────────────
+  const handleDeleteTeacherNote = (userId: string) => {
+    if (!confirm('Bạn có muốn xóa ghi chú giáo viên cho học sinh này không?')) return;
+    deleteTeacherNote(userId);
+    setTeacherNoteInput('');
+    setTeacherNoteSaved(false);
+  };
   const [adminEmail, setAdminEmail] = useState<string>('admin');
   const [adminPass, setAdminPass] = useState<string>('123');
   const [adminError, setAdminError] = useState<string | null>(null);
@@ -2236,6 +2314,19 @@ export const AdminPanel: React.FC = () => {
                         <Eye className="w-4 h-4" />
                         <span>Xem bài làm</span>
                       </button>
+
+                      {/* Delete Attempt Button */}
+                      <button
+                        onClick={() => {
+                          if (confirm(`Xóa lần thi "${sub.examTitle}" của ${sub.studentName}?\nHành động này không thể hoàn tác.`)) {
+                            deleteExamAttempt(sub.id, sub.studentId);
+                          }
+                        }}
+                        className="p-2.5 text-red-400 hover:text-red-600 border border-red-100 hover:border-red-300 rounded-2xl hover:bg-red-50 transition cursor-pointer shrink-0"
+                        title="Xóa lần thi này"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 );
@@ -2371,6 +2462,22 @@ export const AdminPanel: React.FC = () => {
                               title={isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
                             >
                               {isLocked ? <Lock className="w-3.5 h-3.5 text-red-500" /> : <Unlock className="w-3.5 h-3.5" />}
+                            </button>
+
+                            <button
+                              onClick={() => handleOpenEditStudent(student)}
+                              className="p-1.5 text-blue-500 hover:text-blue-700 rounded-xl hover:bg-blue-50 transition cursor-pointer"
+                              title="Chỉnh sửa thông tin học sinh"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              onClick={() => handleDeleteStudent(student)}
+                              className="p-1.5 text-red-400 hover:text-red-600 rounded-xl hover:bg-red-50 transition cursor-pointer"
+                              title="Xóa tài khoản học sinh"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         </td>
@@ -2667,10 +2774,7 @@ export const AdminPanel: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={() => {
-                      setSelectedQIds(questions.slice(0, 12).map((q) => q.id));
-                      setShowExamModal(true);
-                    }}
+                    onClick={handleOpenCreateExam}
                     className="px-4 py-2.5 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-2xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-sm"
                   >
                     <Plus className="w-4 h-4" />
@@ -2911,6 +3015,15 @@ export const AdminPanel: React.FC = () => {
                             title="Tải file JSON đề thi"
                           >
                             <Download className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Edit Exam Button */}
+                          <button
+                            onClick={() => handleOpenEditExam(ex)}
+                            className="p-1.5 text-blue-500 hover:text-blue-700 rounded-lg hover:bg-blue-50 transition cursor-pointer"
+                            title="Chỉnh sửa đề thi"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
                           </button>
 
                           {/* Delete Exam Button */}
@@ -3284,7 +3397,16 @@ export const AdminPanel: React.FC = () => {
                 className="w-full p-3 bg-white border border-[#D9D2C5] rounded-xl text-xs text-[#3D3D2D] outline-hidden focus:border-[#5A5A40]"
               />
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
+                {teacherNoteInput.trim() && (
+                  <button
+                    onClick={() => handleDeleteTeacherNote(selectedStudentForDetail!.id)}
+                    className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Xóa ghi chú</span>
+                  </button>
+                )}
                 <button
                   onClick={handleSaveTeacherNote}
                   className="px-4 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 cursor-pointer"
@@ -3437,6 +3559,113 @@ export const AdminPanel: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ✏️ MODAL: EDIT STUDENT */}
+      {showEditStudentModal && editStudentTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] max-w-md w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                  <Edit2 className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-[#3D3D2D] text-base">Chỉnh Sửa Thông Tin Học Sinh</h3>
+              </div>
+              <button
+                onClick={() => setShowEditStudentModal(false)}
+                className="p-1 text-[#8A8A70] hover:text-[#3D3D2D] rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-[#5A5A40] mb-1">Họ và tên:</label>
+                <input
+                  type="text"
+                  value={editStudentName}
+                  onChange={(e) => setEditStudentName(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:border-[#5A5A40]"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-[#5A5A40] mb-1">Mật khẩu mới (để trống = không đổi):</label>
+                <input
+                  type="text"
+                  value={editStudentPassword}
+                  onChange={(e) => setEditStudentPassword(e.target.value)}
+                  placeholder="Để trống nếu không muốn đổi mật khẩu"
+                  className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:border-[#5A5A40]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-[#5A5A40] mb-1">Trường THPT Nguyện vọng 1:</label>
+                <input
+                  type="text"
+                  value={editStudentSchool}
+                  onChange={(e) => setEditStudentSchool(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:border-[#5A5A40]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-[#5A5A40] mb-1">Mục tiêu Môn Toán:</label>
+                  <input
+                    type="number"
+                    step="0.25"
+                    min="5"
+                    max="10"
+                    value={editStudentTargetMath}
+                    onChange={(e) => setEditStudentTargetMath(parseFloat(e.target.value) || 8.5)}
+                    className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:border-[#5A5A40]"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-[#5A5A40] mb-1">Mục tiêu Tiếng Anh:</label>
+                  <input
+                    type="number"
+                    step="0.25"
+                    min="5"
+                    max="10"
+                    value={editStudentTargetEng}
+                    onChange={(e) => setEditStudentTargetEng(parseFloat(e.target.value) || 8.5)}
+                    className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:border-[#5A5A40]"
+                  />
+                </div>
+              </div>
+
+              {editStudentMsg && (
+                <p className="text-green-600 font-bold text-[11px] flex items-center space-x-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{editStudentMsg}</span>
+                </p>
+              )}
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditStudentModal(false)}
+                  className="px-4 py-2 bg-[#FAF9F6] text-[#4A4A4A] rounded-xl font-bold cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEditStudent}
+                  className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl font-bold shadow-xs transition cursor-pointer"
+                >
+                  Lưu thay đổi
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -3627,7 +3856,9 @@ export const AdminPanel: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
           <div className="bg-white rounded-[2.5rem] max-w-md w-full p-6 shadow-2xl border border-[#EAE7E0] space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
-              <h3 className="font-bold text-[#3D3D2D] text-base">Tạo Đề Thi Tuyển Sinh Mới</h3>
+              <h3 className="font-bold text-[#3D3D2D] text-base">
+                {editingExam ? '✏️ Chỉnh Sửa Đề Thi' : 'Tạo Đề Thi Tuyển Sinh Mới'}
+              </h3>
               <button
                 onClick={() => setShowExamModal(false)}
                 className="p-1 text-[#8A8A70] hover:text-[#3D3D2D] cursor-pointer"
@@ -3639,7 +3870,7 @@ export const AdminPanel: React.FC = () => {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                addExam({
+                const examData = {
                   subject: examSubject,
                   title: examTitle,
                   code: examCode,
@@ -3647,11 +3878,17 @@ export const AdminPanel: React.FC = () => {
                   targetProvince: 'Toàn quốc',
                   timeLimitMinutes: examTime,
                   totalQuestions: selectedQIds.length,
-                  difficulty: 'standard',
+                  difficulty: 'standard' as const,
                   questionIds: selectedQIds.length > 0 ? selectedQIds : questions.slice(0, 10).map((q) => q.id),
                   isOfficialFormat: true,
-                });
+                };
+                if (editingExam) {
+                  updateExam(editingExam.id, examData);
+                } else {
+                  addExam(examData);
+                }
                 setShowExamModal(false);
+                setEditingExam(null);
               }}
               className="space-y-3 text-xs"
             >
@@ -3713,7 +3950,7 @@ export const AdminPanel: React.FC = () => {
                   type="submit"
                   className="px-5 py-2 bg-[#5A5A40] text-white rounded-xl font-bold shadow-xs cursor-pointer"
                 >
-                  Tạo đề thi
+                  {editingExam ? 'Cập nhật đề thi' : 'Tạo đề thi'}
                 </button>
               </div>
             </form>

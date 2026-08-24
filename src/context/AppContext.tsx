@@ -25,6 +25,8 @@ import {
   deleteQuestionFromOnlineDB,
   subscribeToQuestionsFromOnlineDB,
   saveExamAttemptToOnlineDB,
+  deleteExamAttemptFromOnlineDB,
+  deleteStudentFromOnlineDB,
   subscribeToStudentData,
   subscribeToRoomData,
   clearOnlineStudentData,
@@ -70,6 +72,8 @@ interface AppContextType {
   switchUserRole: (role: 'student' | 'admin') => void;
   updateUserTarget: (targetScore: number, school: string) => void;
   updateUserProfile: (data: Partial<UserAccount>) => void;
+  updateUserByAdmin: (userId: string, data: Partial<UserAccount>) => void;
+  deleteUser: (userId: string) => void;
   toggleUserLock: (userId: string) => void;
 
   // Questions (combined english + math + custom)
@@ -86,6 +90,9 @@ interface AppContextType {
   addExam: (e: Omit<Exam, 'id' | 'createdAt'> & { id?: string }) => Exam;
   updateExam: (id: string, e: Partial<Exam>) => void;
   deleteExam: (id: string) => void;
+
+  // Exam Attempts management
+  deleteExamAttempt: (attemptId: string, userId?: string) => void;
 
   // Exam Attempts & Practice Sessions (Per User - Synced to DB)
   examAttempts: ExamAttempt[];
@@ -122,6 +129,7 @@ interface AppContextType {
   getUserScopedData: (userId: string) => UserScopedData;
   saveTeacherNote: (userId: string, note: string) => void;
   getTeacherNote: (userId: string) => string;
+  deleteTeacherNote: (userId: string) => void;
 
   // Reset or seed sample demo data
   seedDemoProgress: () => void;
@@ -682,6 +690,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  /**
+   * Admin updates another user's profile data (name, password, target scores, school, etc.)
+   */
+  const updateUserByAdmin = (userId: string, data: Partial<UserAccount>) => {
+    setUsersList((prev) => {
+      const updated = prev.map((u) => (u.id === userId ? { ...u, ...data } : u));
+      localStorage.setItem('edu10_users', JSON.stringify(updated));
+      return updated;
+    });
+    // If updating currentUser themselves, also update currentUser state
+    if (userId === currentUser.id) {
+      setCurrentUser((prev) => {
+        const updated = { ...prev, ...data };
+        localStorage.setItem('edu10_currentUser', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  };
+
+  /**
+   * Admin deletes a student account.
+   * - Removes from usersList
+   * - Clears their localStorage data
+   * - Deletes from Firebase
+   * - Does NOT allow deleting admin accounts
+   */
+  const deleteUser = (userId: string) => {
+    const target = usersList.find((u) => u.id === userId);
+    if (!target || target.role === 'admin') {
+      console.warn('Cannot delete admin accounts.');
+      return;
+    }
+    // Remove from usersList
+    setUsersList((prev) => {
+      const updated = prev.filter((u) => u.id !== userId);
+      localStorage.setItem('edu10_users', JSON.stringify(updated));
+      return updated;
+    });
+    // Clear their localStorage scoped data
+    try {
+      localStorage.removeItem(`edu10_userdata_${userId}`);
+      localStorage.removeItem(`edu10_teachernote_${userId}`);
+    } catch (_) {}
+    // Delete from Firebase
+    deleteStudentFromOnlineDB(userId).catch((err) =>
+      console.warn('DB deleteStudent error:', err)
+    );
+  };
+
   // Questions
   const getQuestionById = (id: string): Question | undefined => {
     // First look in the in-memory list (fast path)
@@ -809,6 +866,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateExam = (id: string, e: Partial<Exam>) => {
+    // Check if the exam being updated is a built-in (hardcoded) exam not in customExams yet
+    // If so, we need to copy it to customExams/globalCustomExams first, then apply the update
+    const isInCustom = [...customExams, ...globalCustomExams].some((item) => item.id === id);
+    const isInDb = dbExams.some((item) => item.id === id);
+
+    if (!isInCustom && !isInDb) {
+      // Built-in exam — clone it to customExams before patching
+      const builtIn = allExams.find((item) => item.id === id);
+      if (builtIn) {
+        const patched: Exam = { ...builtIn, ...e };
+        setCustomExams((prev) => {
+          const filtered = prev.filter((item) => item.id !== id);
+          return [patched, ...filtered];
+        });
+        setGlobalCustomExams((prev) => {
+          const filtered = prev.filter((item) => item.id !== id);
+          const updated = [patched, ...filtered];
+          localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
+          return updated;
+        });
+        saveExamToOnlineDB(patched).catch((err) => console.warn('DB Exam update (built-in clone) error:', err));
+        dispatchGlobalSync('EXAMS_UPDATED');
+        return;
+      }
+    }
+
     setCustomExams((prev) => {
       const updated = prev.map((item) => (item.id === id ? { ...item, ...e } : item));
       const target = updated.find((item) => item.id === id);
@@ -822,6 +905,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
       return updated;
     });
+    // Also update optimistically in dbExams state if it lives there
+    if (isInDb) {
+      setDbExams((prev) => prev.map((item) => (item.id === id ? { ...item, ...e } : item)));
+      const dbTarget = dbExams.find((item) => item.id === id);
+      if (dbTarget) {
+        saveExamToOnlineDB({ ...dbTarget, ...e }).catch((err) => console.warn('DB Exam update error:', err));
+      }
+    }
     dispatchGlobalSync('EXAMS_UPDATED');
   };
 
@@ -848,6 +939,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 4. Clean up any assigned tasks referencing this deleted exam
     deleteRemoteTasksByExamId(id);
     dispatchGlobalSync('EXAMS_UPDATED');
+  };
+
+  // ─── deleteExamAttempt ───────────────────────────────────────────
+  /**
+   * Delete a specific exam attempt.
+   * - If userId is provided (admin deleting for another user), update that user's localStorage
+   * - Otherwise deletes from current user's state
+   */
+  const deleteExamAttempt = (attemptId: string, userId?: string) => {
+    const targetUserId = userId || currentUser.id;
+
+    if (targetUserId === currentUser.id) {
+      // Update live state for current user
+      setExamAttempts((prev) => prev.filter((a) => a.id !== attemptId));
+    } else {
+      // Admin deleting for another user — update their localStorage
+      try {
+        const raw = localStorage.getItem(`edu10_userdata_${targetUserId}`);
+        if (raw) {
+          const userData = JSON.parse(raw);
+          userData.examAttempts = (userData.examAttempts || []).filter(
+            (a: ExamAttempt) => a.id !== attemptId
+          );
+          localStorage.setItem(`edu10_userdata_${targetUserId}`, JSON.stringify(userData));
+        }
+      } catch (_) {}
+    }
+    // Delete from Firebase
+    deleteExamAttemptFromOnlineDB(targetUserId, attemptId).catch((err) =>
+      console.warn('DB deleteExamAttempt error:', err)
+    );
   };
 
   // Attempts & Practice (Saved & Synced to Firebase Realtime DB)
@@ -1247,6 +1369,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const deleteTeacherNote = (userId: string) => {
+    try {
+      localStorage.removeItem(`edu10_teachernote_${userId}`);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const seedDemoProgress = () => {
     resetAllProgress();
   };
@@ -1284,12 +1414,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         switchUser,
         switchUserRole,
+        updateUserByAdmin,
+        deleteUser,
         updateUserTarget,
         updateUserProfile,
         toggleUserLock,
         getUserScopedData,
         saveTeacherNote,
         getTeacherNote,
+        deleteTeacherNote,
         questions: allQuestions,
         getQuestionById,
         addQuestion,
@@ -1303,6 +1436,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteExam,
         examAttempts,
         saveExamAttempt,
+        deleteExamAttempt,
         practiceSessions,
         savePracticeSession,
         mistakes,

@@ -376,6 +376,47 @@ export function subscribeToQuestionsFromOnlineDB(
 // ═════════════════════════════════════════════════════════════
 
 /**
+ * Delete a single exam attempt from Firebase (both global and user-scoped nodes)
+ */
+export async function deleteExamAttemptFromOnlineDB(
+  userId: string,
+  attemptId: string
+): Promise<{ success: boolean; message: string }> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) {
+    return { success: false, message: 'Cloud DB chưa được kích hoạt' };
+  }
+
+  try {
+    const updates: Record<string, null> = {
+      [`rooms/${settings.roomCode}/examAttempts/${attemptId}`]: null,
+      [`rooms/${settings.roomCode}/students/${userId}/userData/examAttemptsMap/${attemptId}`]: null,
+    };
+    await update(ref(database), updates as any);
+    return { success: true, message: 'Đã xóa lịch sử làm bài trên DB' };
+  } catch (err: any) {
+    console.error('Firebase deleteExamAttempt error:', err);
+    return { success: false, message: err.message || 'Lỗi xóa lịch sử làm bài' };
+  }
+}
+
+/**
+ * Delete all data for a student from Firebase (used when removing a student account)
+ */
+export async function deleteStudentFromOnlineDB(userId: string): Promise<boolean> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return false;
+  try {
+    const dbRef = ref(database, `rooms/${settings.roomCode}/students/${userId}`);
+    await remove(dbRef);
+    return true;
+  } catch (err) {
+    console.error('Failed to delete student from online DB:', err);
+    return false;
+  }
+}
+
+/**
  * Reset student data on DB to clean blank state
  */
 export async function clearOnlineStudentData(userId: string): Promise<boolean> {

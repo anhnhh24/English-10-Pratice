@@ -2,7 +2,7 @@
  * Realtime Activity Sync Service — Firebase + BroadcastChannel
  * Cross-device real-time monitoring of student activities
  */
-import { database, ref, set, get, onValue, push, off } from './firebaseConfig';
+import { database, ref, set, get, onValue, push, off, onChildAdded, query, limitToLast } from './firebaseConfig';
 import { getCloudDBSettings } from './cloudSyncService';
 import { RealtimeActivityEvent, RemoteTaskAssignment, RemotePing } from '../types';
 import type { DataSnapshot } from 'firebase/database';
@@ -58,12 +58,17 @@ export function logAndBroadcastActivity(
     const updated = [newEvent, ...current].slice(0, 50);
     localStorage.setItem(STORAGE_ACTIVITIES_KEY, JSON.stringify(updated));
 
-    // 2. BroadcastChannel (same-browser tabs)
+    // 2. Same-tab CustomEvent (BroadcastChannel không fire cho chính tab đó)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('edu10_activity_event', { detail: newEvent }));
+    }
+
+    // 3. BroadcastChannel (cross-tab same-browser)
     if (broadcastChannel) {
       broadcastChannel.postMessage({ type: 'ACTIVITY_EVENT', payload: newEvent });
     }
 
-    // 3. Firebase Realtime Database (cross-device!)
+    // 4. Firebase Realtime Database (cross-device!)
     const settings = getCloudDBSettings();
     if (settings.enabled && settings.roomCode) {
       const activitiesRef = ref(database, `rooms/${settings.roomCode}/activities`);
@@ -80,17 +85,37 @@ export function logAndBroadcastActivity(
 
 /**
  * Subscribe to real-time activities from Firebase + BroadcastChannel
- * Returns unsubscribe function
+ * Uses onChildAdded with limitToLast(1) so only NEW children after subscription are received.
+ * Returns unsubscribe function.
  */
 export function subscribeToRealtimeActivities(
   callback: (event: RealtimeActivityEvent) => void
 ): () => void {
   const cleanups: (() => void)[] = [];
 
-  // 1. BroadcastChannel listener (same-browser)
+  // Track IDs seen in this session to prevent duplicates across channels
+  const seenIds = new Set<string>();
+
+  const safeCallback = (event: RealtimeActivityEvent) => {
+    if (!event?.id) return;
+    if (seenIds.has(event.id)) return;
+    seenIds.add(event.id);
+    callback(event);
+  };
+
+  // 1a. Same-tab window CustomEvent listener
+  const handleWindowEvent = (e: Event) => {
+    safeCallback((e as CustomEvent<RealtimeActivityEvent>).detail);
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('edu10_activity_event', handleWindowEvent);
+    cleanups.push(() => window.removeEventListener('edu10_activity_event', handleWindowEvent));
+  }
+
+  // 1b. BroadcastChannel listener (cross-tab, same-browser)
   const handleBroadcastMessage = (e: MessageEvent) => {
     if (e.data && e.data.type === 'ACTIVITY_EVENT') {
-      callback(e.data.payload);
+      safeCallback(e.data.payload);
     }
   };
   if (broadcastChannel) {
@@ -98,56 +123,38 @@ export function subscribeToRealtimeActivities(
     cleanups.push(() => broadcastChannel?.removeEventListener('message', handleBroadcastMessage));
   }
 
-  // 2. localStorage storage event (cross-tab same-origin)
-  const handleStorageEvent = (e: StorageEvent) => {
-    if (e.key === STORAGE_ACTIVITIES_KEY && e.newValue) {
-      try {
-        const events = JSON.parse(e.newValue);
-        if (Array.isArray(events) && events.length > 0) callback(events[0]);
-      } catch (_) {}
-    }
-  };
-  if (typeof window !== 'undefined') {
-    window.addEventListener('storage', handleStorageEvent);
-    cleanups.push(() => window.removeEventListener('storage', handleStorageEvent));
-  }
-
-  // 3. Firebase Realtime listener (CROSS-DEVICE!)
+  // 2. Firebase Realtime listener (CROSS-DEVICE!)
+  // Use onChildAdded + limitToLast(1): Firebase will deliver existing latest child once on connect,
+  // then fire for each new child pushed afterwards — no manual isInitialLoad hack needed.
   const settings = getCloudDBSettings();
   if (settings.enabled && settings.roomCode) {
     const activitiesRef = ref(database, `rooms/${settings.roomCode}/activities`);
-    
-    // We only want NEW events, not historical ones
-    // Use limitToLast(1) trick: listen for child_added on the latest
-    let isInitialLoad = true;
+    // limitToLast(1) → on first connect, delivers only the last existing child (we skip it),
+    // then fires for every new push() call.
+    const activitiesQuery = query(activitiesRef, limitToLast(1));
+
+    let isFirstChild = true; // skip the initial "last existing" child on connect
     const handler = (snapshot: DataSnapshot) => {
-      if (isInitialLoad) {
-        isInitialLoad = false;
-        return; // Skip initial data load
+      if (isFirstChild) {
+        isFirstChild = false;
+        return; // skip the one existing record delivered on subscription
       }
       if (snapshot.exists()) {
-        const data = snapshot.val();
-        // Firebase returns all children, we extract the latest entries
-        if (typeof data === 'object' && data !== null) {
-          const entries = Object.values(data) as RealtimeActivityEvent[];
-          const sorted = entries.sort((a, b) => 
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        const data = snapshot.val() as RealtimeActivityEvent;
+        safeCallback(data);
+        // Cache locally
+        const stored = getStoredRealtimeActivities();
+        if (!stored.find((s) => s.id === data.id)) {
+          localStorage.setItem(
+            STORAGE_ACTIVITIES_KEY,
+            JSON.stringify([data, ...stored].slice(0, 50))
           );
-          if (sorted[0]) {
-            // Prevent duplicate callbacks by checking if we already have it locally
-            const stored = getStoredRealtimeActivities();
-            if (!stored.find(s => s.id === sorted[0].id)) {
-              callback(sorted[0]);
-              // Also cache locally
-              const updatedLocal = [sorted[0], ...stored].slice(0, 50);
-              localStorage.setItem(STORAGE_ACTIVITIES_KEY, JSON.stringify(updatedLocal));
-            }
-          }
         }
       }
     };
-    onValue(activitiesRef, handler);
-    cleanups.push(() => off(activitiesRef, 'value', handler));
+
+    onChildAdded(activitiesQuery, handler);
+    cleanups.push(() => off(activitiesQuery as any, 'child_added', handler));
   }
 
   return () => cleanups.forEach((fn) => fn());
@@ -187,12 +194,17 @@ export function broadcastRemoteTask(
     const current = getStoredRemoteTasks();
     localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify([newTask, ...current]));
 
-    // 2. BroadcastChannel
+    // 2. Same-tab CustomEvent
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('edu10_task_event', { detail: newTask }));
+    }
+
+    // 3. BroadcastChannel (cross-tab)
     if (broadcastChannel) {
       broadcastChannel.postMessage({ type: 'REMOTE_TASK_ASSIGNED', payload: newTask });
     }
 
-    // 3. Firebase (cross-device!)
+    // 4. Firebase (cross-device!)
     const settings = getCloudDBSettings();
     if (settings.enabled && settings.roomCode) {
       const taskRef = ref(database, `rooms/${settings.roomCode}/tasks/${newTask.id}`);
@@ -209,16 +221,34 @@ export function broadcastRemoteTask(
 
 /**
  * Subscribe to remote task assignments from Firebase + BroadcastChannel
+ * Uses onChildAdded to only receive NEW tasks.
  */
 export function subscribeToRemoteTasks(
   callback: (task: RemoteTaskAssignment) => void
 ): () => void {
   const cleanups: (() => void)[] = [];
+  const seenIds = new Set<string>();
 
-  // 1. BroadcastChannel
+  const safeCallback = (task: RemoteTaskAssignment) => {
+    if (!task?.id) return;
+    if (seenIds.has(task.id)) return;
+    seenIds.add(task.id);
+    callback(task);
+  };
+
+  // 1a. Same-tab CustomEvent
+  const handleWindowEvent = (e: Event) => {
+    safeCallback((e as CustomEvent<RemoteTaskAssignment>).detail);
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('edu10_task_event', handleWindowEvent);
+    cleanups.push(() => window.removeEventListener('edu10_task_event', handleWindowEvent));
+  }
+
+  // 1b. BroadcastChannel (cross-tab)
   const handleBroadcastMessage = (e: MessageEvent) => {
     if (e.data && e.data.type === 'REMOTE_TASK_ASSIGNED') {
-      callback(e.data.payload);
+      safeCallback(e.data.payload);
     }
   };
   if (broadcastChannel) {
@@ -226,49 +256,32 @@ export function subscribeToRemoteTasks(
     cleanups.push(() => broadcastChannel?.removeEventListener('message', handleBroadcastMessage));
   }
 
-  // 2. localStorage storage event
-  const handleStorageEvent = (e: StorageEvent) => {
-    if (e.key === STORAGE_TASKS_KEY && e.newValue) {
-      try {
-        const tasks = JSON.parse(e.newValue);
-        if (Array.isArray(tasks) && tasks.length > 0) callback(tasks[0]);
-      } catch (_) {}
-    }
-  };
-  if (typeof window !== 'undefined') {
-    window.addEventListener('storage', handleStorageEvent);
-    cleanups.push(() => window.removeEventListener('storage', handleStorageEvent));
-  }
-
-  // 3. Firebase (cross-device!)
+  // 2. Firebase (cross-device!) — subscribe to new tasks only
   const settings = getCloudDBSettings();
   if (settings.enabled && settings.roomCode) {
     const tasksRef = ref(database, `rooms/${settings.roomCode}/tasks`);
-    let isInitialLoad = true;
+    const tasksQuery = query(tasksRef, limitToLast(1));
+
+    let isFirstChild = true;
     const handler = (snapshot: DataSnapshot) => {
-      if (isInitialLoad) {
-        isInitialLoad = false;
+      if (isFirstChild) {
+        isFirstChild = false;
         return;
       }
       if (snapshot.exists()) {
-        const data = snapshot.val();
-        if (typeof data === 'object' && data !== null) {
-          const tasks = Object.values(data) as RemoteTaskAssignment[];
-          const pending = tasks
-            .filter((t) => !t.completed)
-            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-          if (pending[0]) {
-            const stored = getStoredRemoteTasks();
-            if (!stored.find((s) => s.id === pending[0].id)) {
-              callback(pending[0]);
-              localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify([pending[0], ...stored]));
-            }
+        const task = snapshot.val() as RemoteTaskAssignment;
+        if (!task.completed) {
+          safeCallback(task);
+          const stored = getStoredRemoteTasks();
+          if (!stored.find((s) => s.id === task.id)) {
+            localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify([task, ...stored]));
           }
         }
       }
     };
-    onValue(tasksRef, handler);
-    cleanups.push(() => off(tasksRef, 'value', handler));
+
+    onChildAdded(tasksQuery, handler);
+    cleanups.push(() => off(tasksQuery as any, 'child_added', handler));
   }
 
   return () => cleanups.forEach((fn) => fn());
@@ -393,12 +406,17 @@ export function sendRemotePing(
     const current = currentRaw ? JSON.parse(currentRaw) : [];
     localStorage.setItem(STORAGE_PINGS_KEY, JSON.stringify([newPing, ...current].slice(0, 30)));
 
-    // 2. BroadcastChannel
+    // 2. Same-tab CustomEvent
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('edu10_ping_event', { detail: newPing }));
+    }
+
+    // 3. BroadcastChannel (cross-tab)
     if (broadcastChannel) {
       broadcastChannel.postMessage({ type: 'REMOTE_PING_SENT', payload: newPing });
     }
 
-    // 3. Firebase RTDB
+    // 4. Firebase RTDB
     const settings = getCloudDBSettings();
     if (settings.enabled && settings.roomCode) {
       const pingsRef = ref(database, `rooms/${settings.roomCode}/pings`);
@@ -417,11 +435,28 @@ export function subscribeToRemotePings(
   callback: (ping: RemotePing) => void
 ): () => void {
   const cleanups: (() => void)[] = [];
+  const seenIds = new Set<string>();
 
-  // BroadcastChannel
+  const safeCallback = (ping: RemotePing) => {
+    if (!ping?.id) return;
+    if (seenIds.has(ping.id)) return;
+    seenIds.add(ping.id);
+    callback(ping);
+  };
+
+  // Same-tab CustomEvent
+  const handleWindowEvent = (e: Event) => {
+    safeCallback((e as CustomEvent<RemotePing>).detail);
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('edu10_ping_event', handleWindowEvent);
+    cleanups.push(() => window.removeEventListener('edu10_ping_event', handleWindowEvent));
+  }
+
+  // BroadcastChannel (cross-tab)
   const handleBroadcastMessage = (e: MessageEvent) => {
     if (e.data && e.data.type === 'REMOTE_PING_SENT') {
-      callback(e.data.payload);
+      safeCallback(e.data.payload);
     }
   };
   if (broadcastChannel) {
@@ -429,29 +464,25 @@ export function subscribeToRemotePings(
     cleanups.push(() => broadcastChannel?.removeEventListener('message', handleBroadcastMessage));
   }
 
-  // Firebase
+  // Firebase — onChildAdded for new pings only
   const settings = getCloudDBSettings();
   if (settings.enabled && settings.roomCode) {
     const pingsRef = ref(database, `rooms/${settings.roomCode}/pings`);
-    let isInitialLoad = true;
+    const pingsQuery = query(pingsRef, limitToLast(1));
+
+    let isFirstChild = true;
     const handler = (snapshot: DataSnapshot) => {
-      if (isInitialLoad) {
-        isInitialLoad = false;
+      if (isFirstChild) {
+        isFirstChild = false;
         return;
       }
       if (snapshot.exists()) {
-        const data = snapshot.val();
-        if (typeof data === 'object' && data !== null) {
-          const pings = Object.values(data) as RemotePing[];
-          const sorted = pings.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-          if (sorted[0]) {
-            callback(sorted[0]);
-          }
-        }
+        safeCallback(snapshot.val() as RemotePing);
       }
     };
-    onValue(pingsRef, handler);
-    cleanups.push(() => off(pingsRef, 'value', handler));
+
+    onChildAdded(pingsQuery, handler);
+    cleanups.push(() => off(pingsQuery as any, 'child_added', handler));
   }
 
   return () => cleanups.forEach((fn) => fn());
