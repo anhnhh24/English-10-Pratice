@@ -137,6 +137,24 @@ export async function saveExamAttemptToOnlineDB(
 /**
  * Subscribe to real-time changes for a specific student on Firebase
  */
+/**
+ * Fetch a specific student's data once from Firebase using get() (Lightweight, bandwidth-safe)
+ */
+export async function fetchStudentDataFromOnlineDB(userId: string): Promise<any | null> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return null;
+  try {
+    const dbRef = ref(database, `rooms/${settings.roomCode}/students/${userId}`);
+    const snapshot = await get(dbRef);
+    if (snapshot.exists()) {
+      return snapshot.val();
+    }
+  } catch (err) {
+    console.warn('fetchStudentDataFromOnlineDB error:', err);
+  }
+  return null;
+}
+
 export function subscribeToStudentData(
   userId: string,
   callback: (data: any) => void
@@ -173,6 +191,15 @@ export async function fetchRoomDataFromOnlineDB(): Promise<{
     const snapshot = await get(dbRef);
     if (snapshot.exists()) {
       const data = snapshot.val();
+      if (data && typeof data === 'object') {
+        Object.entries(data).forEach(([stuId, payload]: [string, any]) => {
+          if (payload && payload.userData) {
+            try {
+              localStorage.setItem(`edu10_userdata_${stuId}`, JSON.stringify(payload.userData));
+            } catch (_) {}
+          }
+        });
+      }
       saveCloudDBSettings({ lastSyncTimestamp: new Date().toISOString() });
       return { success: true, data, message: '✅ Đã tải dữ liệu từ Firebase thành công!' };
     } else {
@@ -247,6 +274,27 @@ export async function deleteExamFromOnlineDB(examId: string): Promise<{ success:
     console.error('Firebase deleteExam error:', err);
     return { success: false, message: err.message || 'Lỗi xóa đề thi trên DB' };
   }
+}
+
+/**
+ * Fetch custom exams once from Firebase using get() (Lightweight, bandwidth-safe)
+ */
+export async function fetchExamsFromOnlineDB(): Promise<Exam[]> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return [];
+  try {
+    const examsRef = ref(database, `rooms/${settings.roomCode}/exams`);
+    const snapshot = await get(examsRef);
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      if (data && typeof data === 'object') {
+        return Object.values(data) as Exam[];
+      }
+    }
+  } catch (err) {
+    console.warn('fetchExamsFromOnlineDB error:', err);
+  }
+  return [];
 }
 
 /**
@@ -348,6 +396,27 @@ export async function deleteQuestionFromOnlineDB(questionId: string): Promise<{ 
     console.error('Firebase deleteQuestion error:', err);
     return { success: false, message: err.message || 'Lỗi xóa câu hỏi' };
   }
+}
+
+/**
+ * Fetch custom questions once from Firebase using get() (Lightweight, bandwidth-safe)
+ */
+export async function fetchQuestionsFromOnlineDB(): Promise<Question[]> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return [];
+  try {
+    const qRef = ref(database, `rooms/${settings.roomCode}/questions`);
+    const snapshot = await get(qRef);
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      if (data && typeof data === 'object') {
+        return Object.values(data) as Question[];
+      }
+    }
+  } catch (err) {
+    console.warn('fetchQuestionsFromOnlineDB error:', err);
+  }
+  return [];
 }
 
 /**
@@ -469,6 +538,27 @@ export async function syncDeletedIdToOnlineDB(type: 'exam' | 'question', id: str
   } catch (err) {
     console.warn('syncDeletedIdToOnlineDB error:', err);
   }
+}
+
+/**
+ * Fetch deleted exam and question IDs once from Firebase using get() (Lightweight, bandwidth-safe)
+ */
+export async function fetchDeletedIdsFromOnlineDB(): Promise<{ deletedExamIds: string[]; deletedQuestionIds: string[] }> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return { deletedExamIds: [], deletedQuestionIds: [] };
+  try {
+    const delRef = ref(database, `rooms/${settings.roomCode}/deleted`);
+    const snapshot = await get(delRef);
+    if (snapshot.exists()) {
+      const val = snapshot.val() || {};
+      const deletedExamIds = val.exams ? Object.keys(val.exams) : [];
+      const deletedQuestionIds = val.questions ? Object.keys(val.questions) : [];
+      return { deletedExamIds, deletedQuestionIds };
+    }
+  } catch (err) {
+    console.warn('fetchDeletedIdsFromOnlineDB error:', err);
+  }
+  return { deletedExamIds: [], deletedQuestionIds: [] };
 }
 
 /**

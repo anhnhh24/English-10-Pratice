@@ -14,6 +14,7 @@ import {
   logAndBroadcastActivity,
   sendRemotePing,
 } from '../../services/realtimeSyncService';
+import { fetchRoomDataFromOnlineDB } from '../../services/cloudSyncService';
 import { ScorePill, SubjectBadge, EmptyState } from '../common';
 import {
   ShieldCheck,
@@ -406,6 +407,11 @@ export const AdminPanel: React.FC = () => {
       unsubscribeActivities();
       unsubscribeTasks();
     };
+  }, []);
+
+  // Fetch all student submissions once when Admin opens the panel
+  useEffect(() => {
+    fetchRoomDataFromOnlineDB().catch((err) => console.warn('Admin fetch room data error:', err));
   }, []);
 
   // Calculate Aggregate Class Performance

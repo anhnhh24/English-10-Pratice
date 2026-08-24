@@ -17,21 +17,20 @@ import { logAndBroadcastActivity, deleteRemoteTasksByExamId } from '../services/
 import {
   pushUserDataToOnlineDB,
   fetchRoomDataFromOnlineDB,
+  fetchStudentDataFromOnlineDB,
+  fetchExamsFromOnlineDB,
+  fetchQuestionsFromOnlineDB,
+  fetchDeletedIdsFromOnlineDB,
   saveExamToOnlineDB,
   deleteExamFromOnlineDB,
-  subscribeToExamsFromOnlineDB,
   saveQuestionToOnlineDB,
   saveQuestionsToOnlineDB,
   deleteQuestionFromOnlineDB,
-  subscribeToQuestionsFromOnlineDB,
   saveExamAttemptToOnlineDB,
   deleteExamAttemptFromOnlineDB,
   deleteStudentFromOnlineDB,
-  subscribeToStudentData,
-  subscribeToRoomData,
   clearOnlineStudentData,
   syncDeletedIdToOnlineDB,
-  subscribeToDeletedIdsFromOnlineDB,
 } from '../services/cloudSyncService';
 import {
   setCookie,
@@ -325,75 +324,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const allExams: Exam[] = Array.from(allExamsMap.values());
 
-  // Subscribe to Firebase DB in real-time for Exams, Questions, Deleted IDs, and Student Data
+  // Load Cloud Data ONCE on initial mount using get() (Bandwidth-safe, no onValue download loops)
   useEffect(() => {
-    // 1. Subscribe to Exams on DB
-    const unsubExams = subscribeToExamsFromOnlineDB((cloudExams) => {
-      if (cloudExams && Array.isArray(cloudExams)) {
-        setDbExams(cloudExams);
-      }
-    });
+    let isMounted = true;
+    const initializeCloudData = async () => {
+      try {
+        // 1. Fetch Deleted IDs once
+        const delData = await fetchDeletedIdsFromOnlineDB();
+        if (!isMounted) return;
+        if (delData.deletedExamIds && delData.deletedExamIds.length > 0) {
+          setDeletedExamIds((prev) => {
+            const merged = Array.from(new Set([...prev, ...delData.deletedExamIds]));
+            try { localStorage.setItem('edu10_deleted_exam_ids', JSON.stringify(merged)); } catch (_) {}
+            return merged;
+          });
+        }
+        if (delData.deletedQuestionIds && delData.deletedQuestionIds.length > 0) {
+          setDeletedQuestionIds((prev) => {
+            const merged = Array.from(new Set([...prev, ...delData.deletedQuestionIds]));
+            try { localStorage.setItem('edu10_deleted_question_ids', JSON.stringify(merged)); } catch (_) {}
+            return merged;
+          });
+        }
 
-    // 2. Subscribe to Custom Questions on DB (Merge with local questions to prevent data loss)
-    const unsubQuestions = subscribeToQuestionsFromOnlineDB((cloudQuestions) => {
-      if (cloudQuestions && Array.isArray(cloudQuestions)) {
-        setCustomQuestions((prevLocal) => {
-          const mergedMap = new Map<string, Question>();
-          // Retain all locally stored questions first
-          try {
-            const raw = localStorage.getItem('edu10_custom_questions');
-            if (raw) {
-              const fromStorage: Question[] = JSON.parse(raw);
-              fromStorage.forEach((q) => mergedMap.set(q.id, q));
-            }
-          } catch (_) {}
-          prevLocal.forEach((q) => mergedMap.set(q.id, q));
-          // Merge incoming cloud questions
-          cloudQuestions.forEach((q) => mergedMap.set(q.id, q));
+        // 2. Fetch Custom Exams once
+        const cloudExams = await fetchExamsFromOnlineDB();
+        if (!isMounted) return;
+        if (cloudExams && cloudExams.length > 0) {
+          setDbExams(cloudExams);
+        }
 
-          const merged = Array.from(mergedMap.values());
-          try {
-            localStorage.setItem('edu10_custom_questions', JSON.stringify(merged));
-          } catch (_) {}
-          return merged;
-        });
-      }
-    });
+        // 3. Fetch Custom Questions once
+        const cloudQuestions = await fetchQuestionsFromOnlineDB();
+        if (!isMounted) return;
+        if (cloudQuestions && cloudQuestions.length > 0) {
+          setCustomQuestions((prevLocal) => {
+            const mergedMap = new Map<string, Question>();
+            prevLocal.forEach((q) => mergedMap.set(q.id, q));
+            cloudQuestions.forEach((q) => mergedMap.set(q.id, q));
+            const merged = Array.from(mergedMap.values());
+            try { localStorage.setItem('edu10_custom_questions', JSON.stringify(merged)); } catch (_) {}
+            return merged;
+          });
+        }
 
-    // 3. Subscribe to Deleted IDs on DB
-    const unsubDeleted = subscribeToDeletedIdsFromOnlineDB((delData) => {
-      if (delData.deletedExamIds && delData.deletedExamIds.length > 0) {
-        setDeletedExamIds((prev) => {
-          const merged = Array.from(new Set([...prev, ...delData.deletedExamIds]));
-          try {
-            localStorage.setItem('edu10_deleted_exam_ids', JSON.stringify(merged));
-          } catch (_) {}
-          return merged;
-        });
+        // 4. Fetch student data once for active user
+        const cloudStudent = await fetchStudentDataFromOnlineDB(currentUser.id);
+        if (!isMounted) return;
+        if (cloudStudent && cloudStudent.userData) {
+          updateStatesFromCloud(cloudStudent.userData);
+        }
+      } catch (err) {
+        console.warn('Initial cloud data fetch failed:', err);
       }
-      if (delData.deletedQuestionIds && delData.deletedQuestionIds.length > 0) {
-        setDeletedQuestionIds((prev) => {
-          const merged = Array.from(new Set([...prev, ...delData.deletedQuestionIds]));
-          try {
-            localStorage.setItem('edu10_deleted_question_ids', JSON.stringify(merged));
-          } catch (_) {}
-          return merged;
-        });
-      }
-    });
+    };
+
+    initializeCloudData();
 
     return () => {
-      unsubExams();
-      unsubQuestions();
-      unsubDeleted();
+      isMounted = false;
     };
-  }, []);
+  }, [currentUser.id]);
+
+  const isCloudHydratingRef = useRef(false);
 
   // Helper to update state from cloud sync payload
   const updateStatesFromCloud = (uData: any) => {
     if (!uData) return;
 
-    // Pre-serialize matching payload to update the ref and prevent feedback loop pushes
+    // Flag to prevent the sync useEffect from writing this data back to cloud
+    isCloudHydratingRef.current = true;
+
+    // Pre-serialize matching payload to update the ref
     lastSyncedDataRef.current = JSON.stringify({
       examAttempts: uData.examAttempts || [],
       practiceSessions: uData.practiceSessions || [],
@@ -422,37 +424,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCustomExams(uData.customExams);
     }
   };
-
-  // Subscribe to Student Data on DB for active currentUser
-  useEffect(() => {
-    const unsubStudent = subscribeToStudentData(currentUser.id, (cloudPayload) => {
-      if (cloudPayload && cloudPayload.userData) {
-        updateStatesFromCloud(cloudPayload.userData);
-      }
-    });
-
-    return () => unsubStudent();
-  }, [currentUser.id]);
-
-  // Subscribe to real-time room data for ALL students (so Admin sees live submissions from any student on any device)
-  useEffect(() => {
-    const unsubRoom = subscribeToRoomData((studentsPayload) => {
-      if (studentsPayload && typeof studentsPayload === 'object') {
-        Object.entries(studentsPayload).forEach(([stuId, payload]: [string, any]) => {
-          if (payload && payload.userData) {
-            try {
-              localStorage.setItem(getUserDataKey(stuId), JSON.stringify(payload.userData));
-            } catch (_) {}
-            if (stuId === currentUser.id) {
-              updateStatesFromCloud(payload.userData);
-            }
-          }
-        });
-      }
-    });
-
-    return () => unsubRoom();
-  }, [currentUser.id]);
 
   // Global Sync Listener for Cross-Tab & Cross-Component Reactivity without page reload
   useEffect(() => {
@@ -501,12 +472,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Flag to avoid pushing initial empty/stale state over cloud DB right on initial mount
   const hasMountedRef = useRef(false);
 
-  // Sync user data to localStorage and Online Cloud DB on user changes
+  // Sync user data to localStorage and Online Cloud DB on user changes (Debounced & Loop-Protected)
   useEffect(() => {
     if (!hasMountedRef.current) {
       hasMountedRef.current = true;
       return;
     }
+
+    // If state update came from cloud hydration, skip writing back to cloud
+    if (isCloudHydratingRef.current) {
+      isCloudHydratingRef.current = false;
+      return;
+    }
+
     const currentSerialized = JSON.stringify({
       examAttempts,
       practiceSessions,
@@ -529,21 +507,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       bookmarks,
       customExams,
     };
+
+    // 1. Instant update in localStorage
     localStorage.setItem(getUserDataKey(currentUser.id), JSON.stringify(userData));
-    // Automatically push to Online Cloud DB
-    pushUserDataToOnlineDB(currentUser.id, userData, currentUser);
+
+    // 2. Debounced push to Online Cloud DB (avoids burst writes)
+    const timer = setTimeout(() => {
+      pushUserDataToOnlineDB(currentUser.id, userData, currentUser);
+    }, 1500);
+
+    return () => clearTimeout(timer);
   }, [examAttempts, practiceSessions, mistakes, bookmarks, customExams, currentUser.id]);
-
-  // Periodic Cloud DB fetch polling for multi-device sync
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        await fetchRoomDataFromOnlineDB();
-      } catch (e) {}
-    }, 15000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     localStorage.setItem('edu10_users', JSON.stringify(usersList));
