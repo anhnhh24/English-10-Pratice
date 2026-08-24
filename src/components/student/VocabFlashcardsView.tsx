@@ -60,18 +60,22 @@ export const VocabFlashcardsView: React.FC = () => {
   const handleNext = () => {
     setIsFlipped(false);
     if (currentSubject === 'math') {
-      setMathIdx((prev) => (prev + 1) % mathCardsToDisplay.length);
+      const len = mathCardsToDisplay.length || 1;
+      setMathIdx((prev) => (prev + 1) % len);
     } else {
-      setVocabIdx((prev) => (prev + 1) % wordsToDisplay.length);
+      const len = wordsToDisplay.length || 1;
+      setVocabIdx((prev) => (prev + 1) % len);
     }
   };
 
   const handlePrev = () => {
     setIsFlipped(false);
     if (currentSubject === 'math') {
-      setMathIdx((prev) => (prev - 1 + mathCardsToDisplay.length) % mathCardsToDisplay.length);
+      const len = mathCardsToDisplay.length || 1;
+      setMathIdx((prev) => (prev - 1 + len) % len);
     } else {
-      setVocabIdx((prev) => (prev - 1 + wordsToDisplay.length) % wordsToDisplay.length);
+      const len = wordsToDisplay.length || 1;
+      setVocabIdx((prev) => (prev - 1 + len) % len);
     }
   };
 

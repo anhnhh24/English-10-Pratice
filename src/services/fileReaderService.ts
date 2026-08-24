@@ -65,7 +65,12 @@ async function readImageWithOcr(file: File, onProgress?: (msg: string) => void):
     contents: [
       {
         parts: [
-          { inline_data: { mime_type: file.type || 'image/jpeg', data: base64 } },
+          {
+            inline_data: {
+              mime_type: file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
+              data: base64,
+            },
+          },
           {
             text: 'Đây là ảnh chụp một đề thi trắc nghiệm. Hãy nhận dạng và ghi lại TOÀN BỘ nội dung văn bản trong ảnh, giữ nguyên cấu trúc câu hỏi và các đáp án A, B, C, D. Không thêm bất kỳ giải thích nào, chỉ ghi lại text như đã in trong đề.',
           },

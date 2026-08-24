@@ -53,7 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenProfileModal,
   onOpenAuthModal,
 }) => {
-  const { currentSubject, switchSubject, currentUser, mistakes, bookmarks, analytics } = useApp();
+  const { currentSubject, switchSubject, currentUser, mistakes, bookmarks, analytics, getQuestionById } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine : true
@@ -73,7 +73,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   const activeMistakesCount = (Object.values(mistakes) as MistakeItem[]).filter(
     (m) => !m.mastered && (m.subject || 'english') === currentSubject
   ).length;
-  const bookmarksCount = bookmarks.length;
+  const bookmarksCount = bookmarks
+    .map((id) => getQuestionById(id))
+    .filter((q) => q && (q.subject || 'english') === currentSubject).length;
 
   const currentSubjectTarget =
     currentSubject === 'math'

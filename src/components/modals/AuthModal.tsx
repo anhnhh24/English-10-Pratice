@@ -104,6 +104,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   const handleQuickLogin = (userId: string) => {
+    const targetUser = usersList.find((u) => u.id === userId);
+    if (targetUser?.isLocked) {
+      setErrorMessage(`Tài khoản "${targetUser.name}" đang bị tạm khóa bởi Admin. Vui lòng liên hệ quản trị viên.`);
+      return;
+    }
     switchUser(userId);
     setSuccessMessage('Đã chuyển sang tài khoản thành công!');
     setTimeout(() => {

@@ -113,6 +113,11 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
       picked.push(...allInTopic.slice(0, questionCount));
     }
 
+    if (picked.length === 0) {
+      alert('Chuyên đề này hiện chưa có câu hỏi trong ngân hàng. Bạn hãy nhấn "Tạo Câu Hỏi Bằng AI" để hệ thống tự động sinh bộ câu hỏi mới nhé!');
+      return;
+    }
+
     setPracticeQuestions(picked);
     setCurrentIdx(0);
     setUserAnswers({});
@@ -198,7 +203,7 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
 
     const totalQ = practiceQuestions.length;
     const timeSpent = Math.round((Date.now() - startTime) / 1000);
-    const scorePct = Math.round((correctCount / totalQ) * 100);
+    const scorePct = totalQ > 0 ? Math.round((correctCount / totalQ) * 100) : 0;
 
     savePracticeSession({
       subject: currentSubject,

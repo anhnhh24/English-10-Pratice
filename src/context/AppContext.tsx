@@ -1329,17 +1329,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const getUserScopedData = (userId: string): UserScopedData => {
     if (userId === currentUser.id) {
       return {
-        examAttempts,
-        practiceSessions,
-        mistakes,
-        bookmarks,
-        customExams,
+        examAttempts: examAttempts || [],
+        practiceSessions: practiceSessions || [],
+        mistakes: mistakes || {},
+        bookmarks: bookmarks || [],
+        customExams: customExams || [],
       };
     }
     try {
       const stored = localStorage.getItem(`edu10_userdata_${userId}`);
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        return {
+          examAttempts: Array.isArray(parsed.examAttempts)
+            ? parsed.examAttempts.filter((a: any) => a && a.id && !a.id.startsWith('attempt_demo_'))
+            : [],
+          practiceSessions: Array.isArray(parsed.practiceSessions) ? parsed.practiceSessions : [],
+          mistakes: parsed.mistakes && typeof parsed.mistakes === 'object' ? parsed.mistakes : {},
+          bookmarks: Array.isArray(parsed.bookmarks) ? parsed.bookmarks : [],
+          customExams: Array.isArray(parsed.customExams) ? parsed.customExams : [],
+        };
       }
     } catch (e) {
       console.error(e);

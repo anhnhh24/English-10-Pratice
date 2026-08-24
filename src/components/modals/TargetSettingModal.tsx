@@ -8,11 +8,23 @@ interface TargetSettingModalProps {
 }
 
 export const TargetSettingModal: React.FC<TargetSettingModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser, updateUserTarget } = useApp();
-  const [score, setScore] = useState<number>(currentUser.targetScore || 8.5);
+  const { currentSubject, currentUser, updateUserProfile } = useApp();
+  const getSubjectScore = () =>
+    currentSubject === 'math'
+      ? currentUser.targetScoreMath || currentUser.targetScore || 8.5
+      : currentUser.targetScoreEnglish || currentUser.targetScore || 8.5;
+
+  const [score, setScore] = useState<number>(getSubjectScore);
   const [school, setSchool] = useState<string>(
     currentUser.targetSchool || 'THPT Chu Văn An (Hà Nội)'
   );
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setScore(getSubjectScore());
+      setSchool(currentUser.targetSchool || 'THPT Chu Văn An (Hà Nội)');
+    }
+  }, [currentUser, currentSubject, isOpen]);
 
   if (!isOpen) return null;
 
@@ -28,7 +40,21 @@ export const TargetSettingModal: React.FC<TargetSettingModalProps> = ({ isOpen, 
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    updateUserTarget(score, school);
+    if (currentSubject === 'math') {
+      const engScore = currentUser.targetScoreEnglish || score;
+      updateUserProfile({
+        targetScoreMath: score,
+        targetSchool: school.trim() || currentUser.targetSchool,
+        targetScore: parseFloat(((score + engScore) / 2).toFixed(1)),
+      });
+    } else {
+      const mathScore = currentUser.targetScoreMath || score;
+      updateUserProfile({
+        targetScoreEnglish: score,
+        targetSchool: school.trim() || currentUser.targetSchool,
+        targetScore: parseFloat(((mathScore + score) / 2).toFixed(1)),
+      });
+    }
     onClose();
   };
 
@@ -56,7 +82,7 @@ export const TargetSettingModal: React.FC<TargetSettingModalProps> = ({ isOpen, 
         <form onSubmit={handleSave} className="space-y-4 text-xs">
           <div>
             <label className="block font-bold text-[#4A4A4A] mb-1">
-              Mục tiêu điểm Tiếng Anh vào 10 (Thang điểm 10):
+              Mục tiêu điểm {currentSubject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'} vào 10 (Thang điểm 10):
             </label>
             <div className="flex items-center space-x-3 mt-2">
               <input

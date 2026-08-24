@@ -7,6 +7,8 @@ import { database, ref, set, get, onValue, off, remove, update } from './firebas
 import type { DataSnapshot } from 'firebase/database';
 import { Exam, Question, ExamAttempt } from '../types';
 
+import { dispatchGlobalSync } from './cookieService';
+
 export interface CloudDBSettings {
   enabled: boolean;
   roomCode: string;
@@ -45,6 +47,9 @@ export function saveCloudDBSettings(settings: Partial<CloudDBSettings>): CloudDB
   const updated = { ...current, ...settings };
   try {
     localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(updated));
+    if (settings.roomCode && settings.roomCode !== current.roomCode) {
+      dispatchGlobalSync('ROOM_CODE_CHANGED', updated.roomCode);
+    }
   } catch (e) {
     console.error(e);
   }

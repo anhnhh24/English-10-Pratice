@@ -230,7 +230,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
 
   const currentQ = examQuestions[currentIdx];
 
-  const handleStartExam = (selectedId?: string) => {
+  const handleStartExam = (selectedId?: string, retryCount = 0) => {
     const idToUse = selectedId || selectedExamId;
     if (selectedId) setSelectedExamId(selectedId);
     const targetExam = exams.find((e) => e.id === idToUse) || subjectExams[0] || exams[0];
@@ -241,9 +241,13 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
       .filter(Boolean) as Question[];
 
     if (targetQuestions.length === 0) {
-      // Questions may have been just imported (bulkImportQuestions) and state hasn't re-rendered yet.
-      // Wait one tick for React to commit the new state, then retry once.
-      setTimeout(() => handleStartExam(selectedId || idToUse), 150);
+      if (retryCount < 1) {
+        // Questions may have been just imported (bulkImportQuestions) and state hasn't re-rendered yet.
+        // Wait one tick for React to commit the new state, then retry once.
+        setTimeout(() => handleStartExam(selectedId || idToUse, retryCount + 1), 150);
+        return;
+      }
+      alert('Đề thi này hiện chưa có câu hỏi nào trong ngân hàng đề. Vui lòng chọn đề thi khác hoặc tạo đề với AI!');
       return;
     }
 

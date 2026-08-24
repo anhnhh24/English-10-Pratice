@@ -67,6 +67,20 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   );
   const [isSaved, setIsSaved] = useState(false);
 
+  // Synchronize state with currentUser whenever modal opens or active user changes
+  React.useEffect(() => {
+    if (isOpen) {
+      setName(currentUser.name);
+      setEmail(currentUser.email);
+      setPassword(currentUser.password || '123');
+      setAvatarColor(currentUser.avatarColor || 'bg-indigo-600');
+      setTargetSchool(currentUser.targetSchool || 'THPT Chu Văn An');
+      setTargetScoreMath(currentUser.targetScoreMath || currentUser.targetScore || 8.5);
+      setTargetScoreEnglish(currentUser.targetScoreEnglish || currentUser.targetScore || 8.5);
+      setActiveTab('profile');
+    }
+  }, [currentUser, isOpen]);
+
   if (!isOpen) return null;
 
   const handleSave = (e: React.FormEvent) => {

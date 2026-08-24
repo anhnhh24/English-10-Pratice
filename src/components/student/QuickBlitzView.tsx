@@ -32,6 +32,10 @@ export const QuickBlitzView: React.FC<QuickBlitzViewProps> = ({ onBackToDashboar
     const subjectQuestions = questions.filter(
       (q) => (q.subject || 'english') === currentSubject
     );
+    if (subjectQuestions.length === 0) {
+      alert(`Hiện chưa có câu hỏi nào cho môn ${currentSubject === 'math' ? 'Toán' : 'Tiếng Anh'}. Vui lòng tạo đề bằng AI hoặc thêm câu hỏi trước nhé!`);
+      return;
+    }
     const shuffled = [...subjectQuestions].sort(() => 0.5 - Math.random());
     const count = Math.min(10, shuffled.length);
     const picked = shuffled.slice(0, count);
