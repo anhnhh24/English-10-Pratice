@@ -308,12 +308,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ...customQuestions,
   ].filter((q) => !deletedQSet.has(q.id));
 
-  // Base Exam Bank (English + Math + Global Custom + User Custom + DB-synced) - Filtered by deleted blacklist
+  // Base Exam Bank (English + Math + All Students' Custom + Global Custom + User Custom + DB-synced) - Filtered by deleted blacklist
   const deletedESet = new Set(deletedExamIds);
   const allExamsMap = new Map<string, Exam>();
+
+  // Collect custom exams from all student profiles stored locally
+  const allUsersCustomExams: Exam[] = [];
+  try {
+    usersList.forEach((u) => {
+      const raw = localStorage.getItem(getUserDataKey(u.id));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.customExams)) {
+          allUsersCustomExams.push(...parsed.customExams);
+        }
+      }
+    });
+  } catch (_) {}
+
   [
     ...EXAMS_DATA.map((e) => ({ ...e, subject: 'english' as SubjectId })),
     ...MATH_EXAMS_DATA.map((e) => ({ ...e, subject: 'math' as SubjectId })),
+    ...allUsersCustomExams,
     ...globalCustomExams,
     ...customExams,
     ...dbExams,
@@ -619,6 +635,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMistakes(uData.mistakes || {});
     setBookmarks(uData.bookmarks || []);
     setCustomExams(uData.customExams || []);
+
+    try {
+      const savedGlobal = localStorage.getItem('edu10_global_custom_exams');
+      if (savedGlobal) {
+        setGlobalCustomExams(JSON.parse(savedGlobal));
+      }
+    } catch (_) {}
 
     dispatchGlobalSync('USER_CHANGED', target);
   };
