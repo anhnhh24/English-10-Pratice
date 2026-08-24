@@ -33,6 +33,7 @@ import {
   Calculator,
   Languages,
 } from 'lucide-react';
+import confetti from 'canvas-confetti';
 
 interface AiExamGeneratorViewProps {
   onStartExam: (examId: string) => void;
@@ -345,7 +346,27 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
         setProgressStep(step);
       });
 
+      // 1. Tự động lưu tất cả câu hỏi vào Ngân hàng câu hỏi
+      bulkImportQuestions(result.questions);
+
+      // 2. Tự động lưu đề thi vào Kho đề thi
+      addExam({
+        id: result.exam.id,
+        subject: genSubject,
+        code: result.exam.code,
+        title: result.exam.title,
+        description: result.exam.description,
+        targetProvince: result.exam.targetProvince,
+        timeLimitMinutes: result.exam.timeLimitMinutes,
+        totalQuestions: result.questions.length,
+        difficulty: result.exam.difficulty,
+        questionIds: result.questions.map((q) => q.id),
+        isOfficialFormat: false,
+      });
+
       setGeneratedResult(result);
+      setSavedSuccess(true);
+      confetti({ particleCount: 60, spread: 70 });
     } catch (err: any) {
       setErrorMessage(
         err.message ||
@@ -356,7 +377,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
     }
   };
 
-  // Save generated exam into AppContext
+  // Save generated exam into AppContext (preserved for backward compatibility)
   const handleSaveToLibrary = () => {
     if (!generatedResult) return;
 
@@ -382,24 +403,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
   // Start exam directly in simulator
   const handleStartGeneratedExam = () => {
     if (!generatedResult) return;
-
-    bulkImportQuestions(generatedResult.questions);
-
-    const createdExam = addExam({
-      id: generatedResult.exam.id,
-      subject: genSubject,
-      code: generatedResult.exam.code,
-      title: generatedResult.exam.title,
-      description: generatedResult.exam.description,
-      targetProvince: generatedResult.exam.targetProvince,
-      timeLimitMinutes: generatedResult.exam.timeLimitMinutes,
-      totalQuestions: generatedResult.questions.length,
-      difficulty: generatedResult.exam.difficulty,
-      questionIds: generatedResult.questions.map((q) => q.id),
-      isOfficialFormat: false,
-    });
-
-    onStartExam(createdExam.id);
+    onStartExam(generatedResult.exam.id);
   };
 
   // Copy formatted exam
@@ -847,8 +851,9 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#D9D2C5] pb-5">
             <div className="space-y-1">
               <div className="flex items-center space-x-2">
-                <span className="px-2.5 py-0.5 bg-[#8BA888] text-[#2C3E2D] text-[10px] font-bold rounded-full uppercase">
-                  Đã tạo thành công ({genSubject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'})
+                <span className="px-3 py-1 bg-[#8BA888] text-[#2C3E2D] text-[10px] font-bold rounded-full uppercase flex items-center space-x-1 shadow-2xs">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-[#2C3E2D]" />
+                  <span>Đã tự động lưu vào kho đề ({genSubject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'})</span>
                 </span>
                 <span className="text-xs font-mono text-[#8A8A70]">{generatedResult.exam.code}</span>
               </div>
