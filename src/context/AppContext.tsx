@@ -44,7 +44,6 @@ interface UserScopedData {
   practiceSessions: PracticeSession[];
   mistakes: Record<string, MistakeItem>;
   bookmarks: string[];
-  customExams: Exam[];
 }
 
 interface AppContextType {
@@ -175,7 +174,6 @@ const INITIAL_DEMO_DATA: Record<string, UserScopedData> = {
     practiceSessions: [],
     mistakes: {},
     bookmarks: [],
-    customExams: [],
   },
 };
 
@@ -232,7 +230,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             (a: any) => a.id && !a.id.startsWith('attempt_demo_')
           );
         }
-        return parsed;
+        return {
+          examAttempts: parsed.examAttempts || [],
+          practiceSessions: parsed.practiceSessions || [],
+          mistakes: parsed.mistakes || {},
+          bookmarks: parsed.bookmarks || [],
+        };
       } catch (e) {
         // fallback
       }
@@ -242,16 +245,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       practiceSessions: [],
       mistakes: {},
       bookmarks: [],
-      customExams: [],
     };
   };
 
-  // Active User Data States
+  // Active User Data States (Personal user progress)
   const [examAttempts, setExamAttempts] = useState<ExamAttempt[]>(() => loadUserData(currentUser.id).examAttempts || []);
   const [practiceSessions, setPracticeSessions] = useState<PracticeSession[]>(() => loadUserData(currentUser.id).practiceSessions || []);
   const [mistakes, setMistakes] = useState<Record<string, MistakeItem>>(() => loadUserData(currentUser.id).mistakes || {});
   const [bookmarks, setBookmarks] = useState<string[]>(() => loadUserData(currentUser.id).bookmarks || []);
-  const [customExams, setCustomExams] = useState<Exam[]>(() => loadUserData(currentUser.id).customExams || []);
+
+  // 4. Shared Custom Exams Bank (Shared globally across all students & admin)
+  const [customExams, setCustomExams] = useState<Exam[]>(() => {
+    const map = new Map<string, Exam>();
+
+    // A. Read from global/shared custom exams storage
+    try {
+      const saved = localStorage.getItem('edu10_custom_exams') || localStorage.getItem('edu10_global_custom_exams');
+      if (saved) {
+        const list: Exam[] = JSON.parse(saved);
+        if (Array.isArray(list)) {
+          list.forEach((e) => map.set(e.id, e));
+        }
+      }
+    } catch (_) {}
+
+    // B. Migrate any legacy user-scoped customExams into the shared bank
+    try {
+      DEFAULT_USERS.forEach((u) => {
+        const raw = localStorage.getItem(`edu10_userdata_${u.id}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed.customExams)) {
+            parsed.customExams.forEach((e: Exam) => map.set(e.id, e));
+          }
+        }
+      });
+    } catch (_) {}
+
+    const unified = Array.from(map.values());
+    try {
+      localStorage.setItem('edu10_custom_exams', JSON.stringify(unified));
+      localStorage.setItem('edu10_global_custom_exams', JSON.stringify(unified));
+    } catch (_) {}
+    return unified;
+  });
 
   // Local ref to prevent synchronization feedback loops when loading/syncing from cloud
   const lastSyncedDataRef = useRef<string>('');
@@ -262,15 +299,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       practiceSessions: initialData.practiceSessions || [],
       mistakes: initialData.mistakes || {},
       bookmarks: initialData.bookmarks || [],
-      customExams: initialData.customExams || [],
     });
   }
-
-  // Global custom exams created on this device (so all user accounts can see/run them)
-  const [globalCustomExams, setGlobalCustomExams] = useState<Exam[]>(() => {
-    const saved = localStorage.getItem('edu10_global_custom_exams');
-    return saved ? JSON.parse(saved) : [];
-  });
 
   // Online DB Exams
   const [dbExams, setDbExams] = useState<Exam[]>([]);
@@ -308,29 +338,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ...customQuestions,
   ].filter((q) => !deletedQSet.has(q.id));
 
-  // Base Exam Bank (English + Math + All Students' Custom + Global Custom + User Custom + DB-synced) - Filtered by deleted blacklist
+  // Base Exam Bank (English + Math + Shared Custom + DB-synced) - Filtered by deleted blacklist
   const deletedESet = new Set(deletedExamIds);
   const allExamsMap = new Map<string, Exam>();
-
-  // Collect custom exams from all student profiles stored locally
-  const allUsersCustomExams: Exam[] = [];
-  try {
-    usersList.forEach((u) => {
-      const raw = localStorage.getItem(getUserDataKey(u.id));
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.customExams)) {
-          allUsersCustomExams.push(...parsed.customExams);
-        }
-      }
-    });
-  } catch (_) {}
 
   [
     ...EXAMS_DATA.map((e) => ({ ...e, subject: 'english' as SubjectId })),
     ...MATH_EXAMS_DATA.map((e) => ({ ...e, subject: 'math' as SubjectId })),
-    ...allUsersCustomExams,
-    ...globalCustomExams,
     ...customExams,
     ...dbExams,
   ].forEach((e) => {
@@ -417,7 +431,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       practiceSessions: uData.practiceSessions || [],
       mistakes: uData.mistakes || {},
       bookmarks: uData.bookmarks || [],
-      customExams: uData.customExams || [],
     });
 
     if (Array.isArray(uData.examAttempts)) {
@@ -436,19 +449,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (Array.isArray(uData.bookmarks)) {
       setBookmarks(uData.bookmarks);
     }
-    if (Array.isArray(uData.customExams)) {
-      setCustomExams(uData.customExams);
-    }
   };
 
   // Global Sync Listener for Cross-Tab & Cross-Component Reactivity without page reload
   useEffect(() => {
     const unsub = subscribeToGlobalSync((event) => {
       if (event.type === 'EXAMS_UPDATED') {
-        const savedGlobal = localStorage.getItem('edu10_global_custom_exams');
-        if (savedGlobal) {
+        const saved = localStorage.getItem('edu10_custom_exams') || localStorage.getItem('edu10_global_custom_exams');
+        if (saved) {
           try {
-            setGlobalCustomExams(JSON.parse(savedGlobal));
+            setCustomExams(JSON.parse(saved));
           } catch (_) {}
         }
       } else if (event.type === 'QUESTIONS_UPDATED') {
@@ -470,14 +480,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             practiceSessions: uData.practiceSessions || [],
             mistakes: uData.mistakes || {},
             bookmarks: uData.bookmarks || [],
-            customExams: uData.customExams || [],
           });
 
           setExamAttempts(uData.examAttempts || []);
           setPracticeSessions(uData.practiceSessions || []);
           setMistakes(uData.mistakes || {});
           setBookmarks(uData.bookmarks || []);
-          setCustomExams(uData.customExams || []);
         }
       }
     });
@@ -506,7 +514,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       practiceSessions,
       mistakes,
       bookmarks,
-      customExams,
     });
 
     // Check if there is an actual local state change before writing to DB
@@ -521,7 +528,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       practiceSessions,
       mistakes,
       bookmarks,
-      customExams,
     };
 
     // 1. Instant update in localStorage
@@ -533,7 +539,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [examAttempts, practiceSessions, mistakes, bookmarks, customExams, currentUser.id]);
+  }, [examAttempts, practiceSessions, mistakes, bookmarks, currentUser.id]);
 
   useEffect(() => {
     localStorage.setItem('edu10_users', JSON.stringify(usersList));
@@ -619,7 +625,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('edu10_currentUser', JSON.stringify(target));
     setCookie('edu10_uid', target.id);
 
-    // Load target user's data
+    // Load target user's personal progress data
     const uData = loadUserData(target.id);
 
     lastSyncedDataRef.current = JSON.stringify({
@@ -627,21 +633,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       practiceSessions: uData.practiceSessions || [],
       mistakes: uData.mistakes || {},
       bookmarks: uData.bookmarks || [],
-      customExams: uData.customExams || [],
     });
 
     setExamAttempts(uData.examAttempts || []);
     setPracticeSessions(uData.practiceSessions || []);
     setMistakes(uData.mistakes || {});
     setBookmarks(uData.bookmarks || []);
-    setCustomExams(uData.customExams || []);
-
-    try {
-      const savedGlobal = localStorage.getItem('edu10_global_custom_exams');
-      if (savedGlobal) {
-        setGlobalCustomExams(JSON.parse(savedGlobal));
-      }
-    } catch (_) {}
 
     dispatchGlobalSync('USER_CHANGED', target);
   };
@@ -848,12 +845,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setCustomExams((prev) => {
       const filtered = prev.filter((item) => item.id !== newExam.id);
-      return [newExam, ...filtered];
-    });
-    setGlobalCustomExams((prev) => {
-      const filtered = prev.filter((item) => item.id !== newExam.id);
       const updated = [newExam, ...filtered];
-      localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
+      try {
+        localStorage.setItem('edu10_custom_exams', JSON.stringify(updated));
+        localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
+      } catch (_) {}
       return updated;
     });
     // Immediately persist to Firebase Realtime Database
@@ -863,9 +859,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateExam = (id: string, e: Partial<Exam>) => {
-    // Check if the exam being updated is a built-in (hardcoded) exam not in customExams yet
-    // If so, we need to copy it to customExams/globalCustomExams first, then apply the update
-    const isInCustom = [...customExams, ...globalCustomExams].some((item) => item.id === id);
+    const isInCustom = customExams.some((item) => item.id === id);
     const isInDb = dbExams.some((item) => item.id === id);
 
     if (!isInCustom && !isInDb) {
@@ -875,12 +869,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const patched: Exam = { ...builtIn, ...e };
         setCustomExams((prev) => {
           const filtered = prev.filter((item) => item.id !== id);
-          return [patched, ...filtered];
-        });
-        setGlobalCustomExams((prev) => {
-          const filtered = prev.filter((item) => item.id !== id);
           const updated = [patched, ...filtered];
-          localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
+          try {
+            localStorage.setItem('edu10_custom_exams', JSON.stringify(updated));
+            localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
+          } catch (_) {}
           return updated;
         });
         saveExamToOnlineDB(patched).catch((err) => console.warn('DB Exam update (built-in clone) error:', err));
@@ -892,17 +885,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCustomExams((prev) => {
       const updated = prev.map((item) => (item.id === id ? { ...item, ...e } : item));
       const target = updated.find((item) => item.id === id);
+      try {
+        localStorage.setItem('edu10_custom_exams', JSON.stringify(updated));
+        localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
+      } catch (_) {}
       if (target) {
         saveExamToOnlineDB(target).catch((err) => console.warn('DB Exam update error:', err));
       }
       return updated;
     });
-    setGlobalCustomExams((prev) => {
-      const updated = prev.map((item) => (item.id === id ? { ...item, ...e } : item));
-      localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
-      return updated;
-    });
-    // Also update optimistically in dbExams state if it lives there
+
     if (isInDb) {
       setDbExams((prev) => prev.map((item) => (item.id === id ? { ...item, ...e } : item)));
       const dbTarget = dbExams.find((item) => item.id === id);
@@ -922,11 +914,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (_) {}
       return next;
     });
-    // 2. Remove from local states
-    setCustomExams((prev) => prev.filter((item) => item.id !== id));
-    setGlobalCustomExams((prev) => {
+    // 2. Remove from shared customExams
+    setCustomExams((prev) => {
       const updated = prev.filter((item) => item.id !== id);
-      localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
+      try {
+        localStorage.setItem('edu10_custom_exams', JSON.stringify(updated));
+        localStorage.setItem('edu10_global_custom_exams', JSON.stringify(updated));
+      } catch (_) {}
       return updated;
     });
     setDbExams((prev) => prev.filter((item) => item.id !== id));
@@ -1330,7 +1324,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         practiceSessions: practiceSessions || [],
         mistakes: mistakes || {},
         bookmarks: bookmarks || [],
-        customExams: customExams || [],
       };
     }
     try {
@@ -1344,7 +1337,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           practiceSessions: Array.isArray(parsed.practiceSessions) ? parsed.practiceSessions : [],
           mistakes: parsed.mistakes && typeof parsed.mistakes === 'object' ? parsed.mistakes : {},
           bookmarks: Array.isArray(parsed.bookmarks) ? parsed.bookmarks : [],
-          customExams: Array.isArray(parsed.customExams) ? parsed.customExams : [],
         };
       }
     } catch (e) {
@@ -1355,7 +1347,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       practiceSessions: [],
       mistakes: {},
       bookmarks: [],
-      customExams: [],
     };
   };
 
