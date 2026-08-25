@@ -67,6 +67,14 @@ export const AiQuestionExplainerModal: React.FC<AiQuestionExplainerModalProps> =
     };
   }, [question, userSelectedOption, selectedModel]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   if (!question) return null;
 
   const optLabels = ['A', 'B', 'C', 'D'];
@@ -75,7 +83,12 @@ export const AiQuestionExplainerModal: React.FC<AiQuestionExplainerModalProps> =
   const bookmarked = isBookmarked(question.id);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in"
+    >
       <div className="bg-[#FAF9F6] rounded-[2.5rem] max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-[#D9D2C5] overflow-hidden">
         {/* Modal Header */}
         <div className="p-5 sm:p-6 bg-gradient-to-r from-[#5A5A40] to-[#3D3D2D] text-white flex items-center justify-between shrink-0">

@@ -250,14 +250,42 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
 
         {/* Attempts List */}
         {filteredHistoryAttempts.length === 0 ? (
-          <div className="p-12 text-center bg-[#FAF9F6] rounded-3xl border border-dashed border-[#D9D2C5] space-y-2">
+          <div className="p-10 text-center bg-[#FAF9F6] rounded-3xl border border-dashed border-[#D9D2C5] space-y-3">
             <div className="w-14 h-14 bg-white rounded-3xl flex items-center justify-center mx-auto text-2xl shadow-2xs">
               📝
             </div>
-            <h4 className="text-sm font-bold text-[#3D3D2D]">Chưa có bài thi nào phù hợp với bộ lọc</h4>
-            <p className="text-xs text-[#8A8A70]">
-              Hãy thay đổi bộ lọc hoặc vào phòng thi thử để hoàn thành các đề thi mới.
-            </p>
+            <div>
+              <h4 className="text-sm font-bold text-[#3D3D2D]">Chưa có bài thi nào phù hợp với bộ lọc</h4>
+              <p className="text-xs text-[#64748B] mt-0.5">
+                {examAttempts.length === 0
+                  ? 'Bạn chưa làm bài thi thử nào. Hãy vào phòng thi thử để bắt đầu làm bài đầu tiên!'
+                  : 'Không tìm thấy bài thi phù hợp với từ khóa hoặc bộ lọc đã chọn.'}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 pt-1 flex-wrap">
+              {(historySubjectFilter !== 'all' || historyScoreFilter !== 'all' || historySearchQuery) && (
+                <button
+                  onClick={() => {
+                    setHistorySubjectFilter('all');
+                    setHistoryScoreFilter('all');
+                    setHistorySearchQuery('');
+                  }}
+                  className="px-4 py-2 bg-white hover:bg-[#FAF9F6] text-[#5A5A40] text-xs font-bold rounded-xl border border-[#D9D2C5] transition cursor-pointer shadow-2xs"
+                >
+                  🔄 Đặt lại tất cả bộ lọc
+                </button>
+              )}
+
+              {onStartExam && (
+                <button
+                  onClick={() => onStartExam(currentSubject === 'math' ? 'math_exam_official_01' : 'exam_official_01')}
+                  className="px-4 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-xs"
+                >
+                  🚀 Thi thử đề {currentSubject === 'math' ? 'Toán' : 'Tiếng Anh'} ngay
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">

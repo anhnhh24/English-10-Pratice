@@ -690,9 +690,13 @@ export const AdminPanel: React.FC = () => {
     setTimeout(() => setTeacherNoteSaved(false), 2500);
   };
 
+  const [isSubmittingTask, setIsSubmittingTask] = useState<boolean>(false);
+
   // Remote Task Send Handler
   const handleSendRemoteTask = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingTask) return;
+    setIsSubmittingTask(true);
     const newTask = broadcastRemoteTask({
       senderName: currentUser.name || 'Anh/Chị (Người giám sát)',
       recipientUserId: taskTargetStudentId,
@@ -705,8 +709,9 @@ export const AdminPanel: React.FC = () => {
     setTaskSuccessMsg(true);
     setTimeout(() => {
       setTaskSuccessMsg(false);
+      setIsSubmittingTask(false);
       setShowAssignTaskModal(false);
-    }, 1500);
+    }, 1200);
   };
 
   const handleDeleteTask = (taskId: string) => {
@@ -3359,7 +3364,12 @@ export const AdminPanel: React.FC = () => {
       {/* 🚀 MODAL: REMOTE TASK ASSIGNMENT (GIAO NHIỆM VỤ CHO EM TỪ XA)            */}
       {/* ========================================================================= */}
       {showAssignTaskModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isSubmittingTask) setShowAssignTaskModal(false);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in"
+        >
           <div className="bg-white rounded-[2.5rem] max-w-md w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
               <div className="flex items-center space-x-2">
@@ -3456,7 +3466,7 @@ export const AdminPanel: React.FC = () => {
               </div>
 
               {taskSuccessMsg && (
-                <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center space-x-1.5">
+                <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center space-x-1.5 animate-in fade-in">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>Đã phát sóng nhiệm vụ thời gian thực đến học sinh!</span>
                 </div>
@@ -3466,16 +3476,27 @@ export const AdminPanel: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAssignTaskModal(false)}
-                  className="px-4 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#6B6B54] rounded-xl font-bold transition cursor-pointer"
+                  disabled={isSubmittingTask}
+                  className="px-4 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#6B6B54] rounded-xl font-bold transition cursor-pointer disabled:opacity-50"
                 >
                   Đóng
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl font-bold shadow-xs transition flex items-center space-x-1 cursor-pointer"
+                  disabled={isSubmittingTask || taskSuccessMsg}
+                  className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-60"
                 >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Gửi nhiệm vụ ngay</span>
+                  {isSubmittingTask ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Đang gửi...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Gửi nhiệm vụ ngay</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -3487,7 +3508,12 @@ export const AdminPanel: React.FC = () => {
       {/* 🔍 MODAL: STUDENT 360° DETAILED PERFORMANCE INSPECTOR                     */}
       {/* ========================================================================= */}
       {selectedStudentForDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSelectedStudentForDetail(null);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in"
+        >
           <div className="bg-white rounded-[2.5rem] max-w-4xl w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] max-h-[92vh] overflow-y-auto space-y-6">
             {/* Header */}
             <div className="flex items-start justify-between pb-4 border-b border-[#F5F2ED] gap-3">
@@ -4855,7 +4881,12 @@ export const AdminPanel: React.FC = () => {
         });
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/50 backdrop-blur-xs animate-in fade-in">
+          <div
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setSelectedAttemptForReview(null);
+            }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/50 backdrop-blur-xs animate-in fade-in"
+          >
             <div className="bg-[#FAF9F6] rounded-[2.5rem] max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-[#D9D2C5] overflow-hidden">
               {/* Modal Header */}
               <div className="p-5 sm:p-6 bg-white border-b border-[#EAE7E0] flex items-center justify-between shrink-0">

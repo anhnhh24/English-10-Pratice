@@ -606,7 +606,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <h3 className="font-extrabold text-sm sm:text-base text-[#3D3D2D]">
                   Lịch sử bài thi {isMath ? 'Toán' : 'Tiếng Anh'} đã nộp ({filteredAttempts.length} bài)
                 </h3>
-                <p className="text-[11px] text-[#8A8A70]">
+                <p className="text-[11px] text-[#64748B]">
                   Kết quả làm bài và điểm số các lần thi thử gần nhất của bạn
                 </p>
               </div>
@@ -629,7 +629,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               >
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="text-[10px] text-[#8A8A70]">
+                    <span className="text-[10px] text-[#64748B]">
                       {formatRelativeTime(attempt.date)}
                     </span>
                     <ScorePill score={attempt.score} maxScore={10} />

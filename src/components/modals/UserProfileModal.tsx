@@ -87,6 +87,15 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     }
   }, [currentUser, isOpen]);
 
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !selectedAttemptForReview) onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose, selectedAttemptForReview]);
+
   if (!isOpen) return null;
 
   const handleSave = (e: React.FormEvent) => {
@@ -131,7 +140,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   ).length;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-6 overflow-y-auto animate-in fade-in duration-200">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !selectedAttemptForReview) onClose();
+      }}
+      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3.5 sm:p-6 overflow-y-auto animate-in fade-in duration-200"
+    >
       <div className="relative bg-white border border-[#D9D2C5] rounded-3xl sm:rounded-[2.5rem] shadow-2xl max-w-lg w-full p-5 sm:p-7 space-y-5 my-auto">
         {/* Close Button */}
         <button

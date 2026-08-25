@@ -47,6 +47,14 @@ export const StudentAttemptReviewModal: React.FC<StudentAttemptReviewModalProps>
     userSelectedOption?: number;
   } | null>(null);
 
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   if (!attempt) return null;
 
   const isMath = attempt.subject === 'math';
@@ -99,7 +107,12 @@ export const StudentAttemptReviewModal: React.FC<StudentAttemptReviewModalProps>
   const teacherNote = getTeacherNote(attempt.userId || currentUser.id);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/50 backdrop-blur-xs animate-in fade-in">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/50 backdrop-blur-xs animate-in fade-in"
+    >
       <div className="bg-[#FAF9F6] rounded-[2.5rem] max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-[#D9D2C5] overflow-hidden">
         {/* Modal Header */}
         <div className="p-5 sm:p-6 bg-white border-b border-[#EAE7E0] flex items-center justify-between shrink-0">
