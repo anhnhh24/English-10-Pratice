@@ -17,6 +17,7 @@ import {
 import { subscribeToGlobalSync } from '../../services/cookieService';
 import { fetchRoomDataFromOnlineDB } from '../../services/cloudSyncService';
 import { ScorePill, SubjectBadge, EmptyState } from '../common';
+import { VocabManagementTab } from './VocabManagementTab';
 import {
   ShieldCheck,
   Plus,
@@ -115,9 +116,10 @@ export const AdminPanel: React.FC = () => {
     updateExam,
     deleteExam,
     deleteExamAttempt,
+    vocabularyWords,
   } = useApp();
 
-  const [activeAdminTab, setActiveAdminTab] = useState<'overview' | 'tasks' | 'submissions' | 'exams' | 'students' | 'questions' | 'realtime_pulse'>('overview');
+  const [activeAdminTab, setActiveAdminTab] = useState<'overview' | 'tasks' | 'submissions' | 'exams' | 'students' | 'questions' | 'vocab' | 'realtime_pulse'>('overview');
   const [selectedSubjectFilter, setSelectedSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
   const [searchStudentQuery, setSearchStudentQuery] = useState<string>('');
   const [selectedStudentForDetail, setSelectedStudentForDetail] = useState<UserAccount | null>(null);
@@ -1193,6 +1195,17 @@ export const AdminPanel: React.FC = () => {
         >
           <Layers className="w-4 h-4" />
           <span>Ngân hàng câu hỏi</span>
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab('vocab')}
+          className={`py-2 px-3.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${activeAdminTab === 'vocab'
+              ? 'bg-[#5A5A40] text-white shadow-xs'
+              : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+            }`}
+        >
+          <BookMarked className="w-4 h-4 text-amber-400" />
+          <span>Từ vựng & Flashcards ({vocabularyWords.length})</span>
         </button>
 
         <button
@@ -3359,6 +3372,11 @@ export const AdminPanel: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* ========================================================================= */}
+      {/* 📚 TAB: VOCABULARY & FLASHCARDS MANAGEMENT                                */}
+      {/* ========================================================================= */}
+      {activeAdminTab === 'vocab' && <VocabManagementTab />}
 
       {/* ========================================================================= */}
       {/* 🚀 MODAL: REMOTE TASK ASSIGNMENT (GIAO NHIỆM VỤ CHO EM TỪ XA)            */}

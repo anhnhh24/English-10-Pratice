@@ -126,14 +126,38 @@ export interface VocabularyWord {
   id: string;
   word: string;
   ipa: string;
-  partOfSpeech: 'noun' | 'verb' | 'adj' | 'adv' | 'phrasal_verb' | 'idiom';
+  partOfSpeech: 'noun' | 'verb' | 'adj' | 'adv' | 'phrasal_verb' | 'idiom' | 'collocation';
   meaningVi: string;
   exampleEn: string;
   exampleVi: string;
   unit: string;
   theme: string;
+  difficulty?: 'easy' | 'medium' | 'hard';
   collocations?: string[];
   audioText?: string;
+  synonyms?: string[];
+  antonyms?: string[];
+  dateAdded?: string;
+  dailyBatch?: string; // e.g. '2026-08-25'
+  source?: 'system' | 'admin' | 'ai_daily' | 'imported';
+}
+
+export interface DailyVocabSyncConfig {
+  enabled: boolean;
+  autoHour: number; // default 12 (12:00 PM)
+  wordsPerBatch: number; // default 20
+  lastSyncDate: string; // 'YYYY-MM-DD'
+  targetDifficulty: 'all' | 'easy' | 'medium' | 'hard';
+  preferAiGeneration: boolean;
+}
+
+export interface VocabClassificationCategory {
+  id: string;
+  nameVi: string;
+  unit: string;
+  description: string;
+  icon?: string;
+  difficultyLevel: 'easy' | 'medium' | 'hard' | 'all';
 }
 
 export interface MathFormulaCard {

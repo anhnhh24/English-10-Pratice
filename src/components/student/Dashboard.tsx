@@ -41,11 +41,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onPracticeTopic,
   onOpenTargetModal,
 }) => {
-  const { currentSubject, currentUser, examAttempts, mistakes, analytics, getQuestionById, exams, allExams, switchSubject } = useApp();
+  const { currentSubject, currentUser, examAttempts, mistakes, analytics, getQuestionById, exams, allExams, switchSubject, vocabularyWords } = useApp();
 
   const isMath = currentSubject === 'math';
   const currentTopicsMeta = isMath ? MATH_TOPICS_META : TOPICS_META;
   const defaultExamId = isMath ? 'math_exam_official_01' : 'exam_official_01';
+  const todayDateStr = new Date().toISOString().slice(0, 10);
+  const todayVocabCount = vocabularyWords ? vocabularyWords.filter((w) => w.dailyBatch === todayDateStr).length : 0;
 
   // Remote assigned tasks state with real-time sync
   const [tasks, setTasks] = useState<RemoteTaskAssignment[]>(() => getStoredRemoteTasks());
@@ -427,9 +429,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
             <button
               onClick={() => setActiveTab('vocab')}
-              className="w-full py-2 bg-[#FAF9F6] hover:bg-[#F5F2ED] border border-[#D9D2C5] text-[#3D3D2D] rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center space-x-1"
+              className={`w-full py-2.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center justify-center space-x-1.5 shadow-2xs ${
+                !isMath && todayVocabCount > 0
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white font-extrabold shadow-sm'
+                  : 'bg-[#FAF9F6] hover:bg-[#F5F2ED] border border-[#D9D2C5] text-[#3D3D2D]'
+              }`}
             >
               <span>🗂️ Flashcard {isMath ? 'công thức' : 'từ vựng'}</span>
+              {!isMath && todayVocabCount > 0 && (
+                <span className="px-1.5 py-0.2 bg-white text-amber-900 text-[10px] font-black rounded-full ml-1">
+                  +{todayVocabCount} mới
+                </span>
+              )}
             </button>
           </div>
         </div>

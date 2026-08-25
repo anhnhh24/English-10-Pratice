@@ -8,6 +8,8 @@ import {
   UserAccount,
   TopicId,
   SubjectId,
+  VocabularyWord,
+  DailyVocabSyncConfig,
 } from '../types';
 import { QUESTIONS_DATA } from '../data/questionsData';
 import { EXAMS_DATA } from '../data/examsData';
@@ -38,6 +40,17 @@ import {
   dispatchGlobalSync,
   subscribeToGlobalSync,
 } from '../services/cookieService';
+import {
+  getStoredVocabularyWords,
+  saveStoredVocabularyWords,
+  getStoredDailyVocabConfig,
+  saveDailyVocabConfig,
+  getTodayDateString,
+  shouldRunDailyVocabImport,
+  generateCuratedDailyBatch,
+  generateVocabBatchWithAI,
+} from '../services/vocabService';
+import { getStoredApiKey } from '../services/aiExamService';
 
 interface UserScopedData {
   examAttempts: ExamAttempt[];
@@ -109,6 +122,20 @@ interface AppContextType {
   bookmarks: string[]; // question IDs
   toggleBookmark: (questionId: string) => void;
   isBookmarked: (questionId: string) => boolean;
+
+  // Vocabulary & Daily Sync
+  vocabularyWords: VocabularyWord[];
+  dailyVocabConfig: DailyVocabSyncConfig;
+  learnedVocabIds: string[];
+  masteredVocabIds: string[];
+  addVocabularyWord: (word: Omit<VocabularyWord, 'id'>) => VocabularyWord;
+  updateVocabularyWord: (id: string, updates: Partial<VocabularyWord>) => void;
+  deleteVocabularyWord: (id: string) => void;
+  bulkImportVocabularyWords: (words: VocabularyWord[]) => number;
+  triggerDailyVocabImport: (force?: boolean) => Promise<{ count: number; date: string } | null>;
+  updateDailyVocabConfig: (updates: Partial<DailyVocabSyncConfig>) => void;
+  toggleVocabLearned: (id: string) => void;
+  toggleVocabMastered: (id: string) => void;
 
   // Analytics & Stats (Calculated dynamically for current subject and overall)
   analytics: {
@@ -325,6 +352,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const saved = localStorage.getItem('edu10_deleted_question_ids');
       return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Vocabulary & Daily Sync State
+  const [vocabularyWords, setVocabularyWords] = useState<VocabularyWord[]>(() => getStoredVocabularyWords());
+  const [dailyVocabConfig, setDailyVocabConfig] = useState<DailyVocabSyncConfig>(() => getStoredDailyVocabConfig());
+  const [learnedVocabIds, setLearnedVocabIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(`edu10_learned_vocab_${currentUser.id}`);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [masteredVocabIds, setMasteredVocabIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(`edu10_mastered_vocab_${currentUser.id}`);
+      return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
     }
@@ -1216,6 +1263,156 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isBookmarked = (questionId: string) => bookmarks.includes(questionId);
 
+  // ─── VOCABULARY MANAGEMENT & DAILY 12H / MIDNIGHT SYNC ───
+  const addVocabularyWord = (word: Omit<VocabularyWord, 'id'>): VocabularyWord => {
+    const newWord: VocabularyWord = {
+      ...word,
+      id: `vocab_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      dateAdded: new Date().toISOString(),
+      source: word.source || 'admin',
+    };
+    setVocabularyWords((prev) => {
+      const updated = [newWord, ...prev];
+      saveStoredVocabularyWords(updated);
+      return updated;
+    });
+    dispatchGlobalSync('VOCAB_UPDATED');
+    return newWord;
+  };
+
+  const updateVocabularyWord = (id: string, updates: Partial<VocabularyWord>) => {
+    setVocabularyWords((prev) => {
+      const updated = prev.map((w) => (w.id === id ? { ...w, ...updates } : w));
+      saveStoredVocabularyWords(updated);
+      return updated;
+    });
+    dispatchGlobalSync('VOCAB_UPDATED');
+  };
+
+  const deleteVocabularyWord = (id: string) => {
+    setVocabularyWords((prev) => {
+      const updated = prev.filter((w) => w.id !== id);
+      saveStoredVocabularyWords(updated);
+      return updated;
+    });
+    dispatchGlobalSync('VOCAB_UPDATED');
+  };
+
+  const bulkImportVocabularyWords = (words: VocabularyWord[]): number => {
+    if (!words || words.length === 0) return 0;
+    setVocabularyWords((prev) => {
+      const existingMap = new Map(prev.map((w) => [w.word.toLowerCase().trim(), w]));
+      words.forEach((w) => {
+        const key = w.word.toLowerCase().trim();
+        if (!existingMap.has(key)) {
+          existingMap.set(key, w);
+        }
+      });
+      const updated = Array.from(existingMap.values());
+      saveStoredVocabularyWords(updated);
+      return updated;
+    });
+    dispatchGlobalSync('VOCAB_UPDATED');
+    return words.length;
+  };
+
+  const triggerDailyVocabImport = async (force = false): Promise<{ count: number; date: string } | null> => {
+    const today = getTodayDateString();
+    if (!force && dailyVocabConfig.lastSyncDate === today) {
+      return null;
+    }
+
+    const batchCount = dailyVocabConfig.wordsPerBatch || 20;
+    let newBatch: VocabularyWord[] = [];
+
+    const apiKey = getStoredApiKey();
+    if (dailyVocabConfig.preferAiGeneration && apiKey) {
+      try {
+        newBatch = await generateVocabBatchWithAI(
+          apiKey,
+          batchCount,
+          'Unit 1 to 12 & Grade 9-10 Entrance Exam Vocabulary',
+          dailyVocabConfig.targetDifficulty
+        );
+      } catch (err) {
+        console.warn('AI vocab generation fallback to curated bank:', err);
+        newBatch = generateCuratedDailyBatch(vocabularyWords, today, batchCount);
+      }
+    } else {
+      newBatch = generateCuratedDailyBatch(vocabularyWords, today, batchCount);
+    }
+
+    if (newBatch.length > 0) {
+      setVocabularyWords((prev) => {
+        const existingTexts = new Set(prev.map((w) => w.word.toLowerCase().trim()));
+        const uniqueBatch = newBatch.filter((w) => !existingTexts.has(w.word.toLowerCase().trim()));
+        const updated = [...uniqueBatch, ...prev];
+        saveStoredVocabularyWords(updated);
+        return updated;
+      });
+
+      const updatedConfig: DailyVocabSyncConfig = {
+        ...dailyVocabConfig,
+        lastSyncDate: today,
+      };
+      setDailyVocabConfig(updatedConfig);
+      saveDailyVocabConfig(updatedConfig);
+
+      dispatchGlobalSync('VOCAB_UPDATED');
+      logAndBroadcastActivity({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userRole: currentUser.role,
+        actionType: 'login',
+        details: `Nạp tự động ${newBatch.length} từ vựng mới ngày ${today}`,
+      });
+
+      return { count: newBatch.length, date: today };
+    }
+
+    return null;
+  };
+
+  const updateDailyVocabConfig = (updates: Partial<DailyVocabSyncConfig>) => {
+    setDailyVocabConfig((prev) => {
+      const updated = { ...prev, ...updates };
+      saveDailyVocabConfig(updated);
+      return updated;
+    });
+  };
+
+  const toggleVocabLearned = (id: string) => {
+    setLearnedVocabIds((prev) => {
+      const updated = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      localStorage.setItem(`edu10_learned_vocab_${currentUser.id}`, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const toggleVocabMastered = (id: string) => {
+    setMasteredVocabIds((prev) => {
+      const updated = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      localStorage.setItem(`edu10_mastered_vocab_${currentUser.id}`, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // Background midnight auto-check (12h đêm / 00:00)
+  useEffect(() => {
+    const checkMidnightSync = () => {
+      const cfg = getStoredDailyVocabConfig();
+      if (shouldRunDailyVocabImport(cfg)) {
+        triggerDailyVocabImport(false).catch((e) =>
+          console.error('Daily vocab auto-sync error:', e)
+        );
+      }
+    };
+
+    checkMidnightSync();
+    const interval = setInterval(checkMidnightSync, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [dailyVocabConfig]);
+
   // Compute Live Analytics (Memoized for peak performance, filtered by current subject)
   const analytics = useMemo(() => {
     let totalSolved = 0;
@@ -1450,6 +1647,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bookmarks,
         toggleBookmark,
         isBookmarked,
+        vocabularyWords,
+        dailyVocabConfig,
+        learnedVocabIds,
+        masteredVocabIds,
+        addVocabularyWord,
+        updateVocabularyWord,
+        deleteVocabularyWord,
+        bulkImportVocabularyWords,
+        triggerDailyVocabImport,
+        updateDailyVocabConfig,
+        toggleVocabLearned,
+        toggleVocabMastered,
         analytics,
         seedDemoProgress,
         resetAllProgress,
