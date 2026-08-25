@@ -242,6 +242,8 @@ const AppContent: React.FC = () => {
               <AnalyticsView
                 onOpenTargetModal={() => setTargetModalOpen(true)}
                 onPracticeWeakness={handlePracticeTopic}
+                onPracticeTopic={handlePracticeTopic}
+                onStartExam={handleStartExam}
               />
             )}
 

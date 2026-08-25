@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { MistakeItem } from '../../types';
+import { MistakeItem, ExamAttempt } from '../../types';
+import { ScorePill } from '../common';
+import { StudentAttemptReviewModal } from './StudentAttemptReviewModal';
 import {
   X,
   User,
@@ -18,6 +20,8 @@ import {
   Palette,
   School,
   TrendingUp,
+  Eye,
+  FileText,
 } from 'lucide-react';
 
 interface UserProfileModalProps {
@@ -66,6 +70,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     currentUser.targetScoreEnglish || currentUser.targetScore || 8.5
   );
   const [isSaved, setIsSaved] = useState(false);
+  const [selectedAttemptForReview, setSelectedAttemptForReview] = useState<ExamAttempt | null>(null);
 
   // Synchronize state with currentUser whenever modal opens or active user changes
   React.useEffect(() => {
@@ -78,6 +83,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       setTargetScoreMath(currentUser.targetScoreMath || currentUser.targetScore || 8.5);
       setTargetScoreEnglish(currentUser.targetScoreEnglish || currentUser.targetScore || 8.5);
       setActiveTab('profile');
+      setSelectedAttemptForReview(null);
     }
   }, [currentUser, isOpen]);
 
@@ -414,6 +420,33 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 <strong>{analytics.averageExamScore > 0 ? `${analytics.averageExamScore.toFixed(1)}/10đ` : '--'}</strong>
               </div>
             </div>
+
+            {/* Recent Exam Submissions in Profile */}
+            {examAttempts.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <div className="flex items-center justify-between text-xs font-bold text-[#3D3D2D]">
+                  <span>📝 Bài thi đã nộp gần đây ({examAttempts.length})</span>
+                </div>
+                <div className="space-y-2 max-h-48 overflow-y-auto no-scrollbar pr-1">
+                  {examAttempts.slice(0, 5).map((att, i) => (
+                    <div
+                      key={att.id || i}
+                      onClick={() => setSelectedAttemptForReview(att)}
+                      className="p-2.5 bg-[#FAF9F6] hover:bg-white border border-[#EAE7E0] hover:border-[#1E3A8A] rounded-xl transition cursor-pointer flex items-center justify-between text-xs shadow-2xs group"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <p className="font-bold text-[#3D3D2D] truncate group-hover:text-[#1E3A8A]">{att.examTitle}</p>
+                        <span className="text-[10px] text-[#8A8A70]">{new Date(att.date).toLocaleDateString('vi-VN')}</span>
+                      </div>
+                      <div className="flex items-center space-x-2 shrink-0">
+                        <ScorePill score={att.score} maxScore={10} />
+                        <span className="text-[10px] text-[#1E3A8A] font-bold group-hover:underline">Xem giải →</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -450,6 +483,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Student Attempt Review Modal */}
+      <StudentAttemptReviewModal
+        attempt={selectedAttemptForReview}
+        onClose={() => setSelectedAttemptForReview(null)}
+      />
     </div>
   );
 };

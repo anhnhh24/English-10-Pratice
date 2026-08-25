@@ -2,8 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { TOPICS_META } from '../../data/topicsMeta';
 import { MATH_TOPICS_META } from '../../data/mathTopicsMeta';
-import { MistakeItem, RemoteTaskAssignment } from '../../types';
+import { MistakeItem, RemoteTaskAssignment, ExamAttempt } from '../../types';
 import { getStoredRemoteTasks, subscribeToRemoteTasks, markRemoteTaskCompleted } from '../../services/realtimeSyncService';
+import { subscribeToGlobalSync } from '../../services/cookieService';
+import { ScorePill } from '../common';
+import { formatRelativeTime } from '../../utils/formatters';
+import { StudentAttemptReviewModal } from '../modals/StudentAttemptReviewModal';
 import {
   GraduationCap,
   BookMarked,
@@ -17,6 +21,10 @@ import {
   AlertCircle,
   TrendingUp,
   X,
+  FileText,
+  Clock,
+  Award,
+  Eye,
 } from 'lucide-react';
 import { TabType } from '../layout/Navbar';
 
@@ -41,6 +49,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Remote assigned tasks state with real-time sync
   const [tasks, setTasks] = useState<RemoteTaskAssignment[]>(() => getStoredRemoteTasks());
+  const [selectedAttemptForReview, setSelectedAttemptForReview] = useState<ExamAttempt | null>(null);
 
   useEffect(() => {
     setTasks(getStoredRemoteTasks());
@@ -52,6 +61,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
       });
     });
 
+    const unsubSync = subscribeToGlobalSync((event) => {
+      if (event.type === 'TASKS_UPDATED') {
+        setTasks(getStoredRemoteTasks());
+      }
+    });
+
     const handleStorage = () => {
       setTasks(getStoredRemoteTasks());
     };
@@ -59,6 +74,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     return () => {
       unsub();
+      unsubSync();
       window.removeEventListener('storage', handleStorage);
     };
   }, [currentUser]);
@@ -92,10 +108,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const pendingTasks = tasks.filter((t) => {
     if (t.completed) return false;
     if (t.recipientUserId !== 'all' && t.recipientUserId !== currentUser.id) return false;
-    // If task is bound to an exam, ensure the exam still exists in current global exam bank
-    if (t.assignedExamId) {
-      const examExists = (allExams || []).some((e) => e.id === t.assignedExamId);
-      if (!examExists) return false;
+    // If task is bound to an exam, ensure the exam is valid if allExams is populated
+    if (t.assignedExamId && allExams && allExams.length > 0) {
+      const examExists = allExams.some((e) => e.id === t.assignedExamId);
+      if (!examExists) {
+        // Fallback: check if it matches in exams
+        const fallbackExists = (exams || []).some((e) => e.id === t.assignedExamId);
+        if (!fallbackExists) return true; // keep visible so student isn't blocked from seeing assignment
+      }
     }
     return true;
   });
@@ -571,7 +591,95 @@ export const Dashboard: React.FC<DashboardProps> = ({
           })}
         </div>
       </section>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* 6. LỊCH SỬ BÀI THI ĐÃ LÀM GẦN ĐÂY                          */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {filteredAttempts.length > 0 && (
+        <section className="bg-white p-5 sm:p-7 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-4 animate-in fade-in">
+          <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED]">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-base shadow-2xs">
+                📝
+              </div>
+              <div>
+                <h3 className="font-extrabold text-sm sm:text-base text-[#3D3D2D]">
+                  Lịch sử bài thi {isMath ? 'Toán' : 'Tiếng Anh'} đã nộp ({filteredAttempts.length} bài)
+                </h3>
+                <p className="text-[11px] text-[#8A8A70]">
+                  Kết quả làm bài và điểm số các lần thi thử gần nhất của bạn
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setActiveTab('analytics')}
+              className="text-xs font-extrabold text-[#5A5A40] hover:underline cursor-pointer"
+            >
+              Xem báo cáo chi tiết →
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredAttempts.slice(0, 6).map((attempt, index) => (
+              <div
+                key={attempt.id || index}
+                onClick={() => setSelectedAttemptForReview(attempt)}
+                className="p-4 bg-[#FAF9F6] hover:bg-white rounded-2xl border border-[#EAE7E0] hover:border-[#1E3A8A] transition flex flex-col justify-between space-y-2.5 shadow-2xs cursor-pointer group"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] text-[#8A8A70]">
+                      {formatRelativeTime(attempt.date)}
+                    </span>
+                    <ScorePill score={attempt.score} maxScore={10} />
+                  </div>
+                  <h4 className="font-bold text-xs text-[#3D3D2D] group-hover:text-[#1E3A8A] line-clamp-2 transition" title={attempt.examTitle}>
+                    {attempt.examTitle}
+                  </h4>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-[#EAE7E0]/60 text-[11px] text-[#64748B]">
+                  <span>
+                    ✓ {attempt.correctCount}/{attempt.totalQuestions} câu đúng
+                  </span>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedAttemptForReview(attempt);
+                      }}
+                      className="font-bold text-emerald-700 hover:text-emerald-800 flex items-center space-x-1"
+                      title="Xem chi tiết bài làm & lời giải"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Xem giải</span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (attempt.examId) onStartExam(attempt.examId);
+                      }}
+                      className="font-bold text-[#1E3A8A] hover:underline flex items-center space-x-0.5"
+                      title="Làm lại đề thi này"
+                    >
+                      <span>Làm lại</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Detailed Student Attempt Review Modal */}
+      <StudentAttemptReviewModal
+        attempt={selectedAttemptForReview}
+        onClose={() => setSelectedAttemptForReview(null)}
+        onRetakeExam={onStartExam}
+      />
     </div>
   );
 };
-

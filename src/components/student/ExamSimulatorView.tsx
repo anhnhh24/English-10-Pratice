@@ -10,7 +10,7 @@ import {
   ExamEvaluationReport,
   AVAILABLE_MODELS,
 } from '../../services/aiExamService';
-import { logAndBroadcastActivity } from '../../services/realtimeSyncService';
+import { logAndBroadcastActivity, getStoredRemoteTasks, markRemoteTaskCompleted } from '../../services/realtimeSyncService';
 import { AiQuestionExplainerModal } from '../common/AiQuestionExplainerModal';
 import confetti from 'canvas-confetti';
 import {
@@ -325,6 +325,15 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
       userAnswers,
       flaggedQuestions: flaggedIds,
     });
+
+    // Auto-mark any pending assigned task for this exam as completed
+    try {
+      const storedTasks = getStoredRemoteTasks();
+      const matchingTasks = storedTasks.filter(
+        (t) => !t.completed && (t.recipientUserId === 'all' || t.recipientUserId === currentUser.id) && t.assignedExamId === exam.id
+      );
+      matchingTasks.forEach((t) => markRemoteTaskCompleted(t.id));
+    } catch (_) {}
 
     setCompletedAttempt(saved);
     setStage('result');
