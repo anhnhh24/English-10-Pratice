@@ -85,56 +85,78 @@ export const Navbar: React.FC<NavbarProps> = ({
       ? currentUser.targetScoreMath || currentUser.targetScore
       : currentUser.targetScoreEnglish || currentUser.targetScore;
 
-  const navItems: {
-    id: TabType;
-    label: string;
-    icon: React.ElementType;
-    badge?: number | string;
-    badgeColor?: string;
+  const isMath = currentSubject === 'math';
+
+  const navSections: {
+    title: string;
+    items: {
+      id: TabType;
+      label: string;
+      icon: React.ElementType;
+      badge?: number | string;
+      badgeColor?: string;
+    }[];
   }[] = [
-    { id: 'dashboard', label: 'Tổng quan', icon: BarChart3 },
     {
-      id: 'study_path',
-      label: 'Lộ trình vào 10',
-      icon: Compass,
-      badge: 'HOT',
-      badgeColor: 'bg-amber-500 text-white animate-pulse',
+      title: 'TRỌNG TÂM ÔN THI',
+      items: [
+        { id: 'dashboard', label: 'Tổng quan', icon: BarChart3 },
+        {
+          id: 'study_path',
+          label: 'Lộ trình vào 10',
+          icon: Compass,
+          badge: 'HOT',
+          badgeColor: 'bg-amber-500 text-white animate-pulse',
+        },
+        { id: 'mock_exam', label: 'Thi thử vào 10', icon: GraduationCap },
+      ],
     },
     {
-      id: 'ai_generator',
-      label: currentSubject === 'math' ? 'AI Tạo đề Toán' : 'AI Tạo đề Tiếng Anh',
-      icon: Wand2,
-      badge: 'MỚI',
-      badgeColor: 'bg-[#5A5A40] text-white',
-    },
-    { id: 'mock_exam', label: 'Thi thử vào 10', icon: GraduationCap },
-    {
-      id: 'mistakes',
-      label: 'Sổ câu sai',
-      icon: BookMarked,
-      badge: activeMistakesCount,
-      badgeColor: 'bg-[#E67E22] text-white',
-    },
-    {
-      id: 'lessons',
-      label: currentSubject === 'math' ? 'Công thức & Lý thuyết' : 'Học lý thuyết',
-      icon: BookOpen,
-    },
-    { id: 'topic_practice', label: 'Luyện theo chuyên đề', icon: Layers },
-    { id: 'quick_blitz', label: 'Luyện nhanh 10 câu', icon: Zap },
-    {
-      id: 'vocab',
-      label: currentSubject === 'math' ? 'Flashcard Công thức' : 'Flashcard Từ vựng',
-      icon: Sparkles,
+      title: 'LUYỆN TẬP & BÀI HỌC',
+      items: [
+        { id: 'topic_practice', label: 'Luyện chuyên đề', icon: Layers },
+        { id: 'quick_blitz', label: 'Luyện nhanh 10 câu', icon: Zap },
+        {
+          id: 'ai_generator',
+          label: isMath ? 'AI Tạo đề Toán' : 'AI Tạo đề Tiếng Anh',
+          icon: Wand2,
+          badge: 'MỚI',
+          badgeColor: 'bg-[#5A5A40] text-white',
+        },
+        {
+          id: 'lessons',
+          label: isMath ? 'Công thức & Lý thuyết' : 'Học lý thuyết',
+          icon: BookOpen,
+        },
+      ],
     },
     {
-      id: 'bookmarks',
-      label: 'Câu đã lưu',
-      icon: Bookmark,
-      badge: bookmarksCount > 0 ? bookmarksCount : undefined,
+      title: 'CỦNG CỐ & ĐÁNH GIÁ',
+      items: [
+        {
+          id: 'mistakes',
+          label: 'Sổ câu sai',
+          icon: BookMarked,
+          badge: activeMistakesCount > 0 ? activeMistakesCount : undefined,
+          badgeColor: 'bg-[#E67E22] text-white',
+        },
+        {
+          id: 'vocab',
+          label: isMath ? 'Flashcard Công thức' : 'Flashcard Từ vựng',
+          icon: Sparkles,
+        },
+        {
+          id: 'bookmarks',
+          label: 'Câu đã lưu',
+          icon: Bookmark,
+          badge: bookmarksCount > 0 ? bookmarksCount : undefined,
+        },
+        { id: 'analytics', label: 'Báo cáo năng lực', icon: Award },
+      ],
     },
-    { id: 'analytics', label: 'Báo cáo năng lực', icon: Award },
   ];
+
+  const allNavItems = navSections.flatMap((s) => s.items);
 
   const bottomNavItems = [
     { id: 'dashboard' as TabType, label: 'Tổng quan', icon: BarChart3 },
@@ -148,15 +170,55 @@ export const Navbar: React.FC<NavbarProps> = ({
     },
   ];
 
-  const isMath = currentSubject === 'math';
   const theme = {
-    primaryBg: isMath ? 'bg-[#1E3A8A]' : 'bg-[#5A5A40]',
-    primaryText: isMath ? 'text-[#1E3A8A]' : 'text-[#5A5A40]',
-    sidebarBg: isMath ? 'bg-[#E2E8F0]' : 'bg-[#E8E2D9]',
-    sidebarBorder: isMath ? 'border-[#CBD5E1]' : 'border-[#D9D2C5]',
-    activeNavBg: isMath ? 'bg-[#1E3A8A]' : 'bg-[#5A5A40]',
-    accentColor: isMath ? 'text-[#2563EB]' : 'text-[#8BA888]',
-    progressBg: isMath ? 'bg-[#2563EB]' : 'bg-[#8BA888]',
+    primaryBg:
+      themeMode === 'dark'
+        ? isMath ? 'bg-[#2563EB]' : 'bg-[#3B82F6]'
+        : themeMode === 'sepia'
+        ? isMath ? 'bg-[#8B5A2B]' : 'bg-[#6D5438]'
+        : isMath ? 'bg-[#1E3A8A]' : 'bg-[#5A5A40]',
+    primaryText:
+      themeMode === 'dark'
+        ? 'text-slate-100'
+        : themeMode === 'sepia'
+        ? 'text-[#3F3324]'
+        : isMath ? 'text-[#1E3A8A]' : 'text-[#5A5A40]',
+    sidebarBg:
+      themeMode === 'dark'
+        ? 'bg-[#0F172A]'
+        : themeMode === 'sepia'
+        ? 'bg-[#EADFCA]'
+        : isMath ? 'bg-[#E2E8F0]' : 'bg-[#E8E2D9]',
+    sidebarBorder:
+      themeMode === 'dark'
+        ? 'border-[#1E293B]'
+        : themeMode === 'sepia'
+        ? 'border-[#D8C8AF]'
+        : isMath ? 'border-[#CBD5E1]' : 'border-[#D9D2C5]',
+    activeNavBg:
+      themeMode === 'dark'
+        ? isMath ? 'bg-[#2563EB]' : 'bg-[#334155]'
+        : themeMode === 'sepia'
+        ? isMath ? 'bg-[#8B5A2B]' : 'bg-[#6D5438]'
+        : isMath ? 'bg-[#1E3A8A]' : 'bg-[#5A5A40]',
+    cardBg:
+      themeMode === 'dark'
+        ? 'bg-[#1E293B]'
+        : themeMode === 'sepia'
+        ? 'bg-[#FAF4E6]'
+        : 'bg-[#FAF9F6]',
+    cardBorder:
+      themeMode === 'dark'
+        ? 'border-[#334155]'
+        : themeMode === 'sepia'
+        ? 'border-[#D8C8AF]'
+        : 'border-[#D9D2C5]',
+    textMuted:
+      themeMode === 'dark'
+        ? 'text-slate-400'
+        : themeMode === 'sepia'
+        ? 'text-[#7E6C54]'
+        : 'text-[#8A8A70]',
   };
 
   return (
@@ -164,7 +226,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* SIDEBAR FOR DESKTOP */}
       <aside className={`hidden lg:flex w-64 ${theme.sidebarBg} border-r ${theme.sidebarBorder} flex-col shrink-0 h-screen sticky top-0 transition-colors duration-300`}>
         {/* Brand Header */}
-        <div className="p-5 pb-3 space-y-3">
+        <div className="p-4 pb-2 space-y-2.5">
           <div
             onClick={() => setActiveTab('dashboard')}
             className="cursor-pointer group flex items-center space-x-3"
@@ -175,7 +237,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div>
               <h1 className={`text-lg font-bold ${theme.primaryText} tracking-tight leading-tight transition-colors duration-300`}>
                 {currentSubject === 'math' ? 'MathMaster' : 'EngMaster'}
-                <span className="text-[10px] block font-semibold tracking-widest uppercase text-[#64748B]">
+                <span className={`text-[10px] block font-semibold tracking-widest uppercase ${theme.textMuted}`}>
                   Luyện Thi Vào 10
                 </span>
               </h1>
@@ -183,13 +245,13 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* 1-Click Subject Switcher (Segmented Control) */}
-          <div className="bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] flex shadow-2xs">
+          <div className={`${theme.cardBg} p-1 rounded-2xl border ${theme.cardBorder} flex shadow-2xs`}>
             <button
               onClick={() => switchSubject('english')}
               className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
                 currentSubject === 'english'
-                  ? 'bg-[#5A5A40] text-white shadow-xs'
-                  : 'text-[#6B6B54] hover:text-[#3D3D2D] hover:bg-[#E8E2D9]'
+                  ? `${theme.activeNavBg} text-white shadow-xs`
+                  : `${theme.textMuted} hover:opacity-90`
               }`}
             >
               <span>🇬🇧</span>
@@ -200,118 +262,118 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => switchSubject('math')}
               className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
                 currentSubject === 'math'
-                  ? 'bg-[#1E3A8A] text-white shadow-xs'
-                  : 'text-[#6B6B54] hover:text-[#3D3D2D] hover:bg-[#E8E2D9]'
+                  ? isMath && themeMode === 'dark' ? 'bg-blue-600 text-white shadow-xs' : `${theme.activeNavBg} text-white shadow-xs`
+                  : `${theme.textMuted} hover:opacity-90`
               }`}
             >
               <span>📐</span>
               <span>Toán Học</span>
             </button>
           </div>
-
-          {/* Realtime Connection Status Indicator */}
-          <div className="flex items-center justify-between px-2.5 py-1.5 bg-[#FAF9F6] rounded-xl border border-[#D9D2C5] text-[10px] font-bold">
-            <span className="text-[#6B6B54]">Trạng thái kết nối:</span>
-            <div className="flex items-center space-x-1.5">
-              <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-              <span className={isOnline ? 'text-emerald-700' : 'text-amber-700'}>
-                {isOnline ? '📡 Online (DB)' : '⚡ Offline'}
-              </span>
-            </div>
-          </div>
         </div>
 
-        {/* Navigation Items */}
-        <nav className="flex-1 px-4 space-y-1 overflow-y-auto no-scrollbar">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                id={`sidebar-nav-${item.id}`}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-semibold transition cursor-pointer ${
-                  isActive
-                    ? `${theme.activeNavBg} text-white shadow-sm`
-                    : 'text-[#64748B] hover:bg-black/5 hover:text-[#1E293B]'
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <Icon
-                    className={`w-4 h-4 ${isActive ? 'text-white' : 'text-[#64748B]'}`}
-                  />
-                  <span>{item.label}</span>
-                </div>
-                {item.badge !== undefined && (typeof item.badge === 'string' || item.badge > 0) && (
-                  <span
-                    className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                      item.badgeColor || (isActive ? 'bg-white text-[#1E3A8A]' : 'bg-[#E67E22] text-white')
-                    }`}
-                  >
-                    {item.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* Grouped Navigation Items */}
+        <nav className="flex-1 px-3 py-1 space-y-3 overflow-y-auto no-scrollbar">
+          {navSections.map((section, idx) => (
+            <div key={idx} className="space-y-1">
+              <p className="px-3 text-[10px] font-extrabold uppercase tracking-wider text-[#8A8A70]">
+                {section.title}
+              </p>
+              <div className="space-y-0.5">
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      id={`sidebar-nav-${item.id}`}
+                      onClick={() => setActiveTab(item.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                        isActive
+                          ? `${theme.activeNavBg} text-white shadow-xs`
+                          : 'text-[#64748B] hover:bg-black/5 hover:text-[#1E293B]'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5 min-w-0">
+                        <Icon
+                          className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-[#64748B]'}`}
+                        />
+                        <span className="truncate">{item.label}</span>
+                      </div>
+                      {item.badge !== undefined && (typeof item.badge === 'string' || item.badge > 0) && (
+                        <span
+                          className={`px-1.5 py-0.2 text-[9px] font-bold rounded-full shrink-0 ml-1 ${
+                            item.badgeColor || (isActive ? 'bg-white text-[#1E3A8A]' : 'bg-[#E67E22] text-white')
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
 
           {currentUser.role === 'admin' && (
-            <button
-              onClick={() => setActiveTab('admin')}
-              id="sidebar-nav-admin"
-              className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
-                activeTab === 'admin'
-                  ? `${theme.activeNavBg} text-white shadow-sm`
-                  : 'text-[#1E293B] bg-[#FAF9F6] border border-[#CBD5E1] hover:bg-black/5'
-              }`}
-            >
-              <div className="flex items-center space-x-3">
-                <ShieldCheck className="w-4 h-4 text-[#2563EB]" />
-                <span>Dashboard Giáo Viên</span>
-              </div>
-              <span className="px-2 py-0.5 text-[9px] font-extrabold rounded-full bg-[#2563EB] text-white">
-                ADMIN
-              </span>
-            </button>
+            <div className="pt-1">
+              <button
+                onClick={() => setActiveTab('admin')}
+                id="sidebar-nav-admin"
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  activeTab === 'admin'
+                    ? `${theme.activeNavBg} text-white shadow-xs`
+                    : 'text-[#1E293B] bg-[#FAF9F6] border border-[#CBD5E1] hover:bg-black/5'
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <ShieldCheck className="w-4 h-4 text-[#2563EB]" />
+                  <span>Dashboard Giáo Viên</span>
+                </div>
+                <span className="px-1.5 py-0.2 text-[9px] font-extrabold rounded-full bg-[#2563EB] text-white">
+                  ADMIN
+                </span>
+              </button>
+            </div>
           )}
         </nav>
 
         {/* User Account & Goal Card (Bottom) */}
-        <div className="p-4 border-t border-[#D9D2C5] space-y-2">
+        <div className={`p-4 border-t ${theme.sidebarBorder} space-y-2`}>
           {/* User Profile Trigger */}
           <div
             onClick={onOpenProfileModal}
-            className="bg-[#FAF9F6] hover:bg-white p-2.5 rounded-2xl border border-[#D9D2C5] shadow-2xs flex items-center justify-between cursor-pointer transition group"
+            className={`${theme.cardBg} hover:opacity-95 p-2.5 rounded-2xl border ${theme.cardBorder} shadow-2xs flex items-center justify-between cursor-pointer transition group`}
           >
             <div className="flex items-center space-x-2.5 min-w-0">
               <div
                 className={`w-8 h-8 rounded-xl ${
-                  currentUser.avatarColor || 'bg-[#5A5A40]'
+                  currentUser.avatarColor || theme.primaryBg
                 } text-white flex items-center justify-center font-bold text-xs shadow-2xs`}
               >
                 {currentUser.name.charAt(0)}
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-bold text-[#3D3D2D] truncate group-hover:text-[#5A5A40]">
+                <p className={`text-xs font-bold ${theme.primaryText} truncate`}>
                   {currentUser.name}
                 </p>
-                <p className="text-[10px] text-[#8A8A70] truncate">
+                <p className={`text-[10px] ${theme.textMuted} truncate`}>
                   {currentUser.role === 'admin' ? 'Quản trị viên' : `${currentSubjectTarget}đ ${currentSubject === 'math' ? 'Toán' : 'Anh'}`}
                 </p>
               </div>
             </div>
-            <ChevronRight className="w-4 h-4 text-[#8A8A70] group-hover:translate-x-0.5 transition" />
+            <ChevronRight className={`w-4 h-4 ${theme.textMuted} group-hover:translate-x-0.5 transition`} />
           </div>
 
           {/* Theme Mode Toggle (Light / Dark / Sepia) */}
-          <div className="bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] flex items-center justify-between text-xs font-bold shadow-2xs">
+          <div className={`${theme.cardBg} p-1 rounded-2xl border ${theme.cardBorder} flex items-center justify-between text-xs font-bold shadow-2xs`}>
             <button
               onClick={() => setThemeMode('light')}
               className={`flex-1 py-1 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 ${
                 themeMode === 'light'
-                  ? 'bg-[#5A5A40] text-white shadow-2xs'
-                  : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+                  ? `${theme.activeNavBg} text-white shadow-2xs`
+                  : `${theme.textMuted} hover:opacity-90`
               }`}
               title="Giao diện Sáng tự nhiên"
             >
@@ -322,8 +384,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => setThemeMode('dark')}
               className={`flex-1 py-1 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 ${
                 themeMode === 'dark'
-                  ? 'bg-slate-900 text-amber-300 shadow-2xs'
-                  : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+                  ? 'bg-blue-600 text-white shadow-2xs'
+                  : `${theme.textMuted} hover:opacity-90`
               }`}
               title="Chế độ Ban đêm (Dark Mode)"
             >
@@ -335,7 +397,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className={`flex-1 py-1 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 ${
                 themeMode === 'sepia'
                   ? 'bg-[#6D5438] text-amber-100 shadow-2xs'
-                  : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+                  : `${theme.textMuted} hover:opacity-90`
               }`}
               title="Chế độ Đọc sách Giấy vàng (Warm Sepia)"
             >
@@ -345,9 +407,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Goal & Target Score Card */}
-          <div className="bg-[#FDFCFB] p-3.5 rounded-2xl border border-[#D9D2C5] shadow-xs space-y-1.5">
+          <div className={`${theme.cardBg} p-3.5 rounded-2xl border ${theme.cardBorder} shadow-xs space-y-1.5`}>
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#8A8A70]">
+              <p className={`text-[10px] font-bold uppercase tracking-wider ${theme.textMuted}`}>
                 Mục tiêu môn {currentSubject === 'math' ? 'Toán' : 'Anh'}
               </p>
               <button
@@ -358,16 +420,16 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             </div>
             <div className="flex items-end justify-between">
-              <span className="text-xl font-bold text-[#5A5A40]">
+              <span className={`text-xl font-bold ${theme.primaryText}`}>
                 {analytics.averageExamScore.toFixed(1)}
               </span>
-              <span className="text-xs text-[#8A8A70] font-medium">
+              <span className={`text-xs ${theme.textMuted} font-medium`}>
                 / {currentSubjectTarget.toFixed(1)}đ NV1
               </span>
             </div>
-            <div className="w-full bg-[#E8E2D9] h-1.5 rounded-full overflow-hidden">
+            <div className="w-full bg-black/10 h-1.5 rounded-full overflow-hidden">
               <div
-                className="bg-[#8BA888] h-full rounded-full transition-all duration-500"
+                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${Math.min(
                     100,
@@ -376,34 +438,34 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }}
               />
             </div>
-            <p className="text-[10px] text-[#8A8A70] truncate">{currentUser.targetSchool}</p>
+            <p className={`text-[10px] ${theme.textMuted} truncate`}>{currentUser.targetSchool}</p>
           </div>
         </div>
       </aside>
 
       {/* MOBILE / TABLET TOP BAR */}
-      <header className="lg:hidden shrink-0 z-30 bg-[#E8E2D9] border-b border-[#D9D2C5] px-3 py-2 flex items-center justify-between shadow-xs">
+      <header className={`lg:hidden shrink-0 z-30 ${theme.sidebarBg} border-b ${theme.sidebarBorder} px-3 py-2 flex items-center justify-between shadow-xs transition-colors duration-300`}>
         <div
           onClick={() => setActiveTab('dashboard')}
           className="flex items-center space-x-2 cursor-pointer select-none"
         >
-          <div className="w-8 h-8 rounded-xl bg-[#5A5A40] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+          <div className={`w-8 h-8 rounded-xl ${theme.primaryBg} text-white flex items-center justify-center font-bold text-xs shadow-xs`}>
             {currentSubject === 'math' ? 'M10' : 'E10'}
           </div>
           <div>
-            <span className="font-bold text-sm text-[#5A5A40] leading-none block">
+            <span className={`font-bold text-sm ${theme.primaryText} leading-none block`}>
               {currentSubject === 'math' ? 'MathMaster' : 'EngMaster'}
             </span>
-            <span className="text-[9px] text-[#8A8A70] font-semibold uppercase tracking-wider block">Vào 10</span>
+            <span className={`text-[9px] ${theme.textMuted} font-semibold uppercase tracking-wider block`}>Vào 10</span>
           </div>
         </div>
 
         {/* Center Subject Switcher on Mobile */}
-        <div className="flex bg-[#FAF9F6] p-0.5 rounded-xl border border-[#D9D2C5] text-[11px] font-bold">
+        <div className={`flex ${theme.cardBg} p-0.5 rounded-xl border ${theme.cardBorder} text-[11px] font-bold`}>
           <button
             onClick={() => switchSubject('english')}
             className={`px-2 py-1 rounded-lg transition ${
-              currentSubject === 'english' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+              currentSubject === 'english' ? `${theme.activeNavBg} text-white` : theme.textMuted
             }`}
           >
             🇬🇧 Anh
@@ -411,7 +473,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             onClick={() => switchSubject('math')}
             className={`px-2 py-1 rounded-lg transition ${
-              currentSubject === 'math' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'
+              currentSubject === 'math' ? isMath && themeMode === 'dark' ? 'bg-blue-600 text-white' : `${theme.activeNavBg} text-white` : theme.textMuted
             }`}
           >
             📐 Toán
@@ -427,22 +489,33 @@ export const Navbar: React.FC<NavbarProps> = ({
               else if (themeMode === 'dark') setThemeMode('sepia');
               else setThemeMode('light');
             }}
-            className="p-1.5 rounded-xl bg-[#FAF9F6] border border-[#D9D2C5] text-[#5A5A40] transition cursor-pointer"
-            title={`Giao diện: ${themeMode === 'dark' ? 'Tối' : themeMode === 'sepia' ? 'Đọc sách' : 'Sáng'}`}
+            className={`p-2 rounded-xl ${theme.cardBg} border ${theme.cardBorder} ${theme.textMuted} hover:opacity-90 transition cursor-pointer`}
+            title={`Chế độ hiện tại: ${themeMode}`}
           >
-            {themeMode === 'dark' ? <Moon className="w-3.5 h-3.5 text-amber-300" /> : themeMode === 'sepia' ? <Coffee className="w-3.5 h-3.5 text-amber-800" /> : <Sun className="w-3.5 h-3.5 text-amber-600" />}
+            {themeMode === 'dark' ? (
+              <Moon className="w-4 h-4 text-amber-300" />
+            ) : themeMode === 'sepia' ? (
+              <Coffee className="w-4 h-4 text-[#C8671B]" />
+            ) : (
+              <Sun className="w-4 h-4 text-amber-500" />
+            )}
           </button>
+          {/* Quick profile / Target button */}
           <button
             onClick={onOpenProfileModal}
-            className={`w-7 h-7 rounded-xl ${
-              currentUser.avatarColor || 'bg-[#5A5A40]'
-            } text-white flex items-center justify-center text-xs font-bold shadow-2xs`}
+            className={`p-1.5 rounded-xl ${theme.cardBg} border ${theme.cardBorder} flex items-center space-x-1 cursor-pointer`}
           >
-            {currentUser.name.charAt(0)}
+            <div
+              className={`w-6 h-6 rounded-lg ${
+                currentUser.avatarColor || theme.primaryBg
+              } text-white flex items-center justify-center font-bold text-[10px]`}
+            >
+              {currentUser.name.charAt(0)}
+            </div>
           </button>
           <button
             onClick={() => setMobileMenuOpen(true)}
-            className="p-1.5 rounded-xl bg-[#FAF9F6] hover:bg-[#DED8CE] border border-[#D9D2C5] text-[#5A5A40] transition cursor-pointer"
+            className={`p-1.5 rounded-xl ${theme.cardBg} hover:opacity-90 border ${theme.cardBorder} ${theme.textMuted} transition cursor-pointer`}
             aria-label="Mở danh mục ôn thi"
           >
             <Menu className="w-4 h-4" />
@@ -451,7 +524,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </header>
 
       {/* MOBILE BOTTOM NAVIGATION BAR */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#FAF9F6]/95 backdrop-blur-md border-t border-[#D9D2C5] px-2 py-1.5 flex items-center justify-around shadow-lg">
+      <nav className={`lg:hidden fixed bottom-0 left-0 right-0 z-40 ${theme.cardBg}/95 backdrop-blur-md border-t ${theme.cardBorder} px-2 py-1.5 flex items-center justify-around shadow-lg transition-colors duration-300`}>
         {bottomNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
@@ -459,36 +532,38 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition relative cursor-pointer ${
+              className={`relative flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition cursor-pointer ${
                 isActive
-                  ? 'text-[#5A5A40] font-bold'
-                  : 'text-[#8A8A70] hover:text-[#5A5A40]'
+                  ? `${theme.primaryText} font-bold`
+                  : `${theme.textMuted} hover:opacity-90`
               }`}
             >
-              <div className="relative">
-                <div
-                  className={`p-1 rounded-xl transition ${
-                    isActive ? 'bg-[#5A5A40] text-white shadow-2xs' : ''
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                </div>
-                {item.badge !== undefined && item.badge > 0 && (
-                  <span className="absolute -top-1 -right-2 px-1.5 py-0.2 bg-[#E67E22] text-white text-[9px] font-extrabold rounded-full">
-                    {item.badge}
-                  </span>
-                )}
+              <div
+                className={`p-1 rounded-xl transition ${
+                  item.isSpecial
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-xs'
+                    : isActive
+                    ? `${theme.primaryBg} text-white`
+                    : ''
+                }`}
+              >
+                <Icon className="w-4 h-4" />
               </div>
               <span className="text-[10px] mt-0.5 whitespace-nowrap">{item.label}</span>
+              {item.badge !== undefined && item.badge > 0 && (
+                <span className="absolute top-0 right-2 px-1 py-0.2 bg-[#E67E22] text-white text-[8px] font-bold rounded-full min-w-3.5 text-center">
+                  {item.badge}
+                </span>
+              )}
             </button>
           );
         })}
 
-        {/* More / Menu Button */}
+        {/* Menu More Drawer Button */}
         <button
           onClick={() => setMobileMenuOpen(true)}
           className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition cursor-pointer ${
-            mobileMenuOpen ? 'text-[#5A5A40] font-bold' : 'text-[#8A8A70] hover:text-[#5A5A40]'
+            mobileMenuOpen ? `${theme.primaryText} font-bold` : `${theme.textMuted} hover:opacity-90`
           }`}
         >
           <div className="p-1 rounded-xl">
@@ -500,40 +575,40 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* MOBILE FULL MENU DRAWER */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex flex-col justify-end animate-in fade-in duration-200">
+        <div className="lg:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex flex-col justify-end animate-in fade-in duration-200">
           <div
             className="fixed inset-0"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <div className="relative bg-[#E8E2D9] rounded-t-[2.5rem] p-5 sm:p-6 max-h-[85vh] overflow-y-auto space-y-4 border-t border-[#D9D2C5] shadow-2xl z-10 animate-in slide-in-from-bottom duration-300">
-            <div className="flex justify-between items-center pb-3 border-b border-[#D9D2C5]">
+          <div className={`relative ${theme.sidebarBg} rounded-t-[2.5rem] p-5 sm:p-6 max-h-[85vh] overflow-y-auto space-y-4 border-t ${theme.sidebarBorder} shadow-2xl z-10 animate-in slide-in-from-bottom duration-300`}>
+            <div className={`flex justify-between items-center pb-3 border-b ${theme.sidebarBorder}`}>
               <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 rounded-xl bg-[#5A5A40] text-white flex items-center justify-center font-bold text-xs">
+                <div className={`w-8 h-8 rounded-xl ${theme.primaryBg} text-white flex items-center justify-center font-bold text-xs`}>
                   {currentSubject === 'math' ? 'M10' : 'E10'}
                 </div>
                 <div>
-                  <span className="font-bold text-[#5A5A40] text-sm leading-none block">
+                  <span className={`font-bold ${theme.primaryText} text-sm leading-none block`}>
                     {currentSubject === 'math' ? 'Toán Học Vào 10' : 'Tiếng Anh Vào 10'}
                   </span>
-                  <span className="text-[10px] text-[#8A8A70]">{currentUser.name}</span>
+                  <span className={`text-[10px] ${theme.textMuted}`}>{currentUser.name}</span>
                 </div>
               </div>
               <button
                 onClick={() => setMobileMenuOpen(false)}
-                className="p-1.5 rounded-xl bg-[#FAF9F6] text-[#8A8A70] hover:text-[#3D3D2D] transition cursor-pointer"
+                className={`p-1.5 rounded-xl ${theme.cardBg} ${theme.textMuted} hover:opacity-90 transition cursor-pointer`}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Theme Selector in Mobile Drawer */}
-            <div className="bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] flex items-center justify-between text-xs font-bold shadow-2xs">
+            <div className={`${theme.cardBg} p-1 rounded-2xl border ${theme.cardBorder} flex items-center justify-between text-xs font-bold shadow-2xs`}>
               <button
                 onClick={() => setThemeMode('light')}
                 className={`flex-1 py-1 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 ${
                   themeMode === 'light'
-                    ? 'bg-[#5A5A40] text-white shadow-2xs'
-                    : 'text-[#6B6B54]'
+                    ? `${theme.activeNavBg} text-white shadow-2xs`
+                    : theme.textMuted
                 }`}
               >
                 <Sun className="w-3.5 h-3.5" />
@@ -543,8 +618,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                 onClick={() => setThemeMode('dark')}
                 className={`flex-1 py-1 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 ${
                   themeMode === 'dark'
-                    ? 'bg-slate-900 text-amber-300 shadow-2xs'
-                    : 'text-[#6B6B54]'
+                    ? 'bg-blue-600 text-white shadow-2xs'
+                    : theme.textMuted
                 }`}
               >
                 <Moon className="w-3.5 h-3.5" />
@@ -555,7 +630,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className={`flex-1 py-1 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 ${
                   themeMode === 'sepia'
                     ? 'bg-[#6D5438] text-amber-100 shadow-2xs'
-                    : 'text-[#6B6B54]'
+                    : theme.textMuted
                 }`}
               >
                 <Coffee className="w-3.5 h-3.5" />
@@ -564,19 +639,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Target Card in Mobile Drawer */}
-            <div className="bg-[#FDFCFB] p-3.5 rounded-2xl border border-[#D9D2C5] flex items-center justify-between">
+            <div className={`${theme.cardBg} p-3.5 rounded-2xl border ${theme.cardBorder} flex items-center justify-between`}>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-[#8A8A70]">
+                <p className={`text-[10px] font-bold uppercase tracking-wider ${theme.textMuted}`}>
                   Mục tiêu {currentSubject === 'math' ? 'Toán' : 'Anh'}: {currentSubjectTarget}đ
                 </p>
-                <p className="text-xs font-bold text-[#5A5A40] truncate">{currentUser.targetSchool}</p>
+                <p className={`text-xs font-bold ${theme.primaryText} truncate`}>{currentUser.targetSchool}</p>
               </div>
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
                   onOpenProfileModal();
                 }}
-                className="px-3 py-1.5 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white text-[11px] font-bold rounded-xl transition cursor-pointer"
+                className={`px-3 py-1.5 ${theme.primaryBg} text-white text-[11px] font-bold rounded-xl transition cursor-pointer`}
               >
                 Hồ sơ & Đổi User
               </button>
@@ -584,7 +659,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {/* All Navigation Grid */}
             <div className="grid grid-cols-2 gap-2 pt-1">
-              {navItems.map((item) => {
+              {allNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
                 return (
@@ -596,8 +671,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }}
                     className={`p-3 rounded-2xl text-left text-xs font-bold transition flex items-center justify-between cursor-pointer ${
                       isActive
-                        ? 'bg-[#5A5A40] text-white shadow-xs'
-                        : 'bg-[#FAF9F6] text-[#6B6B54] border border-[#D9D2C5] hover:bg-[#DED8CE]'
+                        ? `${theme.activeNavBg} text-white shadow-xs`
+                        : `${theme.cardBg} ${theme.textMuted} border ${theme.cardBorder} hover:opacity-90`
                     }`}
                   >
                     <div className="flex items-center space-x-2.5 min-w-0">
