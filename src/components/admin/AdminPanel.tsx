@@ -260,11 +260,70 @@ export const AdminPanel: React.FC = () => {
   const [aiCreatePrompt, setAiCreatePrompt] = useState<string>('');
   const [aiCreateCount, setAiCreateCount] = useState<number>(10);
   const [aiCreateDiff, setAiCreateDiff] = useState<'standard' | 'advanced' | 'challenge'>('standard');
+  const [aiCreateSelectedTopics, setAiCreateSelectedTopics] = useState<TopicId[]>([
+    'math_can_thuc',
+    'math_he_phuong_trinh',
+    'math_pt_bac_hai_viet',
+    'math_duong_tron_tu_giac',
+  ]);
+  const [aiCreateTopicDifficulties, setAiCreateTopicDifficulties] = useState<Record<string, 'easy' | 'medium' | 'hard' | 'expert'>>({
+    math_can_thuc: 'easy',
+    math_he_phuong_trinh: 'medium',
+    math_pt_bac_hai_viet: 'hard',
+    math_duong_tron_tu_giac: 'hard',
+    math_bat_dang_thuc_cuc_tri: 'expert',
+    pronunciation: 'easy',
+    stress: 'easy',
+    grammar: 'medium',
+    vocabulary: 'medium',
+    reading: 'hard',
+    sentence_rewrite: 'hard',
+  });
   const [aiCreateLoading, setAiCreateLoading] = useState<boolean>(false);
   const [aiCreateProgress, setAiCreateProgress] = useState<string>('');
   const [aiCreateResult, setAiCreateResult] = useState<{ examId: string; questionCount: number } | null>(null);
   const [aiCreateError, setAiCreateError] = useState<string>('');
   const [aiCreateModel, setAiCreateModel] = useState<string>('gemini-3.6-flash');
+
+  const handleAiCreateSubjectChange = (s: SubjectId) => {
+    setAiCreateSubject(s);
+    if (s === 'math') {
+      setAiCreateSelectedTopics(['math_can_thuc', 'math_he_phuong_trinh', 'math_pt_bac_hai_viet', 'math_duong_tron_tu_giac']);
+    } else {
+      setAiCreateSelectedTopics(['grammar', 'vocabulary', 'pronunciation', 'stress', 'sentence_rewrite']);
+    }
+  };
+
+  const handleToggleAiCreateTopic = (tId: TopicId) => {
+    setAiCreateSelectedTopics((prev) =>
+      prev.includes(tId) ? prev.filter((x) => x !== tId) : [...prev, tId]
+    );
+  };
+
+  const handleSetAiCreateTopicDiff = (tId: string, diff: 'easy' | 'medium' | 'hard' | 'expert') => {
+    setAiCreateTopicDifficulties((prev) => ({
+      ...prev,
+      [tId]: diff,
+    }));
+  };
+
+  const handleApplyAiCreateDiffPreset = (mode: 'gradual' | 'all_basic' | 'all_hard') => {
+    const next: Record<string, 'easy' | 'medium' | 'hard' | 'expert'> = {};
+    aiCreateSelectedTopics.forEach((tId, idx) => {
+      if (mode === 'all_basic') {
+        next[tId] = 'easy';
+      } else if (mode === 'all_hard') {
+        next[tId] = idx === aiCreateSelectedTopics.length - 1 ? 'expert' : 'hard';
+      } else {
+        const ratio = idx / Math.max(1, aiCreateSelectedTopics.length - 1);
+        if (ratio < 0.35) next[tId] = 'easy';
+        else if (ratio < 0.7) next[tId] = 'medium';
+        else if (ratio < 0.9) next[tId] = 'hard';
+        else next[tId] = 'expert';
+      }
+    });
+    setAiCreateTopicDifficulties((prev) => ({ ...prev, ...next }));
+  };
 
   const handleAiCreateExam = async () => {
     setAiCreateLoading(true);
@@ -272,11 +331,21 @@ export const AdminPanel: React.FC = () => {
     setAiCreateResult(null);
     try {
       const apiKey = getStoredApiKey();
+
+      const activeTopicDifficulties: Record<string, 'easy' | 'medium' | 'hard' | 'expert'> = {};
+      aiCreateSelectedTopics.forEach((tId) => {
+        if (aiCreateTopicDifficulties[tId]) {
+          activeTopicDifficulties[tId] = aiCreateTopicDifficulties[tId];
+        }
+      });
+
       const config: ExamGenerationConfig = {
         subject: aiCreateSubject,
         totalQuestions: aiCreateCount,
         difficulty: aiCreateDiff,
         timeLimitMinutes: aiCreateCount <= 10 ? 45 : 60,
+        focusTopics: aiCreateSelectedTopics,
+        topicDifficulties: Object.keys(activeTopicDifficulties).length > 0 ? activeTopicDifficulties : undefined,
         customPrompt: aiCreatePrompt,
         title: `Đề AI ${aiCreateSubject === 'math' ? 'Toán' : 'Anh'} - ${new Date().toLocaleDateString('vi-VN')}`,
         modelName: aiCreateModel,
@@ -5146,8 +5215,8 @@ export const AdminPanel: React.FC = () => {
       {/* ✨ MODAL: AI SOẠN CÂU HỎI TỰ ĐỘNG                           */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {showAiQModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-[2.5rem] max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-5 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] max-w-3xl w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-5 max-h-[94vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
               <div className="flex items-center space-x-2">
@@ -5339,44 +5408,92 @@ export const AdminPanel: React.FC = () => {
       )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* 🤖 MODAL: AI TẠO ĐỀ NHANH                                  */}
+      {/* 🤖 MODAL: AI TẠO ĐỀ NHANH (MÀN HÌNH RỘNG MAX-W-5XL)        */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {showAiCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-[2.5rem] max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-5 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] max-w-5xl w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-5 max-h-[94vh] flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
-              <div className="flex items-center space-x-2">
-                <div className="w-9 h-9 rounded-2xl bg-blue-100 flex items-center justify-center">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0] shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-700 shadow-xs">
                   <Wand2 className="w-5 h-5 text-blue-700" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-[#3D3D2D] text-base">🤖 AI Tạo Đề Mới</h3>
-                  <p className="text-[11px] text-[#8A8A70]">Gemini AI biên soạn đề thi & lời giải chi tiết</p>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="font-extrabold text-[#3D3D2D] text-lg sm:text-xl">🤖 AI Tạo Đề Thi Tuyển Sinh Vào 10</h3>
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-bold rounded-full">
+                      Studio Soạn Đề
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#8A8A70]">Tùy biến ma trận, độ khó từng chuyên đề & sinh lời giải tự động</p>
                 </div>
               </div>
-              <button onClick={() => { setShowAiCreateModal(false); setAiCreateResult(null); setAiCreateError(''); }} className="text-[#8A8A70] hover:text-red-500 cursor-pointer">✕</button>
+              <button
+                onClick={() => {
+                  setShowAiCreateModal(false);
+                  setAiCreateResult(null);
+                  setAiCreateError('');
+                }}
+                className="p-2 text-[#8A8A70] hover:text-red-600 rounded-xl hover:bg-[#FAF9F6] transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             {aiCreateResult ? (
-              <div className="text-center space-y-4 py-4">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                  <span className="text-3xl">✅</span>
+              <div className="text-center space-y-4 py-8 overflow-y-auto flex-1 flex flex-col items-center justify-center">
+                <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto shadow-sm animate-bounce">
+                  <span className="text-4xl">🎉</span>
                 </div>
-                <h4 className="font-bold text-[#3D3D2D] text-lg">Tạo đề thành công!</h4>
-                <p className="text-sm text-[#5A5A40]">AI đã tạo <strong>{aiCreateResult.questionCount} câu hỏi</strong> và lưu vào hệ thống.</p>
-                <div className="flex gap-3 justify-center">
-                  <button onClick={() => { setAiCreateResult(null); setAiCreatePrompt(''); }} className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 cursor-pointer">Tạo đề khác</button>
-                  <button onClick={() => { setShowAiCreateModal(false); setAiCreateResult(null); setActiveAdminTab('exams'); }} className="px-5 py-2 bg-[#F5F2ED] text-[#3D3D2D] rounded-xl text-sm font-bold hover:bg-[#EAE7E0] cursor-pointer">Xem danh sách</button>
+                <div>
+                  <h4 className="font-extrabold text-[#3D3D2D] text-xl">Tạo đề thi thành công!</h4>
+                  <p className="text-sm text-[#5A5A40] mt-1">
+                    AI đã biên soạn hoàn chỉnh <strong>{aiCreateResult.questionCount} câu hỏi</strong> chuẩn ma trận và lưu vào kho đề thi của bạn.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3 justify-center pt-2">
+                  <button
+                    onClick={() => {
+                      const newExam = exams.find((e) => e.id === aiCreateResult.examId);
+                      setShowAiCreateModal(false);
+                      setAiCreateResult(null);
+                      setActiveAdminTab('exams');
+                      if (newExam) setSelectedExamForPreview(newExam);
+                    }}
+                    className="px-6 py-2.5 bg-[#1E3A8A] text-white rounded-xl text-xs font-bold hover:bg-[#1E40AF] transition cursor-pointer shadow-xs flex items-center space-x-1.5"
+                  >
+                    <Eye className="w-4 h-4" />
+                    <span>Xem trước đề vừa tạo</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAiCreateResult(null);
+                      setAiCreatePrompt('');
+                    }}
+                    className="px-5 py-2.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#3D3D2D] border border-[#D9D2C5] rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    + Tạo thêm đề khác
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowAiCreateModal(false);
+                      setAiCreateResult(null);
+                      setActiveAdminTab('exams');
+                    }}
+                    className="px-5 py-2.5 bg-white hover:bg-[#FAF9F6] text-[#6B6B54] border border-[#EAE7E0] rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    Về kho đề thi
+                  </button>
                 </div>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="overflow-y-auto space-y-4 flex-1 pr-1">
                 {!getStoredApiKey() && (
                   <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl flex items-center justify-between text-xs text-amber-900">
                     <div className="flex items-center space-x-2">
                       <span className="text-base">⚠️</span>
-                      <span>Chưa cài đặt Gemini API Key.</span>
+                      <span>Chưa cài đặt Gemini API Key để khởi tạo đề thi bằng AI.</span>
                     </div>
                     <button
                       onClick={() => {
@@ -5390,88 +5507,238 @@ export const AdminPanel: React.FC = () => {
                     </button>
                   </div>
                 )}
-                {/* Subject */}
-                <div>
-                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Môn học</label>
-                  <div className="flex gap-2">
-                    {(['math', 'english'] as SubjectId[]).map((s) => (
-                      <button key={s} onClick={() => setAiCreateSubject(s)}
-                        className={`flex-1 py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${aiCreateSubject === s ? 'bg-blue-600 text-white border-blue-600' : 'bg-[#F5F2ED] text-[#5A5A40] border-[#EAE7E0]'}`}>
-                        {s === 'math' ? '📐 Toán học' : '🇬🇧 Tiếng Anh'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
 
-                {/* Số câu & Độ khó */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Số câu hỏi</label>
-                    <select value={aiCreateCount} onChange={(e) => setAiCreateCount(Number(e.target.value))}
-                      className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm text-[#3D3D2D] focus:ring-2 focus:ring-blue-400 focus:outline-none">
-                      {[5, 10, 15, 20, 25, 30].map((n) => <option key={n} value={n}>{n} câu</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Độ khó</label>
-                    <select value={aiCreateDiff} onChange={(e) => setAiCreateDiff(e.target.value as any)}
-                      className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm text-[#3D3D2D] focus:ring-2 focus:ring-blue-400 focus:outline-none">
-                      <option value="standard">Cơ bản (Trung bình)</option>
-                      <option value="advanced">Khá - Giỏi</option>
-                      <option value="challenge">Phân loại (Khó)</option>
-                    </select>
-                  </div>
-                </div>
+                {/* 2-Column Responsive Layout */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  {/* Left Column: Cấu hình cơ bản & Prompt (5 cols) */}
+                  <div className="lg:col-span-5 space-y-4">
+                    {/* Subject */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#5A5A40] mb-1.5">Môn học</label>
+                      <div className="flex gap-2">
+                        {(['math', 'english'] as SubjectId[]).map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => handleAiCreateSubjectChange(s)}
+                            className={`flex-1 py-2.5 rounded-2xl text-xs font-bold border transition cursor-pointer shadow-2xs ${
+                              aiCreateSubject === s
+                                ? 'bg-[#1E3A8A] text-white border-[#1E3A8A]'
+                                : 'bg-[#FAF9F6] text-[#5A5A40] border-[#D9D2C5] hover:bg-[#E8E2D9]'
+                            }`}
+                          >
+                            {s === 'math' ? '📐 Toán học 9' : '🇬🇧 Tiếng Anh 9'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-                {/* Chọn Model AI */}
-                <div>
-                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Mô hình AI (Model)</label>
-                  <select value={aiCreateModel} onChange={(e) => setAiCreateModel(e.target.value)}
-                    className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm text-[#3D3D2D] focus:ring-2 focus:ring-blue-400 focus:outline-none">
-                    {AVAILABLE_MODELS.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    {/* Số câu & Độ khó chung */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-[#5A5A40] mb-1.5">Số lượng câu</label>
+                        <select
+                          value={aiCreateCount}
+                          onChange={(e) => setAiCreateCount(Number(e.target.value))}
+                          className="w-full border border-[#D9D2C5] bg-[#FAF9F6] rounded-xl px-3 py-2 text-xs font-bold text-[#3D3D2D] focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                        >
+                          {[5, 10, 12, 15, 20, 25, 30, 40].map((n) => (
+                            <option key={n} value={n}>
+                              {n} câu hỏi
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-[#5A5A40] mb-1.5">Độ khó tổng thể</label>
+                        <select
+                          value={aiCreateDiff}
+                          onChange={(e) => setAiCreateDiff(e.target.value as any)}
+                          className="w-full border border-[#D9D2C5] bg-[#FAF9F6] rounded-xl px-3 py-2 text-xs font-bold text-[#3D3D2D] focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                        >
+                          <option value="standard">Cơ bản (Mục tiêu 7 - 8đ)</option>
+                          <option value="advanced">Khá - Giỏi (Mục tiêu 8 - 8.5đ)</option>
+                          <option value="challenge">Phân loại cao (Mục tiêu 9 - 10đ)</option>
+                        </select>
+                      </div>
+                    </div>
 
-                {/* Custom Prompt */}
-                <div>
-                  <label className="block text-xs font-semibold text-[#5A5A40] mb-1.5">Yêu cầu trọng tâm (tuỳ chọn)</label>
-                  <textarea
-                    value={aiCreatePrompt}
-                    onChange={(e) => setAiCreatePrompt(e.target.value)}
-                    rows={3}
-                    placeholder={aiCreateSubject === 'math'
-                      ? 'Ví dụ: Tập trung vào hệ phương trình, Vi-ét và hình học đường tròn. Tăng tỉ lệ câu khó...'
-                      : 'Ví dụ: Tập trung ngữ pháp thì hoàn thành và câu điều kiện. Có cả dạng cloze test...'}
-                    className="w-full border border-[#EAE7E0] rounded-xl px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-blue-400 focus:outline-none placeholder:text-[#C5C0B5]"
-                  />
+                    {/* Chọn Model AI */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#5A5A40] mb-1.5">Mô hình Gemini AI</label>
+                      <select
+                        value={aiCreateModel}
+                        onChange={(e) => setAiCreateModel(e.target.value)}
+                        className="w-full border border-[#D9D2C5] bg-[#FAF9F6] rounded-xl px-3 py-2 text-xs font-semibold text-[#3D3D2D] focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                      >
+                        {AVAILABLE_MODELS.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Custom Prompt */}
+                    <div>
+                      <label className="block text-xs font-bold text-[#5A5A40] mb-1.5">
+                        Yêu cầu nội dung cụ thể (Prompt tự do)
+                      </label>
+                      <textarea
+                        value={aiCreatePrompt}
+                        onChange={(e) => setAiCreatePrompt(e.target.value)}
+                        rows={4}
+                        placeholder={
+                          aiCreateSubject === 'math'
+                            ? 'Ví dụ: Tập trung vào Hệ thức Vi-ét có tham số m, bài toán chuyển động thực tế và câu hình tứ giác nội tiếp. Câu cuối 0.5đ BĐT Cauchy...'
+                            : 'Ví dụ: Tập trung ngữ pháp câu điều kiện loại 2-3, câu bị động kép, 5 câu hỏi đuôi và 1 bài đọc hiểu về bảo vệ môi trường...'
+                        }
+                        className="w-full border border-[#D9D2C5] bg-[#FAF9F6] rounded-2xl p-3 text-xs resize-none focus:ring-2 focus:ring-blue-400 focus:outline-none placeholder:text-[#A09F8E]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Right Column: Chuyên đề & Tinh chỉnh độ khó từng mục (7 cols) */}
+                  <div className="lg:col-span-7 space-y-4">
+                    {/* Topic Selection Checklist */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-[#5A5A40]">
+                          Chuyên đề kiểm tra ({aiCreateSelectedTopics.length} đã chọn):
+                        </label>
+                        <span className="text-[10px] text-[#8A8A70]">Bấm để bật / tắt chuyên đề</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto p-1.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-2xl">
+                        {(aiCreateSubject === 'math' ? MATH_TOPICS_META : TOPICS_META).map((t) => {
+                          const isChecked = aiCreateSelectedTopics.includes(t.id as TopicId);
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => handleToggleAiCreateTopic(t.id as TopicId)}
+                              className={`p-2 rounded-xl text-left text-xs font-bold transition flex items-center justify-between cursor-pointer ${
+                                isChecked
+                                  ? 'bg-[#1E3A8A] text-white shadow-2xs'
+                                  : 'bg-white border border-[#D9D2C5] text-[#6B6B54] hover:bg-[#E8E2D9]'
+                              }`}
+                            >
+                              <span className="truncate pr-1">{t.nameVi}</span>
+                              {isChecked ? (
+                                <Check className="w-3.5 h-3.5 shrink-0" />
+                              ) : (
+                                <div className="w-3 h-3 rounded-full border border-[#D9D2C5] shrink-0" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Granular Per-Topic Difficulty Customizer */}
+                    {aiCreateSelectedTopics.length > 0 && (
+                      <div className="p-3.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-2xl space-y-2.5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-2 border-b border-[#EAE7E0]">
+                          <label className="text-xs font-extrabold text-[#3D3D2D] flex items-center space-x-1">
+                            <span>🎯 Tinh chỉnh độ khó riêng từng mục:</span>
+                          </label>
+                          <div className="flex flex-wrap gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleApplyAiCreateDiffPreset('gradual')}
+                              className="px-2 py-1 bg-white hover:bg-[#E8E2D9] border border-[#D9D2C5] text-[10px] font-bold text-[#5A5A40] rounded-lg transition cursor-pointer"
+                            >
+                              ⚡ Đầu dễ - đuôi khó
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleApplyAiCreateDiffPreset('all_basic')}
+                              className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] font-bold rounded-lg transition cursor-pointer"
+                            >
+                              🟢 Cơ bản
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleApplyAiCreateDiffPreset('all_hard')}
+                              className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-[10px] font-bold rounded-lg transition cursor-pointer"
+                            >
+                              🔥 Khó (9-10)
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                          {aiCreateSelectedTopics.map((tId) => {
+                            const meta = (aiCreateSubject === 'math' ? MATH_TOPICS_META : TOPICS_META).find((m) => m.id === tId);
+                            const curDiff = aiCreateTopicDifficulties[tId] || 'medium';
+
+                            return (
+                              <div
+                                key={tId}
+                                className="p-2.5 bg-white rounded-xl border border-[#EAE7E0] flex items-center justify-between gap-2 shadow-2xs"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-xs font-bold text-[#3D3D2D] truncate block">
+                                    {meta?.nameVi || tId}
+                                  </span>
+                                  <span className="text-[10px] text-[#8A8A70] block truncate">
+                                    {meta?.weightInExam || 'Trọng tâm'}
+                                  </span>
+                                </div>
+                                <div className="flex gap-1 shrink-0">
+                                  {[
+                                    { id: 'easy', label: 'Dễ (6-7)', bg: 'bg-emerald-700 text-white' },
+                                    { id: 'medium', label: 'TB (7-8)', bg: 'bg-blue-700 text-white' },
+                                    { id: 'hard', label: 'Khá (8-9)', bg: 'bg-amber-600 text-white' },
+                                    { id: 'expert', label: 'Điểm 10', bg: 'bg-rose-700 text-white' },
+                                  ].map((lvl) => (
+                                    <button
+                                      key={lvl.id}
+                                      type="button"
+                                      onClick={() => handleSetAiCreateTopicDiff(tId, lvl.id as any)}
+                                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                                        curDiff === lvl.id
+                                          ? `${lvl.bg} shadow-2xs ring-1 ring-black/10`
+                                          : 'bg-[#F5F2ED] text-[#6B6B54] hover:bg-[#EAE7E0]'
+                                      }`}
+                                    >
+                                      {lvl.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Error */}
                 {aiCreateError && (
-                  <div className="bg-red-50 text-red-700 text-xs font-medium p-3 rounded-xl border border-red-200">
+                  <div className="bg-red-50 text-red-700 text-xs font-medium p-3.5 rounded-2xl border border-red-200">
                     ⚠️ {aiCreateError}
                   </div>
                 )}
 
                 {/* Progress */}
                 {aiCreateLoading && (
-                  <div className="bg-blue-50 text-blue-700 text-xs font-medium p-3 rounded-xl border border-blue-200 flex items-center space-x-2">
-                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                    <span>{aiCreateProgress || 'Đang khởi tạo...'}</span>
+                  <div className="bg-blue-50 text-blue-700 text-xs font-medium p-3.5 rounded-2xl border border-blue-200 flex items-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                    <span>{aiCreateProgress || 'Đang khởi tạo câu hỏi & lời giải chi tiết...'}</span>
                   </div>
                 )}
 
-                <button
-                  onClick={handleAiCreateExam}
-                  disabled={aiCreateLoading}
-                  className="w-full py-3 bg-gradient-to-r from-[#1E3A8A] to-[#2563EB] text-white font-bold text-sm rounded-2xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer"
-                >
-                  {aiCreateLoading ? '⏳ AI đang tạo đề...' : `🚀 Tạo ${aiCreateCount} câu hỏi ngay`}
-                </button>
+                <div className="pt-2">
+                  <button
+                    onClick={handleAiCreateExam}
+                    disabled={aiCreateLoading}
+                    className="w-full py-3.5 bg-gradient-to-r from-[#1E3A8A] to-[#2563EB] hover:from-[#172554] hover:to-[#1D4ED8] text-white font-extrabold text-sm rounded-2xl shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition cursor-pointer flex items-center justify-center space-x-2"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>{aiCreateLoading ? '⏳ AI đang biên soạn đề thi...' : `🚀 AI Biên Soạn ${aiCreateCount} Câu Hỏi & Lưu Đề Thi`}</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -5482,8 +5749,8 @@ export const AdminPanel: React.FC = () => {
       {/* 📄 MODAL: UPLOAD ĐỀ & AI EXTRACT                           */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {showUploadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-[2.5rem] max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-5 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-[2.5rem] max-w-3xl w-full p-6 sm:p-8 shadow-2xl border border-[#EAE7E0] space-y-5 max-h-[94vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
               <div className="flex items-center space-x-2">

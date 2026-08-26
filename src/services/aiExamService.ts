@@ -8,6 +8,8 @@ export interface ExamGenerationConfig {
   totalQuestions: number;
   timeLimitMinutes: number;
   focusTopics?: TopicId[];
+  topicDifficulties?: Record<string, 'easy' | 'medium' | 'hard' | 'expert'>;
+  topicQuestionCounts?: Record<string, number>;
   customPrompt?: string;
   modelName?: string;
 }
@@ -367,12 +369,30 @@ LƯU Ý CỰC KỲ QUAN TRỌNG:
 3. 'correctOption' phải là số index (0 cho A, 1 cho B, 2 cho C, 3 cho D).
 4. Sử dụng ký hiệu toán học phổ thông dễ đọc: √ (căn), ² ³ (mũ), π (pi), Δ (delta), ≥ ≤ (lớn/nhỏ hơn hoặc bằng), ∠ (góc), ° (độ).`;
 
+    let topicDiffSection = '';
+    if (config.topicDifficulties && Object.keys(config.topicDifficulties).length > 0) {
+      const diffLines = Object.entries(config.topicDifficulties).map(([tId, diff]) => {
+        const diffLabel =
+          diff === 'easy'
+            ? 'Cơ bản / Nhận biết (Dễ - 6-7đ)'
+            : diff === 'medium'
+            ? 'Thông hiểu (Trung bình - 7-8đ)'
+            : diff === 'hard'
+            ? 'Vận dụng / Khá Giỏi (Khó - 8-9đ)'
+            : 'Vận dụng cao / Cực khó (Câu 10đ phân loại)';
+        const count = config.topicQuestionCounts?.[tId];
+        return `  * Chuyên đề "${tId}": Đặt độ khó "${diffLabel}" (gán field "difficulty": "${diff}")${count ? ` - Chiếm ${count} câu` : ''}`;
+      });
+      topicDiffSection = `\n- MA TRẬN ĐỘ KHÓ TỪNG MỤC CỤ THỂ:\n${diffLines.join('\n')}\n* QUY TẮC BẮT BUỘC: Hãy điều chỉnh độ phức tạp bài toán và gán đúng giá trị "difficulty" ('easy' | 'medium' | 'hard' | 'expert') tương ứng cho từng câu hỏi thuộc các chuyên đề trên!`;
+    }
+
     userPrompt = `Hãy tạo một đề thi Toán vào lớp 10 với các thông số sau:
 - Tên đề (gợi ý): ${config.title || 'Đề Thi Thử Môn Toán Vào 10 - Tạo bởi AI'}
-- Độ khó: ${config.difficulty === 'challenge' ? 'Nâng cao / Chuyên Toán (Mục tiêu 9-10đ)' : config.difficulty === 'advanced' ? 'Khá - Giỏi (Mục tiêu 8-8.5đ)' : 'Cơ bản - Chuẩn đề chung (Mục tiêu 7-8đ)'}
+- Độ khó tổng thể: ${config.difficulty === 'challenge' ? 'Nâng cao / Chuyên Toán (Mục tiêu 9-10đ)' : config.difficulty === 'advanced' ? 'Khá - Giỏi (Mục tiêu 8-8.5đ)' : 'Cơ bản - Chuẩn đề chung (Mục tiêu 7-8đ)'}
 - Số lượng câu hỏi: ${config.totalQuestions} câu
 - Thời gian làm bài: ${config.timeLimitMinutes} phút
 ${config.focusTopics && config.focusTopics.length > 0 ? `- Các chủ đề trọng tâm: ${config.focusTopics.join(', ')}` : ''}
+${topicDiffSection}
 ${config.targetProvince ? `- Định dạng / Tỉnh thành hướng tới: ${config.targetProvince}` : ''}
 ${config.customPrompt ? `- Yêu cầu đặc biệt bổ sung từ người dùng: "${config.customPrompt}"` : ''}
 
@@ -413,14 +433,35 @@ LƯU Ý CỰC KỲ QUAN TRỌNG:
 1. Đảm bảo đúng chính xác ${config.totalQuestions} câu hỏi trong mảng 'questions'.
 2. Các đáp án trong 'options' phải bắt đầu bằng 'A. ', 'B. ', 'C. ', 'D. '.
 3. 'correctOption' phải là số index (0 cho A, 1 cho B, 2 cho C, 3 cho D).
-4. Giữ phần giải thích 'explanation', 'grammarRule', 'translation' súc tích, ngắn gọn (1-2 câu).`;
+4. Giữ phần giải thích 'explanation', 'grammarRule', 'translation' súc tích, ngắn gọn (1-2 câu).
+5. TỐI ƯU HÓA BÀI ĐỌC (PASSAGE OPTIMIZATION):
+   - Với các câu hỏi thuộc cùng một bài đọc hiểu hoặc điền từ (Reading Comprehension / Cloze Test), chỉ in toàn bộ nội dung bài đọc vào trường "passage" ở câu hỏi ĐẦU TIÊN của cụm bài đọc đó.
+   - Ở các câu hỏi tiếp theo cùng bài đọc đó, hãy đặt "passage": "ref:prev" (hoặc "ref:same_as_previous"). Tuyệt đối KHÔNG lặp lại toàn bộ bài đọc nhiều lần để tối ưu hóa token output và tăng tốc độ phản hồi.`;
+
+    let engTopicDiffSection = '';
+    if (config.topicDifficulties && Object.keys(config.topicDifficulties).length > 0) {
+      const diffLines = Object.entries(config.topicDifficulties).map(([tId, diff]) => {
+        const diffLabel =
+          diff === 'easy'
+            ? 'Cơ bản / Nhận biết (Dễ - 6-7đ)'
+            : diff === 'medium'
+            ? 'Thông hiểu (Trung bình - 7-8đ)'
+            : diff === 'hard'
+            ? 'Vận dụng / Khá Giỏi (Khó - 8-9đ)'
+            : 'Vận dụng cao / Cực khó (Câu 10đ phân loại)';
+        const count = config.topicQuestionCounts?.[tId];
+        return `  * Dạng bài "${tId}": Đặt độ khó "${diffLabel}" (gán field "difficulty": "${diff}")${count ? ` - Chiếm ${count} câu` : ''}`;
+      });
+      engTopicDiffSection = `\n- MA TRẬN ĐỘ KHÓ TỪNG DẠNG BÀI CỤ THỂ:\n${diffLines.join('\n')}\n* QUY TẮC BẮT BUỘC: Hãy điều chỉnh độ phức tạp bài toán và gán đúng giá trị "difficulty" ('easy' | 'medium' | 'hard' | 'expert') tương ứng cho từng câu hỏi thuộc các dạng bài trên!`;
+    }
 
     userPrompt = `Hãy tạo một đề thi Tiếng Anh vào lớp 10 với các thông số sau:
 - Tên đề (gợi ý): ${config.title || 'Đề Thi Thử Tiếng Anh Vào 10 - Tạo bởi AI'}
-- Độ khó: ${config.difficulty === 'challenge' ? 'Nâng cao / Chuyên Anh (Mục tiêu 9-10đ)' : config.difficulty === 'advanced' ? 'Khá - Giỏi (Mục tiêu 8-8.5đ)' : 'Cơ bản - Chuẩn đề chung (Mục tiêu 7-8đ)'}
+- Độ khó tổng thể: ${config.difficulty === 'challenge' ? 'Nâng cao / Chuyên Anh (Mục tiêu 9-10đ)' : config.difficulty === 'advanced' ? 'Khá - Giỏi (Mục tiêu 8-8.5đ)' : 'Cơ bản - Chuẩn đề chung (Mục tiêu 7-8đ)'}
 - Số lượng câu hỏi: ${config.totalQuestions} câu
 - Thời gian làm bài: ${config.timeLimitMinutes} phút
 ${config.focusTopics && config.focusTopics.length > 0 ? `- Các chủ đề trọng tâm: ${config.focusTopics.join(', ')}` : ''}
+${engTopicDiffSection}
 ${config.targetProvince ? `- Định dạng / Tỉnh thành hướng tới: ${config.targetProvince}` : ''}
 ${config.customPrompt ? `- Yêu cầu đặc biệt bổ sung từ người dùng: "${config.customPrompt}"` : ''}
 
@@ -470,6 +511,7 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
   const defaultTopic: TopicId = subject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar';
   const defaultSubTopic: SubTopicId = subject === 'math' ? 'viet_tong_tich' : 'tenses';
 
+  let activePassage = '';
   const formattedQuestions: Question[] = parsedData.questions.map((q: any, idx: number) => {
     const qId = `q_ai_${examTimestamp}_${idx + 1}`;
 
@@ -487,6 +529,27 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
       ? q.correctOption
       : 0;
 
+    // Tự động giải mã / hydrate đoạn văn nếu AI dùng Reference Tag (ref:prev / ref:p1)
+    let passageContent: string | undefined = undefined;
+    if (typeof q.passage === 'string' && q.passage.trim()) {
+      const pTrimmed = q.passage.trim();
+      const pLower = pTrimmed.toLowerCase();
+      if (
+        pLower.startsWith('ref:') ||
+        pLower === 'ref:prev' ||
+        pLower === 'ref:same_as_previous' ||
+        pLower === 'same' ||
+        pLower === 'ditto'
+      ) {
+        passageContent = activePassage || undefined;
+      } else {
+        activePassage = pTrimmed;
+        passageContent = pTrimmed;
+      }
+    } else if (q.topicId !== 'reading' && q.topicId !== 'cloze') {
+      activePassage = '';
+    }
+
     return {
       id: qId,
       subject,
@@ -494,7 +557,7 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
       subTopicId: (q.subTopicId as SubTopicId) || defaultSubTopic,
       difficulty: (q.difficulty as DifficultyLevel) || 'medium',
       content: q.content || `Câu ${idx + 1}`,
-      passage: q.passage || undefined,
+      passage: passageContent,
       options: opts,
       correctOption: validCorrect,
       explanation: q.explanation || 'Xem đáp án và tự đối chiếu phương pháp giải.',
@@ -850,6 +913,7 @@ YÊU CẦU BẮT BUỘC:
   const examId = `admin_upload_${Date.now()}`;
   const questionIds: string[] = [];
 
+  let activeUploadPassage = '';
   const questions: Question[] = parsed.questions.map((q: any, idx: number) => {
     const qId = `q_upload_${Date.now()}_${idx + 1}`;
     questionIds.push(qId);
@@ -868,13 +932,32 @@ YÊU CẦU BẮT BUỘC:
         ? q.correctOption
         : 0;
 
+    let passageContent: string | undefined = undefined;
+    if (typeof q.passage === 'string' && q.passage.trim()) {
+      const pTrimmed = q.passage.trim();
+      const pLower = pTrimmed.toLowerCase();
+      if (
+        pLower.startsWith('ref:') ||
+        pLower === 'ref:prev' ||
+        pLower === 'ref:same_as_previous' ||
+        pLower === 'same'
+      ) {
+        passageContent = activeUploadPassage || undefined;
+      } else {
+        activeUploadPassage = pTrimmed;
+        passageContent = pTrimmed;
+      }
+    } else if (q.topicId !== 'reading' && q.topicId !== 'cloze') {
+      activeUploadPassage = '';
+    }
+
     return {
       id: qId,
       subject,
       topicId: q.topicId || (subject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar'),
       subTopicId: q.subTopicId || 'general',
       difficulty: q.difficulty || (qNum > 30 ? 'hard' : qNum > 15 ? 'medium' : 'easy'),
-      passage: q.passage && q.passage.trim() ? q.passage.trim() : undefined,
+      passage: passageContent,
       content: q.content || `Câu hỏi số ${qNum}`,
       options: opts,
       correctOption: correctOpt,

@@ -238,6 +238,21 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
   const [customPrompt, setCustomPrompt] = useState<string>('');
   const [showAdvancedSettings, setShowAdvancedSettings] = useState<boolean>(false);
 
+  const [topicDifficulties, setTopicDifficulties] = useState<Record<string, 'easy' | 'medium' | 'hard' | 'expert'>>({
+    math_can_thuc: 'easy',
+    math_he_phuong_trinh: 'medium',
+    math_pt_bac_hai_viet: 'hard',
+    math_duong_tron_tu_giac: 'hard',
+    math_bat_dang_thuc_cuc_tri: 'expert',
+    pronunciation: 'easy',
+    stress: 'easy',
+    grammar: 'medium',
+    vocabulary: 'medium',
+    reading: 'hard',
+    sentence_rewrite: 'hard',
+  });
+  const [isCustomizingTopicDiff, setIsCustomizingTopicDiff] = useState<boolean>(true);
+
   // When subject changes, reset default topics and title
   const handleSubjectTabChange = (subj: SubjectId) => {
     setGenSubject(subj);
@@ -252,6 +267,32 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
       setTimeLimitMinutes(30);
       setSelectedTopics(['grammar', 'vocabulary', 'pronunciation', 'stress', 'sentence_rewrite']);
     }
+  };
+
+  const handleSetTopicDiff = (tId: string, diff: 'easy' | 'medium' | 'hard' | 'expert') => {
+    setTopicDifficulties((prev) => ({
+      ...prev,
+      [tId]: diff,
+    }));
+  };
+
+  const handleApplyDifficultyPreset = (mode: 'gradual' | 'all_basic' | 'all_hard') => {
+    const next: Record<string, 'easy' | 'medium' | 'hard' | 'expert'> = {};
+    selectedTopics.forEach((tId, idx) => {
+      if (mode === 'all_basic') {
+        next[tId] = 'easy';
+      } else if (mode === 'all_hard') {
+        next[tId] = idx === selectedTopics.length - 1 ? 'expert' : 'hard';
+      } else {
+        // gradual
+        const ratio = idx / Math.max(1, selectedTopics.length - 1);
+        if (ratio < 0.35) next[tId] = 'easy';
+        else if (ratio < 0.7) next[tId] = 'medium';
+        else if (ratio < 0.9) next[tId] = 'hard';
+        else next[tId] = 'expert';
+      }
+    });
+    setTopicDifficulties((prev) => ({ ...prev, ...next }));
   };
 
   // Generation State
@@ -305,6 +346,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
     if (preset.config.difficulty) setDifficulty(preset.config.difficulty);
     if (preset.config.focusTopics) setSelectedTopics(preset.config.focusTopics);
     if (preset.config.customPrompt) setCustomPrompt(preset.config.customPrompt);
+    if (preset.config.topicDifficulties) setTopicDifficulties(preset.config.topicDifficulties);
   };
 
   const toggleTopic = (topicId: TopicId) => {
@@ -331,6 +373,14 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
     setSavedSuccess(false);
 
     try {
+      // Filter topicDifficulties only for active selectedTopics
+      const activeTopicDifficulties: Record<string, 'easy' | 'medium' | 'hard' | 'expert'> = {};
+      selectedTopics.forEach((tId) => {
+        if (topicDifficulties[tId]) {
+          activeTopicDifficulties[tId] = topicDifficulties[tId];
+        }
+      });
+
       const config: ExamGenerationConfig = {
         subject: genSubject,
         title,
@@ -339,6 +389,7 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
         totalQuestions,
         timeLimitMinutes,
         focusTopics: selectedTopics,
+        topicDifficulties: Object.keys(activeTopicDifficulties).length > 0 ? activeTopicDifficulties : undefined,
         customPrompt,
         modelName: selectedModel,
       };
@@ -783,6 +834,107 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
             })}
           </div>
         </div>
+
+        {/* Granular Per-Topic Difficulty Matrix */}
+        {selectedTopics.length > 0 && (
+          <div className="bg-[#FDFCFB] border border-[#D9D2C5] rounded-3xl p-4 sm:p-5 space-y-3.5 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-[#E8E2D9]">
+              <div className="flex items-center space-x-2">
+                <span className="text-base">🎯</span>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-bold text-[#3D3D2D]">
+                    Tinh chỉnh độ khó riêng cho từng chuyên đề / dạng bài
+                  </h4>
+                  <p className="text-[11px] text-[#8A8A70]">
+                    Tùy biến mức độ nhận biết, thông hiểu, vận dụng và câu phân loại 10 điểm cho từng mục
+                  </p>
+                </div>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleApplyDifficultyPreset('gradual')}
+                  className="px-2.5 py-1 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] rounded-xl text-[10px] font-bold text-[#5A5A40] transition cursor-pointer"
+                >
+                  ⚡ Đầu dễ - Đuôi khó
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyDifficultyPreset('all_basic')}
+                  className="px-2.5 py-1 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] rounded-xl text-[10px] font-bold text-emerald-800 transition cursor-pointer"
+                >
+                  🟢 Lấy gốc (Dễ)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyDifficultyPreset('all_hard')}
+                  className="px-2.5 py-1 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] rounded-xl text-[10px] font-bold text-rose-800 transition cursor-pointer"
+                >
+                  🔥 Chuyên sâu (9-10)
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {selectedTopics.map((tId) => {
+                const meta = currentTopicsMeta.find((m) => m.id === tId);
+                const curDiff = topicDifficulties[tId] || 'medium';
+
+                return (
+                  <div
+                    key={tId}
+                    className="p-3 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] flex items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-[#3D3D2D] truncate">
+                        {meta?.nameVi || tId}
+                      </p>
+                      <span className="text-[10px] text-[#8A8A70] block truncate">
+                        {meta?.weightInExam || 'Chuyên đề trọng tâm'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-1 shrink-0">
+                      {[
+                        { id: 'easy', label: 'Dễ', bg: 'bg-emerald-700 text-white', ring: 'border-emerald-300' },
+                        { id: 'medium', label: 'TB', bg: 'bg-blue-700 text-white', ring: 'border-blue-300' },
+                        { id: 'hard', label: 'Khá', bg: 'bg-amber-600 text-white', ring: 'border-amber-300' },
+                        { id: 'expert', label: 'Khó', bg: 'bg-rose-700 text-white', ring: 'border-rose-300' },
+                      ].map((lvl) => {
+                        const isSelected = curDiff === lvl.id;
+                        return (
+                          <button
+                            key={lvl.id}
+                            type="button"
+                            onClick={() => handleSetTopicDiff(tId, lvl.id as any)}
+                            title={
+                              lvl.id === 'easy'
+                                ? 'Mức Nhận biết / Cơ bản (6-7đ)'
+                                : lvl.id === 'medium'
+                                ? 'Mức Thông hiểu (7-8đ)'
+                                : lvl.id === 'hard'
+                                ? 'Mức Vận dụng (8-9đ)'
+                                : 'Mức Vận dụng cao / Phân loại (Câu 10đ)'
+                            }
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                              isSelected
+                                ? `${lvl.bg} shadow-2xs ring-1 ${lvl.ring}`
+                                : 'bg-white border border-[#D9D2C5] text-[#6B6B54] hover:bg-[#E8E2D9]'
+                            }`}
+                          >
+                            {lvl.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Custom Prompt & Suggestions */}
         <div className="space-y-2">
