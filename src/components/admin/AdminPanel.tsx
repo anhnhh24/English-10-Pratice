@@ -6,6 +6,7 @@ import { DifficultyLevel, Question, TopicId, SubTopicId, Exam, ExamAttempt, User
 import {
   getStoredRealtimeActivities,
   subscribeToRealtimeActivities,
+  fetchLiveActivitiesFromFirebase,
   getStoredRemoteTasks,
   broadcastRemoteTask,
   subscribeToRemoteTasks,
@@ -404,8 +405,22 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
-  // Real-time Activity Subscription
+  // Real-time Activity Subscription & Initial DB Fetch
   useEffect(() => {
+    // Initial fetch of up to 50 latest activities from Firebase
+    fetchLiveActivitiesFromFirebase().then((acts) => {
+      if (acts && acts.length > 0) {
+        setRealtimeEvents((prev) => {
+          const map = new Map<string, RealtimeActivityEvent>();
+          prev.forEach((e) => map.set(e.id, e));
+          acts.forEach((e) => map.set(e.id, e));
+          const unified = Array.from(map.values());
+          unified.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          return unified.slice(0, 50);
+        });
+      }
+    });
+
     const unsubscribeActivities = subscribeToRealtimeActivities((event) => {
       setRealtimeEvents((prev) => [event, ...prev.filter((e) => e.id !== event.id)].slice(0, 50));
       setLiveToast(event);
@@ -1450,13 +1465,13 @@ export const AdminPanel: React.FC = () => {
                   {/* Actions */}
                   <div className="flex items-center space-x-2 shrink-0">
                     <button
-                      onClick={() => {
-                        const current = getStoredRealtimeActivities();
+                      onClick={async () => {
+                        const current = await fetchLiveActivitiesFromFirebase();
                         setRealtimeEvents(current);
                       }}
-                      className="px-3 py-1.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#5A5A40] border border-[#D9D2C5] rounded-xl text-xs font-bold transition cursor-pointer"
+                      className="px-3 py-1.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#5A5A40] border border-[#D9D2C5] rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1"
                     >
-                      🔄 Làm mới
+                      <span>🔄 Làm mới từ máy chủ</span>
                     </button>
 
                     <button
@@ -1492,18 +1507,18 @@ export const AdminPanel: React.FC = () => {
                       📝 Nộp bài thi
                     </button>
                     <button
+                      onClick={() => setActivityFilterType('task_submitted' as any)}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${activityFilterType === ('task_submitted' as any) ? 'bg-blue-700 text-white shadow-xs' : 'text-[#6B6B54]'
+                        }`}
+                    >
+                      🎯 Nộp nhiệm vụ
+                    </button>
+                    <button
                       onClick={() => setActivityFilterType('practice_completed')}
                       className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${activityFilterType === 'practice_completed' ? 'bg-blue-700 text-white shadow-xs' : 'text-[#6B6B54]'
                         }`}
                     >
                       ⚡ Luyện tập
-                    </button>
-                    <button
-                      onClick={() => setActivityFilterType('question_wrong')}
-                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${activityFilterType === 'question_wrong' ? 'bg-amber-600 text-white shadow-xs' : 'text-[#6B6B54]'
-                        }`}
-                    >
-                      ⚠️ Làm sai
                     </button>
                     <button
                       onClick={() => setActivityFilterType('mistake_mastered')}
@@ -1554,7 +1569,7 @@ export const AdminPanel: React.FC = () => {
                       <p className="text-3xl">📡</p>
                       <h4 className="font-bold text-sm text-[#3D3D2D]">Chưa có hoạt động nào phù hợp với bộ lọc</h4>
                       <p className="text-xs text-[#8A8A70] max-w-md mx-auto">
-                        Khi em vào làm bài thi, giải câu hỏi hoặc sửa lỗi sai, toàn bộ tiến độ sẽ được đẩy lên đây tức thời không độ trễ.
+                        Khi học sinh vào làm bài thi, nộp bài hoặc gửi nhiệm vụ hoàn thành, toàn bộ tiến độ sẽ hiển thị tại đây thời gian thực.
                       </p>
                     </div>
                   ) : (
@@ -1579,28 +1594,31 @@ export const AdminPanel: React.FC = () => {
                               <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                                 <span className="font-bold text-[#3D3D2D]">{evt.userName}</span>
                                 <span
-                                  className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold ${evt.type === 'exam_submitted'
+                                  className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold ${
+                                    evt.type === 'exam_submitted' || (evt.type as string) === 'task_submitted'
                                       ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                                       : evt.type === 'practice_completed'
-                                        ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                                        : evt.type === 'question_wrong'
-                                          ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                          : evt.type === 'mistake_mastered'
-                                            ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                                            : 'bg-[#F5F2ED] text-[#5A5A40] border border-[#D9D2C5]'
-                                    }`}
+                                      ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                      : evt.type === 'question_wrong'
+                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                      : evt.type === 'mistake_mastered'
+                                      ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+                                      : 'bg-[#F5F2ED] text-[#5A5A40] border border-[#D9D2C5]'
+                                  }`}
                                 >
                                   {evt.type === 'exam_submitted'
                                     ? '📝 Nộp bài thi'
+                                    : (evt.type as string) === 'task_submitted'
+                                    ? '🎯 Nộp nhiệm vụ'
                                     : evt.type === 'practice_completed'
-                                      ? '⚡ Hoàn thành luyện tập'
-                                      : evt.type === 'question_wrong'
-                                        ? '⚠️ Làm sai câu hỏi'
-                                        : evt.type === 'mistake_mastered'
-                                          ? '✅ Đã sửa câu sai'
-                                          : evt.type === 'study_start'
-                                            ? '👤 Đăng nhập'
-                                            : 'Học tập'}
+                                    ? '⚡ Hoàn thành luyện tập'
+                                    : evt.type === 'question_wrong'
+                                    ? '⚠️ Làm sai câu hỏi'
+                                    : evt.type === 'mistake_mastered'
+                                    ? '✅ Đã sửa câu sai'
+                                    : evt.type === 'study_start'
+                                    ? '👤 Đăng nhập'
+                                    : 'Học tập'}
                                 </span>
 
                                 {evt.subject && (

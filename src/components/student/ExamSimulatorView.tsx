@@ -12,6 +12,7 @@ import {
 } from '../../services/aiExamService';
 import { logAndBroadcastActivity, getStoredRemoteTasks, studentSubmitRemoteTask } from '../../services/realtimeSyncService';
 import { AiQuestionExplainerModal } from '../common/AiQuestionExplainerModal';
+import { ScratchpadModal } from '../common/ScratchpadModal';
 import confetti from 'canvas-confetti';
 import {
   Clock,
@@ -112,10 +113,10 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   const [showTabWarning, setShowTabWarning] = useState<boolean>(false);
   const isSubmittingRef = useRef<boolean>(false);
 
-  // Focus Mode, Scratchpad & Auto-save Draft States
+  // Focus Mode, Scratchpad, Question Filter & Auto-save Draft States
   const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
   const [showScratchpad, setShowScratchpad] = useState<boolean>(false);
-  const [scratchpadText, setScratchpadText] = useState<string>('');
+  const [paletteFilter, setPaletteFilter] = useState<'all' | 'unanswered' | 'answered' | 'flagged'>('all');
   const [draftExists, setDraftExists] = useState<boolean>(false);
   const [aiQuestionExplain, setAiQuestionExplain] = useState<Record<string, string>>({});
   const [aiQuestionLoading, setAiQuestionLoading] = useState<string | null>(null);
@@ -765,37 +766,129 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           {/* Question Palette Sidebar (Right on Desktop) */}
           <div className="hidden lg:block bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-sm p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED]">
-              <h4 className="font-bold text-[#3D3D2D] text-sm">Bảng câu hỏi</h4>
-              <span className="text-xs text-[#8A8A70]">
-                {answeredCount}/{examQuestions.length} đã chọn
+              <div>
+                <h4 className="font-bold text-[#3D3D2D] text-sm">Bảng câu hỏi</h4>
+                <p className="text-[11px] text-[#8A8A70]">
+                  Đã làm: <strong className="text-emerald-700">{answeredCount}</strong> / {examQuestions.length} câu
+                </p>
+              </div>
+              <span className="px-2 py-0.5 bg-[#FAF9F6] text-[#5A5A40] text-[10px] font-mono font-bold rounded-lg border border-[#EAE7E0]">
+                {Math.round((answeredCount / examQuestions.length) * 100)}%
               </span>
             </div>
 
-            <div className="grid grid-cols-5 gap-2">
-              {examQuestions.map((q, index) => {
-                const isCurrent = index === currentIdx;
-                const isAnswered = userAnswers[q.id] !== undefined;
-                const isFlagged = flaggedIds.includes(q.id);
-
-                return (
-                  <button
-                    key={q.id}
-                    onClick={() => setCurrentIdx(index)}
-                    className={`relative h-10 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer ${isCurrent
-                        ? 'ring-2 ring-[#5A5A40] ring-offset-2 bg-[#5A5A40] text-white shadow-xs'
-                        : isAnswered
-                          ? 'bg-[#EBF2EB] text-[#8BA888] hover:bg-[#D9E8D9]'
-                          : 'bg-[#FAF9F6] text-[#6B6B54] hover:bg-[#E8E2D9]'
-                      }`}
-                  >
-                    <span>{index + 1}</span>
-                    {isFlagged && (
-                      <span className="absolute -top-1 -right-1 w-3 h-3 bg-[#E67E22] rounded-full border border-white" />
-                    )}
-                  </button>
-                );
-              })}
+            {/* Status Filter Tabs */}
+            <div className="grid grid-cols-4 gap-1 p-1 bg-[#FAF9F6] rounded-xl border border-[#EAE7E0] text-[10px] font-bold text-center">
+              <button
+                onClick={() => setPaletteFilter('all')}
+                className={`py-1 rounded-lg transition cursor-pointer ${
+                  paletteFilter === 'all'
+                    ? 'bg-[#5A5A40] text-white shadow-2xs'
+                    : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+                }`}
+                title="Tất cả câu hỏi"
+              >
+                Tất cả ({examQuestions.length})
+              </button>
+              <button
+                onClick={() => setPaletteFilter('unanswered')}
+                className={`py-1 rounded-lg transition cursor-pointer ${
+                  paletteFilter === 'unanswered'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'text-amber-700 hover:bg-amber-50'
+                }`}
+                title="Các câu chưa chọn đáp án"
+              >
+                Chưa ({examQuestions.length - answeredCount})
+              </button>
+              <button
+                onClick={() => setPaletteFilter('answered')}
+                className={`py-1 rounded-lg transition cursor-pointer ${
+                  paletteFilter === 'answered'
+                    ? 'bg-emerald-700 text-white shadow-2xs'
+                    : 'text-emerald-700 hover:bg-emerald-50'
+                }`}
+                title="Các câu đã trả lời"
+              >
+                Đã làm ({answeredCount})
+              </button>
+              <button
+                onClick={() => setPaletteFilter('flagged')}
+                className={`py-1 rounded-lg transition cursor-pointer ${
+                  paletteFilter === 'flagged'
+                    ? 'bg-[#E67E22] text-white shadow-2xs'
+                    : 'text-[#E67E22] hover:bg-orange-50'
+                }`}
+                title="Các câu đã gắn cờ xem lại"
+              >
+                🚩 Cờ ({flaggedIds.length})
+              </button>
             </div>
+
+            {/* Questions Grid */}
+            {(() => {
+              const displayedQuestions = examQuestions
+                .map((q, index) => ({ q, index }))
+                .filter(({ q }) => {
+                  const isAnswered = userAnswers[q.id] !== undefined;
+                  const isFlagged = flaggedIds.includes(q.id);
+                  if (paletteFilter === 'unanswered') return !isAnswered;
+                  if (paletteFilter === 'answered') return isAnswered;
+                  if (paletteFilter === 'flagged') return isFlagged;
+                  return true;
+                });
+
+              if (displayedQuestions.length === 0) {
+                return (
+                  <div className="py-8 px-3 text-center bg-[#FAF9F6] rounded-2xl border border-dashed border-[#D9D2C5] text-xs text-[#8A8A70] space-y-2">
+                    <p className="font-bold text-[#3D3D2D]">
+                      {paletteFilter === 'unanswered'
+                        ? '🎉 Xuất sắc! Bạn đã làm xong tất cả câu hỏi.'
+                        : paletteFilter === 'flagged'
+                        ? 'Bạn chưa gắn cờ câu hỏi nào.'
+                        : 'Không có câu hỏi nào.'}
+                    </p>
+                    {paletteFilter !== 'all' && (
+                      <button
+                        onClick={() => setPaletteFilter('all')}
+                        className="text-[11px] font-bold text-[#5A5A40] underline cursor-pointer"
+                      >
+                        Xem tất cả câu hỏi
+                      </button>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-5 gap-2 max-h-[300px] overflow-y-auto pr-1">
+                  {displayedQuestions.map(({ q, index }) => {
+                    const isCurrent = index === currentIdx;
+                    const isAnswered = userAnswers[q.id] !== undefined;
+                    const isFlagged = flaggedIds.includes(q.id);
+
+                    return (
+                      <button
+                        key={q.id}
+                        onClick={() => setCurrentIdx(index)}
+                        className={`relative h-10 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                          isCurrent
+                            ? 'ring-2 ring-[#5A5A40] ring-offset-2 bg-[#5A5A40] text-white shadow-xs'
+                            : isAnswered
+                            ? 'bg-[#EBF2EB] text-[#8BA888] hover:bg-[#D9E8D9]'
+                            : 'bg-[#FAF9F6] text-[#6B6B54] hover:bg-[#E8E2D9]'
+                        }`}
+                      >
+                        <span>{index + 1}</span>
+                        {isFlagged && (
+                          <span className="absolute -top-1 -right-1 w-3 h-3 bg-[#E67E22] rounded-full border border-white" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             <div className="pt-3 border-t border-[#F5F2ED] space-y-1.5 text-[11px] text-[#8A8A70]">
               <div className="flex items-center space-x-2">
@@ -825,7 +918,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
         {mobilePaletteOpen && (
           <div className="lg:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex flex-col justify-end animate-in fade-in">
             <div className="fixed inset-0" onClick={() => setMobilePaletteOpen(false)} />
-            <div className="relative bg-white rounded-t-[2.5rem] p-5 max-h-[75vh] overflow-y-auto space-y-4 border-t border-[#EAE7E0] shadow-2xl z-10">
+            <div className="relative bg-white rounded-t-[2.5rem] p-5 max-h-[80vh] overflow-y-auto space-y-4 border-t border-[#EAE7E0] shadow-2xl z-10">
               <div className="flex justify-between items-center pb-2 border-b border-[#F5F2ED]">
                 <div>
                   <h4 className="font-bold text-[#3D3D2D] text-sm">Bảng câu hỏi</h4>
@@ -839,33 +932,72 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-5 gap-2">
-                {examQuestions.map((q, index) => {
-                  const isCurrent = index === currentIdx;
-                  const isAnswered = userAnswers[q.id] !== undefined;
-                  const isFlagged = flaggedIds.includes(q.id);
+              {/* Status Filter Tabs Mobile */}
+              <div className="grid grid-cols-4 gap-1 p-1 bg-[#FAF9F6] rounded-xl border border-[#EAE7E0] text-[10px] font-bold text-center">
+                <button
+                  onClick={() => setPaletteFilter('all')}
+                  className={`py-1 rounded-lg transition ${paletteFilter === 'all' ? 'bg-[#5A5A40] text-white' : 'text-[#6B6B54]'}`}
+                >
+                  Tất cả ({examQuestions.length})
+                </button>
+                <button
+                  onClick={() => setPaletteFilter('unanswered')}
+                  className={`py-1 rounded-lg transition ${paletteFilter === 'unanswered' ? 'bg-amber-600 text-white' : 'text-amber-700'}`}
+                >
+                  Chưa ({examQuestions.length - answeredCount})
+                </button>
+                <button
+                  onClick={() => setPaletteFilter('answered')}
+                  className={`py-1 rounded-lg transition ${paletteFilter === 'answered' ? 'bg-emerald-700 text-white' : 'text-emerald-700'}`}
+                >
+                  Đã ({answeredCount})
+                </button>
+                <button
+                  onClick={() => setPaletteFilter('flagged')}
+                  className={`py-1 rounded-lg transition ${paletteFilter === 'flagged' ? 'bg-[#E67E22] text-white' : 'text-[#E67E22]'}`}
+                >
+                  Cờ ({flaggedIds.length})
+                </button>
+              </div>
 
-                  return (
-                    <button
-                      key={q.id}
-                      onClick={() => {
-                        setCurrentIdx(index);
-                        setMobilePaletteOpen(false);
-                      }}
-                      className={`relative h-10 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer ${isCurrent
-                          ? 'ring-2 ring-[#5A5A40] ring-offset-2 bg-[#5A5A40] text-white shadow-xs'
-                          : isAnswered
+              <div className="grid grid-cols-5 gap-2">
+                {examQuestions
+                  .map((q, index) => ({ q, index }))
+                  .filter(({ q }) => {
+                    const isAnswered = userAnswers[q.id] !== undefined;
+                    const isFlagged = flaggedIds.includes(q.id);
+                    if (paletteFilter === 'unanswered') return !isAnswered;
+                    if (paletteFilter === 'answered') return isAnswered;
+                    if (paletteFilter === 'flagged') return isFlagged;
+                    return true;
+                  })
+                  .map(({ q, index }) => {
+                    const isCurrent = index === currentIdx;
+                    const isAnswered = userAnswers[q.id] !== undefined;
+                    const isFlagged = flaggedIds.includes(q.id);
+
+                    return (
+                      <button
+                        key={q.id}
+                        onClick={() => {
+                          setCurrentIdx(index);
+                          setMobilePaletteOpen(false);
+                        }}
+                        className={`relative h-10 rounded-xl text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                          isCurrent
+                            ? 'ring-2 ring-[#5A5A40] ring-offset-2 bg-[#5A5A40] text-white shadow-xs'
+                            : isAnswered
                             ? 'bg-[#EBF2EB] text-[#8BA888]'
                             : 'bg-[#FAF9F6] text-[#6B6B54]'
                         }`}
-                    >
-                      <span>{index + 1}</span>
-                      {isFlagged && (
-                        <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#E67E22] rounded-full border border-white" />
-                      )}
-                    </button>
-                  );
-                })}
+                      >
+                        <span>{index + 1}</span>
+                        {isFlagged && (
+                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#E67E22] rounded-full border border-white" />
+                        )}
+                      </button>
+                    );
+                  })}
               </div>
             </div>
           </div>
@@ -1428,63 +1560,11 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           })}
         </div>
 
-        {/* 📝 Scratchpad Modal */}
-        {showScratchpad && (
-          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-5 shadow-2xl border-2 border-[#5A5A40] space-y-4 animate-in zoom-in-95 duration-200">
-              <div className="flex items-center justify-between border-b border-[#F5F2ED] pb-3">
-                <div className="flex items-center space-x-2">
-                  <div className="w-8 h-8 rounded-xl bg-[#8BA888]/20 flex items-center justify-center text-[#5A5A40]">
-                    📝
-                  </div>
-                  <h4 className="font-bold text-sm text-[#3D3D2D]">Bảng nháp tính toán</h4>
-                </div>
-                <button
-                  onClick={() => setShowScratchpad(false)}
-                  className="p-1 text-[#8A8A70] hover:text-[#3D3D2D] rounded-lg"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Quick symbols buttons */}
-              <div className="flex flex-wrap gap-1.5 bg-[#FAF9F6] p-2 rounded-2xl border border-[#D9D2C5] text-xs font-mono">
-                {['√', 'x²', 'Δ', 'π', '≠', '≤', '≥', '±', 'α', 'β', 'x₁', 'x₂'].map((sym) => (
-                  <button
-                    key={sym}
-                    onClick={() => setScratchpadText((prev) => prev + sym + ' ')}
-                    className="px-2 py-1 bg-white hover:bg-[#E8E2D9] border border-[#D9D2C5] rounded-lg text-xs font-bold text-[#5A5A40] transition cursor-pointer"
-                  >
-                    {sym}
-                  </button>
-                ))}
-              </div>
-
-              <textarea
-                rows={8}
-                value={scratchpadText}
-                onChange={(e) => setScratchpadText(e.target.value)}
-                placeholder="Ghi chú nháp lời giải, phép tính hoặc nháp từ vựng..."
-                className="w-full p-3.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-2xl text-xs font-mono text-[#3D3D2D] focus:outline-hidden focus:ring-2 focus:ring-[#8BA888]"
-              />
-
-              <div className="flex justify-between items-center pt-1">
-                <button
-                  onClick={() => setScratchpadText('')}
-                  className="px-3 py-1.5 text-xs text-rose-600 hover:text-rose-700 font-bold cursor-pointer"
-                >
-                  Xóa nháp
-                </button>
-                <button
-                  onClick={() => setShowScratchpad(false)}
-                  className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-xs"
-                >
-                  Xong (Đóng)
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* 📝 Scratchpad Canvas & Math Symbols Modal */}
+        <ScratchpadModal
+          isOpen={showScratchpad}
+          onClose={() => setShowScratchpad(false)}
+        />
 
         {/* 🤖 AI Question Explainer Modal */}
         {activeQuestionForAiExplainer && (

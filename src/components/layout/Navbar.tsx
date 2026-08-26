@@ -22,6 +22,9 @@ import {
   Languages,
   LogOut,
   Compass,
+  Sun,
+  Moon,
+  Coffee,
 } from 'lucide-react';
 
 export type TabType =
@@ -53,7 +56,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenProfileModal,
   onOpenAuthModal,
 }) => {
-  const { currentSubject, switchSubject, currentUser, mistakes, bookmarks, analytics, getQuestionById } = useApp();
+  const { currentSubject, switchSubject, currentUser, mistakes, bookmarks, analytics, getQuestionById, themeMode, setThemeMode } = useApp();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean>(
     typeof navigator !== 'undefined' ? navigator.onLine : true
@@ -301,6 +304,46 @@ export const Navbar: React.FC<NavbarProps> = ({
             <ChevronRight className="w-4 h-4 text-[#8A8A70] group-hover:translate-x-0.5 transition" />
           </div>
 
+          {/* Theme Mode Toggle (Light / Dark / Sepia) */}
+          <div className="bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] flex items-center justify-between text-xs font-bold shadow-2xs">
+            <button
+              onClick={() => setThemeMode('light')}
+              className={`flex-1 py-1 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 ${
+                themeMode === 'light'
+                  ? 'bg-[#5A5A40] text-white shadow-2xs'
+                  : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+              }`}
+              title="Giao diện Sáng tự nhiên"
+            >
+              <Sun className="w-3 h-3" />
+              <span className="text-[10px]">Sáng</span>
+            </button>
+            <button
+              onClick={() => setThemeMode('dark')}
+              className={`flex-1 py-1 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 ${
+                themeMode === 'dark'
+                  ? 'bg-slate-900 text-amber-300 shadow-2xs'
+                  : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+              }`}
+              title="Chế độ Ban đêm (Dark Mode)"
+            >
+              <Moon className="w-3 h-3" />
+              <span className="text-[10px]">Tối</span>
+            </button>
+            <button
+              onClick={() => setThemeMode('sepia')}
+              className={`flex-1 py-1 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 ${
+                themeMode === 'sepia'
+                  ? 'bg-[#6D5438] text-amber-100 shadow-2xs'
+                  : 'text-[#6B6B54] hover:text-[#3D3D2D]'
+              }`}
+              title="Chế độ Đọc sách Giấy vàng (Warm Sepia)"
+            >
+              <Coffee className="w-3 h-3" />
+              <span className="text-[10px]">Đọc</span>
+            </button>
+          </div>
+
           {/* Goal & Target Score Card */}
           <div className="bg-[#FDFCFB] p-3.5 rounded-2xl border border-[#D9D2C5] shadow-xs space-y-1.5">
             <div className="flex items-center justify-between">
@@ -377,6 +420,18 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right Actions */}
         <div className="flex items-center space-x-1.5">
+          {/* Quick theme switcher button */}
+          <button
+            onClick={() => {
+              if (themeMode === 'light') setThemeMode('dark');
+              else if (themeMode === 'dark') setThemeMode('sepia');
+              else setThemeMode('light');
+            }}
+            className="p-1.5 rounded-xl bg-[#FAF9F6] border border-[#D9D2C5] text-[#5A5A40] transition cursor-pointer"
+            title={`Giao diện: ${themeMode === 'dark' ? 'Tối' : themeMode === 'sepia' ? 'Đọc sách' : 'Sáng'}`}
+          >
+            {themeMode === 'dark' ? <Moon className="w-3.5 h-3.5 text-amber-300" /> : themeMode === 'sepia' ? <Coffee className="w-3.5 h-3.5 text-amber-800" /> : <Sun className="w-3.5 h-3.5 text-amber-600" />}
+          </button>
           <button
             onClick={onOpenProfileModal}
             className={`w-7 h-7 rounded-xl ${
@@ -468,6 +523,43 @@ export const Navbar: React.FC<NavbarProps> = ({
                 className="p-1.5 rounded-xl bg-[#FAF9F6] text-[#8A8A70] hover:text-[#3D3D2D] transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Theme Selector in Mobile Drawer */}
+            <div className="bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] flex items-center justify-between text-xs font-bold shadow-2xs">
+              <button
+                onClick={() => setThemeMode('light')}
+                className={`flex-1 py-1 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 ${
+                  themeMode === 'light'
+                    ? 'bg-[#5A5A40] text-white shadow-2xs'
+                    : 'text-[#6B6B54]'
+                }`}
+              >
+                <Sun className="w-3.5 h-3.5" />
+                <span>Sáng</span>
+              </button>
+              <button
+                onClick={() => setThemeMode('dark')}
+                className={`flex-1 py-1 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 ${
+                  themeMode === 'dark'
+                    ? 'bg-slate-900 text-amber-300 shadow-2xs'
+                    : 'text-[#6B6B54]'
+                }`}
+              >
+                <Moon className="w-3.5 h-3.5" />
+                <span>Tối</span>
+              </button>
+              <button
+                onClick={() => setThemeMode('sepia')}
+                className={`flex-1 py-1 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 ${
+                  themeMode === 'sepia'
+                    ? 'bg-[#6D5438] text-amber-100 shadow-2xs'
+                    : 'text-[#6B6B54]'
+                }`}
+              >
+                <Coffee className="w-3.5 h-3.5" />
+                <span>Đọc sách</span>
               </button>
             </div>
 

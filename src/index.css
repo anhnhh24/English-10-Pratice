@@ -2,13 +2,14 @@
 
 @layer base {
   body {
-    background-color: #F5F2ED;
-    color: #4A4A4A;
+    background-color: var(--bg-canvas);
+    color: var(--text-main);
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
 
-/* Natural Tones Custom Theme Variables and Utilities */
+/* Light / Natural Tones Theme */
 :root {
   --bg-canvas: #F5F2ED;
   --bg-sidebar: #E8E2D9;
@@ -17,6 +18,8 @@
   --bg-container: #F2F0EB;
   --border-natural: #D9D2C5;
   --border-subtle: #EAE7E0;
+  --text-main: #3D3D2D;
+  --text-muted: #8A8A70;
   
   --primary-olive: #5A5A40;
   --primary-olive-dark: #3D3D2D;
@@ -28,6 +31,133 @@
   --accent-terracotta: #E67E22;
   --accent-terracotta-light: #FDF2E9;
   --accent-sand: #E8C07D;
+}
+
+/* Dark Mode Theme */
+html.dark {
+  --bg-canvas: #0B0F19;
+  --bg-sidebar: #111827;
+  --bg-card: #1E293B;
+  --bg-card-subtle: #182234;
+  --bg-container: #111827;
+  --border-natural: #334155;
+  --border-subtle: #1E293B;
+  --text-main: #F1F5F9;
+  --text-muted: #94A3B8;
+
+  --primary-olive: #93C5FD;
+  --primary-olive-dark: #60A5FA;
+  --primary-olive-light: #BFDBFE;
+  --primary-olive-subtle: #1E293B;
+
+  --accent-sage: #34D399;
+  --accent-sage-light: #064E3B;
+  --accent-terracotta: #FB923C;
+  --accent-terracotta-light: #7C2D12;
+  --accent-sand: #FBBF24;
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #0B0F19;
+  color: #F1F5F9;
+}
+
+html.dark .bg-white {
+  background-color: #1E293B !important;
+  color: #F1F5F9;
+}
+
+html.dark .bg-\[\#FAF9F6\] {
+  background-color: #151D2E !important;
+  color: #E2E8F0;
+}
+
+html.dark .bg-\[\#F5F2ED\] {
+  background-color: #0F172A !important;
+}
+
+html.dark .border-\[\#EAE7E0\],
+html.dark .border-\[\#D9D2C5\],
+html.dark .border-\[\#F5F2ED\] {
+  border-color: #334155 !important;
+}
+
+html.dark .text-\[\#3D3D2D\] {
+  color: #F8FAFC !important;
+}
+
+html.dark .text-\[\#4A4A4A\],
+html.dark .text-\[\#5A5A40\],
+html.dark .text-\[\#6B6B54\] {
+  color: #CBD5E1 !important;
+}
+
+html.dark .text-\[\#8A8A70\] {
+  color: #94A3B8 !important;
+}
+
+/* Warm Sepia / Reading Mode Theme */
+html.theme-sepia {
+  --bg-canvas: #F4ECD8;
+  --bg-sidebar: #EADFCA;
+  --bg-card: #FAF4E6;
+  --bg-card-subtle: #F3EBD6;
+  --bg-container: #EADFCA;
+  --border-natural: #D8C8AF;
+  --border-subtle: #E2D5BE;
+  --text-main: #3F3324;
+  --text-muted: #7E6C54;
+
+  --primary-olive: #6D5438;
+  --primary-olive-dark: #4A3822;
+  --primary-olive-light: #876C4B;
+  --primary-olive-subtle: #E7DBCA;
+
+  --accent-sage: #6B8E69;
+  --accent-sage-light: #E4ECE3;
+  --accent-terracotta: #C8671B;
+  --accent-terracotta-light: #FAEDE1;
+  --accent-sand: #D9A95C;
+  color-scheme: light;
+}
+
+html.theme-sepia body {
+  background-color: #F4ECD8;
+  color: #3F3324;
+}
+
+html.theme-sepia .bg-white {
+  background-color: #FAF4E6 !important;
+  color: #3F3324;
+}
+
+html.theme-sepia .bg-\[\#FAF9F6\] {
+  background-color: #F3EBD6 !important;
+}
+
+html.theme-sepia .bg-\[\#F5F2ED\] {
+  background-color: #EADFCA !important;
+}
+
+html.theme-sepia .border-\[\#EAE7E0\],
+html.theme-sepia .border-\[\#D9D2C5\],
+html.theme-sepia .border-\[\#F5F2ED\] {
+  border-color: #D8C8AF !important;
+}
+
+html.theme-sepia .text-\[\#3D3D2D\] {
+  color: #382B1B !important;
+}
+
+html.theme-sepia .text-\[\#5A5A40\],
+html.theme-sepia .text-\[\#4A4A4A\],
+html.theme-sepia .text-\[\#6B6B54\] {
+  color: #594732 !important;
+}
+
+html.theme-sepia .text-\[\#8A8A70\] {
+  color: #7E6C54 !important;
 }
 
 /* Hide scrollbar for Chrome, Safari and Opera */
@@ -45,4 +175,3 @@
 * {
   -webkit-tap-highlight-color: transparent;
 }
-

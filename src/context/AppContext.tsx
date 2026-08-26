@@ -150,6 +150,10 @@ interface AppContextType {
     recentAttempts: ExamAttempt[];
   };
 
+  // Theme Mode (Light / Dark / Sepia)
+  themeMode: 'light' | 'dark' | 'sepia';
+  setThemeMode: (mode: 'light' | 'dark' | 'sepia') => void;
+
   // Teacher / Admin Helpers
   getUserScopedData: (userId: string) => UserScopedData;
   saveTeacherNote: (userId: string, note: string) => void;
@@ -242,6 +246,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return DEFAULT_USERS[0];
   });
+
+  // Theme Mode (light / dark / sepia)
+  const [themeMode, setThemeModeState] = useState<'light' | 'dark' | 'sepia'>(() => {
+    try {
+      const saved = localStorage.getItem('edu10_theme_mode');
+      if (saved === 'dark' || saved === 'sepia' || saved === 'light') return saved;
+    } catch {}
+    return 'light';
+  });
+
+  const setThemeMode = (mode: 'light' | 'dark' | 'sepia') => {
+    setThemeModeState(mode);
+    try {
+      localStorage.setItem('edu10_theme_mode', mode);
+    } catch {}
+  };
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove('dark', 'theme-sepia');
+    if (themeMode === 'dark') {
+      root.classList.add('dark');
+    } else if (themeMode === 'sepia') {
+      root.classList.add('theme-sepia');
+    }
+  }, [themeMode]);
 
   // 3. User Scoped Data Helper
   const getUserDataKey = (userId: string) => `edu10_userdata_${userId}`;
@@ -1032,6 +1062,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     // Automatically log and broadcast activity in real-time
+    const wrongCount = newAttempt.totalQuestions - newAttempt.correctCount;
     logAndBroadcastActivity({
       userId: currentUser.id,
       userName: currentUser.name,
@@ -1039,7 +1070,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       subject: attempt.subject || currentSubject,
       type: 'exam_submitted',
       title: `Vừa hoàn thành bài thi ${attempt.subject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}`,
-      detail: `Đạt ${newAttempt.score.toFixed(2)}/10đ (${newAttempt.correctCount}/${newAttempt.totalQuestions} câu đúng) • ${attempt.examTitle}`,
+      detail: `Đạt ${newAttempt.score.toFixed(2)}/10đ (Đúng ${newAttempt.correctCount}/${newAttempt.totalQuestions} câu${wrongCount > 0 ? `, sai ${wrongCount} câu` : ''}) • ${attempt.examTitle}`,
       score: newAttempt.score,
       examTitle: attempt.examTitle,
     });
@@ -1100,7 +1131,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setMistakes((prev) => {
       const nextMistakes = { ...prev };
-      const wrongCountMap: Record<string, number> = {};
       let hasChanges = false;
 
       results.forEach(({ questionId, isCorrect }) => {
@@ -1118,7 +1148,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             mastered: false,
             userNote: existing?.userNote,
           };
-          wrongCountMap[qSubj] = (wrongCountMap[qSubj] || 0) + 1;
           hasChanges = true;
         } else {
           if (existing) {
@@ -1135,22 +1164,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       });
 
-      // Log consolidated activity events for wrong answers
-      Object.entries(wrongCountMap).forEach(([subj, count]) => {
-        if (count > 0) {
-          logAndBroadcastActivity({
-            userId: currentUser.id,
-            userName: currentUser.name,
-            avatarColor: currentUser.avatarColor,
-            subject: subj as SubjectId,
-            type: 'question_wrong',
-            title: `Làm sai ${count} câu hỏi ${subj === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}`,
-            detail: `Lịch sử vừa ghi nhận thêm ${count} lỗi sai mới vào sổ tay ôn tập.`,
-            topicName: 'general',
-          });
-        }
-      });
-
       return hasChanges ? nextMistakes : prev;
     });
   };
@@ -1163,19 +1176,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMistakes((prev) => {
       const existing = prev[questionId];
       if (!isCorrect) {
-        if (q) {
-          logAndBroadcastActivity({
-            userId: currentUser.id,
-            userName: currentUser.name,
-            avatarColor: currentUser.avatarColor,
-            subject: qSubj,
-            type: 'question_wrong',
-            title: `Làm sai câu hỏi ${qSubj === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}`,
-            detail: `Chuyên đề: ${q.topicId.replace('math_', '').replace(/_/g, ' ')}`,
-            topicName: q.topicId,
-          });
-        }
-
         return {
           ...prev,
           [questionId]: {
@@ -1659,6 +1659,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateDailyVocabConfig,
         toggleVocabLearned,
         toggleVocabMastered,
+        themeMode,
+        setThemeMode,
         analytics,
         seedDemoProgress,
         resetAllProgress,

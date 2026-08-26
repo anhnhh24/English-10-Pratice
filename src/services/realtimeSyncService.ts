@@ -85,16 +85,38 @@ export function logAndBroadcastActivity(
 }
 
 /**
+ * Fetch latest activities directly from Firebase Realtime Database
+ */
+export async function fetchLiveActivitiesFromFirebase(roomCode?: string): Promise<RealtimeActivityEvent[]> {
+  try {
+    const settings = getCloudDBSettings();
+    const targetRoom = roomCode || settings.roomCode;
+    if (!targetRoom) return getStoredRealtimeActivities();
+
+    const activitiesRef = ref(database, `rooms/${targetRoom}/activities`);
+    const q = query(activitiesRef, limitToLast(50));
+    const snapshot = await get(q);
+    if (snapshot.exists()) {
+      const val = snapshot.val();
+      const list: RealtimeActivityEvent[] = Object.values(val);
+      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      localStorage.setItem(STORAGE_ACTIVITIES_KEY, JSON.stringify(list.slice(0, 50)));
+      return list;
+    }
+  } catch (e) {
+    console.error('Error fetching live activities from Firebase:', e);
+  }
+  return getStoredRealtimeActivities();
+}
+
+/**
  * Subscribe to real-time activities from Firebase + BroadcastChannel
- * Uses onChildAdded with limitToLast(1) so only NEW children after subscription are received.
  * Returns unsubscribe function.
  */
 export function subscribeToRealtimeActivities(
   callback: (event: RealtimeActivityEvent) => void
 ): () => void {
   const cleanups: (() => void)[] = [];
-
-  // Track IDs seen in this session to prevent duplicates across channels
   const seenIds = new Set<string>();
 
   const safeCallback = (event: RealtimeActivityEvent) => {
@@ -124,22 +146,24 @@ export function subscribeToRealtimeActivities(
     cleanups.push(() => broadcastChannel?.removeEventListener('message', handleBroadcastMessage));
   }
 
-  // 2. Firebase Realtime listener (CROSS-DEVICE!)
-  // Use onChildAdded + limitToLast(1): Firebase will deliver existing latest child once on connect,
-  // then fire for each new child pushed afterwards — no manual isInitialLoad hack needed.
+  // 2. Firebase Realtime listener (CROSS-DEVICE)
   const settings = getCloudDBSettings();
   if (settings.enabled && settings.roomCode) {
     const activitiesRef = ref(database, `rooms/${settings.roomCode}/activities`);
-    // limitToLast(1) → on first connect, delivers only the last existing child (we skip it),
-    // then fires for every new push() call.
-    const activitiesQuery = query(activitiesRef, limitToLast(1));
 
-    let isFirstChild = true; // skip the initial "last existing" child on connect
-    const handler = (snapshot: DataSnapshot) => {
-      if (isFirstChild) {
-        isFirstChild = false;
-        return; // skip the one existing record delivered on subscription
+    // Initial load from Firebase to populate history
+    get(query(activitiesRef, limitToLast(50))).then((snapshot) => {
+      if (snapshot.exists()) {
+        const val = snapshot.val();
+        const list: RealtimeActivityEvent[] = Object.values(val);
+        list.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        list.forEach((act) => safeCallback(act));
       }
+    }).catch((err) => console.warn('Initial activities fetch failed:', err));
+
+    // Listen for ongoing new pushes
+    const activitiesQuery = query(activitiesRef, limitToLast(20));
+    const handler = (snapshot: DataSnapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val() as RealtimeActivityEvent;
         safeCallback(data);
