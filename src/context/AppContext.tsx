@@ -742,6 +742,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('edu10_users', JSON.stringify(next));
       return next;
     });
+
+    logAndBroadcastActivity({
+      userId: currentUser.id,
+      userName: currentUser.name,
+      avatarColor: currentUser.avatarColor,
+      subject: currentSubject,
+      type: 'goal_updated',
+      severity: 'normal',
+      title: `Cập nhật mục tiêu điểm thi`,
+      detail: `Mục tiêu mới: ${targetScore}đ môn ${currentSubject === 'math' ? 'Toán' : 'Anh'} • Trường: ${school}`,
+      score: targetScore,
+    });
   };
 
   const updateUserProfile = (data: Partial<UserAccount>) => {
@@ -1063,15 +1075,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Automatically log and broadcast activity in real-time
     const wrongCount = newAttempt.totalQuestions - newAttempt.correctCount;
+    const scoreVal = newAttempt.score;
+    const severity = scoreVal >= 8.0 ? 'positive' : scoreVal >= 5.0 ? 'normal' : 'warning';
+
     logAndBroadcastActivity({
       userId: currentUser.id,
       userName: currentUser.name,
       avatarColor: currentUser.avatarColor,
       subject: attempt.subject || currentSubject,
       type: 'exam_submitted',
+      severity,
       title: `Vừa hoàn thành bài thi ${attempt.subject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}`,
       detail: `Đạt ${newAttempt.score.toFixed(2)}/10đ (Đúng ${newAttempt.correctCount}/${newAttempt.totalQuestions} câu${wrongCount > 0 ? `, sai ${wrongCount} câu` : ''}) • ${attempt.examTitle}`,
       score: newAttempt.score,
+      attemptId: newAttempt.id,
+      examId: newAttempt.examId,
       examTitle: attempt.examTitle,
     });
 
@@ -1362,9 +1380,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       logAndBroadcastActivity({
         userId: currentUser.id,
         userName: currentUser.name,
-        userRole: currentUser.role,
-        actionType: 'login',
-        details: `Nạp tự động ${newBatch.length} từ vựng mới ngày ${today}`,
+        avatarColor: currentUser.avatarColor,
+        type: 'flashcard_mastered',
+        severity: 'normal',
+        title: `Nạp tự động ${newBatch.length} từ vựng Flashcard mới`,
+        detail: `Học sinh đã nhận bộ từ vựng ngày ${today}`,
       });
 
       return { count: newBatch.length, date: today };

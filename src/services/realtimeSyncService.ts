@@ -399,12 +399,14 @@ export function studentSubmitRemoteTask(
       userId: target.recipientUserId || 'student',
       userName: payload.studentName || 'Học sinh',
       subject: target.subject,
-      type: 'practice_completed',
+      type: 'task_submitted',
+      severity: 'positive',
       title: `Hoàn thành nhiệm vụ: ${target.title}`,
       detail: payload.score !== undefined
         ? `Đã nộp bài với kết quả ${payload.score.toFixed(1)}/10đ`
         : payload.studentNote || 'Học sinh đã nộp và chờ xác nhận',
       score: payload.score,
+      attemptId: payload.attemptId,
       examTitle: target.title,
     });
   }

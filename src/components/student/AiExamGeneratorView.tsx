@@ -13,6 +13,7 @@ import {
   ExamGenerationConfig,
   GeneratedExamResult,
 } from '../../services/aiExamService';
+import { logAndBroadcastActivity } from '../../services/realtimeSyncService';
 import {
   Sparkles,
   Key,
@@ -362,6 +363,19 @@ export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStar
         difficulty: result.exam.difficulty,
         questionIds: result.questions.map((q) => q.id),
         isOfficialFormat: false,
+      });
+
+      logAndBroadcastActivity({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        avatarColor: currentUser.avatarColor,
+        subject: genSubject,
+        type: 'ai_exam_generated',
+        severity: 'positive',
+        title: `Tự tạo đề ôn tập bằng AI (${genSubject === 'math' ? 'Môn Toán' : 'Tiếng Anh'})`,
+        detail: `Học sinh đã dùng AI tạo đề "${result.exam.title}" (${result.questions.length} câu • Mức độ ${difficulty})`,
+        examTitle: result.exam.title,
+        examId: result.exam.id,
       });
 
       setGeneratedResult(result);

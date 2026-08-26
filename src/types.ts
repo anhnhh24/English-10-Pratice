@@ -256,6 +256,8 @@ export interface TopicMeta {
   weightInExam: string; // e.g. "20% Đề thi"
 }
 
+export type ActivitySeverity = 'positive' | 'normal' | 'warning' | 'alert';
+
 export interface RealtimeActivityEvent {
   id: string;
   userId: string;
@@ -265,21 +267,30 @@ export interface RealtimeActivityEvent {
   type:
     | 'exam_submitted'
     | 'exam_started'
+    | 'exam_abandoned'
     | 'practice_completed'
-    | 'question_wrong'
-    | 'question_correct'
+    | 'task_submitted'
     | 'mistake_mastered'
+    | 'streak_milestone'
+    | 'ai_exam_generated'
+    | 'scratchpad_used'
     | 'study_start'
     | 'flashcard_mastered'
     | 'goal_updated'
-    | 'tab_switched';
+    | 'tab_switched'
+    | 'question_wrong'
+    | 'question_correct';
   title: string;
   detail: string;
   timestamp: string;
+  severity?: ActivitySeverity;
   score?: number;
+  attemptId?: string;
+  examId?: string;
   examTitle?: string;
   topicName?: string;
   tabSwitchCount?: number;
+  streakDays?: number;
 }
 
 export type RemoteTaskStatus = 'pending' | 'submitted' | 'confirmed' | 'redo';

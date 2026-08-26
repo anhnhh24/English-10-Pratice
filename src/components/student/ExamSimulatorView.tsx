@@ -168,11 +168,50 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
     } catch (e) { }
   };
 
+  const hasLoggedScratchpadRef = useRef<boolean>(false);
+
   const clearDraft = () => {
     try {
       localStorage.removeItem(DRAFT_KEY);
       setDraftExists(false);
     } catch (e) { }
+  };
+
+  const handleAbandonExam = () => {
+    if (confirm('Bạn có chắc muốn thoát bài thi giữa chừng? Kết quả chưa nộp sẽ không được lưu vào bảng điểm.')) {
+      logAndBroadcastActivity({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        avatarColor: currentUser.avatarColor,
+        subject: exam.subject || currentSubject,
+        type: 'exam_abandoned',
+        severity: 'warning',
+        title: `Thoát bài thi giữa chừng`,
+        detail: `Học sinh đã dừng bài thi "${exam.title}" khi mới làm ${Object.keys(userAnswers).length}/${examQuestions.length} câu`,
+        examTitle: exam.title,
+        examId: exam.id,
+      });
+      clearDraft();
+      setStage('intro');
+    }
+  };
+
+  const handleOpenScratchpad = () => {
+    setShowScratchpad(true);
+    if (!hasLoggedScratchpadRef.current) {
+      hasLoggedScratchpadRef.current = true;
+      logAndBroadcastActivity({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        avatarColor: currentUser.avatarColor,
+        subject: exam.subject || currentSubject,
+        type: 'scratchpad_used',
+        severity: 'normal',
+        title: 'Sử dụng bảng vẽ nháp & công thức',
+        detail: `Học sinh mở bảng nháp để tính toán / vẽ hình khi làm bài "${exam.title}"`,
+        examTitle: exam.title,
+      });
+    }
   };
 
   // Anti-cheat listener effect
@@ -192,6 +231,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             avatarColor: currentUser.avatarColor,
             subject: exam.subject || currentSubject,
             type: 'tab_switched',
+            severity: 'alert',
             title: `Cảnh báo rời màn hình thi (${nextCount} lần)`,
             detail: `Học sinh vừa chuyển sang tab/ứng dụng khác khi đang làm bài thi "${exam.title}"!`,
             examTitle: exam.title,
@@ -259,11 +299,14 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
       avatarColor: currentUser.avatarColor,
       subject: targetExam.subject || currentSubject,
       type: 'exam_started',
+      severity: 'normal',
       title: `Bắt đầu làm bài thi ${targetExam.subject === 'math' ? 'Môn Toán' : 'Môn Tiếng Anh'}`,
       detail: `Đề thi: "${targetExam.title}" (${targetQuestions.length} câu • ${targetExam.timeLimitMinutes} phút)`,
       examTitle: targetExam.title,
+      examId: targetExam.id,
     });
 
+    hasLoggedScratchpadRef.current = false;
     isSubmittingRef.current = false;
     setUserAnswers({});
     setFlaggedIds([]);
@@ -625,12 +668,21 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
 
             {/* Scratchpad Toggle */}
             <button
-              onClick={() => setShowScratchpad(true)}
+              onClick={handleOpenScratchpad}
               title="Bảng nháp / Tính nhanh"
               className="px-2.5 py-1.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#5A5A40] transition cursor-pointer flex items-center space-x-1"
             >
               <span>📝</span>
               <span className="hidden sm:inline">Nháp</span>
+            </button>
+
+            {/* Abandon Exam Button */}
+            <button
+              onClick={handleAbandonExam}
+              title="Tạm dừng / Hủy bài thi"
+              className="px-2.5 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition cursor-pointer hidden sm:block"
+            >
+              <span>Thoát</span>
             </button>
 
             <button
