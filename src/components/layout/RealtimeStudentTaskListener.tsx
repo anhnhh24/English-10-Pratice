@@ -108,7 +108,7 @@ export const RealtimeStudentTaskListener: React.FC<RealtimeStudentTaskListenerPr
     if (activeTask.subject) {
       switchSubject(activeTask.subject);
     }
-    markRemoteTaskCompleted(activeTask.id);
+    // Don't auto-complete task before doing it — just dismiss the popup and navigate to exam/practice
     handleDismissTask();
 
     if (activeTask.assignedExamId && onStartExam) {
@@ -116,6 +116,44 @@ export const RealtimeStudentTaskListener: React.FC<RealtimeStudentTaskListenerPr
     } else if (activeTask.assignedTopicId && onPracticeTopic) {
       onPracticeTopic(activeTask.assignedTopicId);
     }
+  };
+
+  const getDeadlineBadge = (deadlineStr?: string) => {
+    if (!deadlineStr) return null;
+    const deadline = new Date(deadlineStr);
+    const now = new Date();
+    const diffMs = deadline.getTime() - now.getTime();
+    const isOverdue = diffMs < 0;
+    const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+    const isUrgent = !isOverdue && diffHours <= 6;
+
+    const timeText = deadline.toLocaleDateString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+    });
+
+    return (
+      <div
+        className={`flex items-center space-x-1 text-[11px] font-bold px-2 py-0.5 rounded-lg ${
+          isOverdue
+            ? 'bg-rose-100 text-rose-700 border border-rose-200'
+            : isUrgent
+            ? 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
+            : 'bg-blue-50 text-blue-800 border border-blue-200'
+        }`}
+      >
+        <span>⏰ Hạn chót: {timeText}</span>
+        <span className="opacity-80">
+          {isOverdue
+            ? '(Đã quá hạn)'
+            : diffHours < 24
+            ? `(Còn ${Math.max(1, diffHours)}h)`
+            : `(Còn ${Math.round(diffHours / 24)} ngày)`}
+        </span>
+      </div>
+    );
   };
 
   return (
@@ -189,7 +227,7 @@ export const RealtimeStudentTaskListener: React.FC<RealtimeStudentTaskListenerPr
             </button>
           </div>
 
-          <div className="p-3 bg-[#FAF9F6] rounded-2xl border border-[#D9D2C5] space-y-1 text-xs">
+          <div className="p-3 bg-[#FAF9F6] rounded-2xl border border-[#D9D2C5] space-y-2 text-xs">
             <p className="font-bold text-[#5A5A40] flex items-center space-x-1.5">
               <GraduationCap className="w-4 h-4 text-[#8BA888]" />
               <span>{activeTask.title}</span>
@@ -197,6 +235,7 @@ export const RealtimeStudentTaskListener: React.FC<RealtimeStudentTaskListenerPr
             <p className="text-[#4A4A4A] leading-relaxed text-[11px] italic">
               "{activeTask.message}"
             </p>
+            {getDeadlineBadge(activeTask.targetDeadline)}
           </div>
 
           <div className="flex space-x-2 pt-1">

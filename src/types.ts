@@ -282,6 +282,8 @@ export interface RealtimeActivityEvent {
   tabSwitchCount?: number;
 }
 
+export type RemoteTaskStatus = 'pending' | 'submitted' | 'confirmed' | 'redo';
+
 export interface RemoteTaskAssignment {
   id: string;
   senderName: string;
@@ -294,6 +296,13 @@ export interface RemoteTaskAssignment {
   targetDeadline?: string;
   timestamp: string;
   completed?: boolean;
+  status?: RemoteTaskStatus;
+  studentCompletedAt?: string;
+  studentScore?: number;
+  studentAttemptId?: string;
+  studentNote?: string;
+  confirmedByAdminAt?: string;
+  adminFeedback?: string;
 }
 
 export interface RemotePing {

@@ -10,7 +10,7 @@ import {
   ExamEvaluationReport,
   AVAILABLE_MODELS,
 } from '../../services/aiExamService';
-import { logAndBroadcastActivity, getStoredRemoteTasks, markRemoteTaskCompleted } from '../../services/realtimeSyncService';
+import { logAndBroadcastActivity, getStoredRemoteTasks, studentSubmitRemoteTask } from '../../services/realtimeSyncService';
 import { AiQuestionExplainerModal } from '../common/AiQuestionExplainerModal';
 import confetti from 'canvas-confetti';
 import {
@@ -326,13 +326,22 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
       flaggedQuestions: flaggedIds,
     });
 
-    // Auto-mark any pending assigned task for this exam as completed
+    // Auto-submit any matching assigned tasks for this exam
     try {
       const storedTasks = getStoredRemoteTasks();
       const matchingTasks = storedTasks.filter(
-        (t) => !t.completed && (t.recipientUserId === 'all' || t.recipientUserId === currentUser.id) && t.assignedExamId === exam.id
+        (t) => (!t.completed || t.status === 'pending' || t.status === 'redo') &&
+          (t.recipientUserId === 'all' || t.recipientUserId === currentUser.id) &&
+          t.assignedExamId === exam.id
       );
-      matchingTasks.forEach((t) => markRemoteTaskCompleted(t.id));
+      matchingTasks.forEach((t) =>
+        studentSubmitRemoteTask(t.id, {
+          studentName: currentUser.name,
+          score: scoreVal,
+          attemptId: saved.id,
+          studentNote: `Hoàn thành bài thi đạt ${scoreVal.toFixed(1)}/10đ (${correctCount}/${totalQ} câu đúng)`,
+        })
+      );
     } catch (_) {}
 
     setCompletedAttempt(saved);

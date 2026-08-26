@@ -181,13 +181,14 @@ export function getStoredRemoteTasks(): RemoteTaskAssignment[] {
  * Writes to: Firebase + localStorage + BroadcastChannel
  */
 export function broadcastRemoteTask(
-  taskData: Omit<RemoteTaskAssignment, 'id' | 'timestamp' | 'completed'>
+  taskData: Omit<RemoteTaskAssignment, 'id' | 'timestamp' | 'completed' | 'status'>
 ): RemoteTaskAssignment {
   const newTask: RemoteTaskAssignment = {
     ...taskData,
     id: `task_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     timestamp: new Date().toISOString(),
     completed: false,
+    status: 'pending',
   };
 
   try {
@@ -251,7 +252,7 @@ export function subscribeToRemoteTasks(
 
   // 1b. BroadcastChannel (cross-tab)
   const handleBroadcastMessage = (e: MessageEvent) => {
-    if (e.data && e.data.type === 'REMOTE_TASK_ASSIGNED') {
+    if (e.data && (e.data.type === 'REMOTE_TASK_ASSIGNED' || e.data.type === 'REMOTE_TASK_UPDATED')) {
       safeCallback(e.data.payload);
     }
   };
@@ -300,28 +301,165 @@ export function subscribeToRemoteTasks(
 }
 
 /**
- * Mark a remote task as completed (both locally and on Firebase)
+ * Generic update for a remote task (persists locally and syncs)
  */
-export function markRemoteTaskCompleted(taskId: string): void {
+export function updateRemoteTask(
+  taskId: string,
+  updates: Partial<RemoteTaskAssignment>
+): RemoteTaskAssignment | null {
   try {
-    // localStorage
     const current = getStoredRemoteTasks();
-    const updated = current.map((t) => (t.id === taskId ? { ...t, completed: true } : t));
-    localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify(updated));
+    const index = current.findIndex((t) => t.id === taskId);
+    if (index === -1) return null;
 
-    // Firebase
+    const updatedTask: RemoteTaskAssignment = {
+      ...current[index],
+      ...updates,
+    };
+
+    const updatedList = [...current];
+    updatedList[index] = updatedTask;
+    localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify(updatedList));
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('edu10_task_event', { detail: updatedTask }));
+    }
+
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({ type: 'REMOTE_TASK_UPDATED', payload: updatedTask });
+    }
+
     const settings = getCloudDBSettings();
     if (settings.enabled && settings.roomCode) {
-      const taskRef = ref(database, `rooms/${settings.roomCode}/tasks/${taskId}/completed`);
-      set(taskRef, true).catch((err) =>
-        console.warn('Firebase task complete update failed:', err)
+      const taskRef = ref(database, `rooms/${settings.roomCode}/tasks/${taskId}`);
+      set(taskRef, updatedTask).catch((err) =>
+        console.warn('Firebase task update failed:', err)
       );
     }
 
-    dispatchGlobalSync('TASKS_UPDATED');
+    dispatchGlobalSync('TASKS_UPDATED', updatedTask);
+    return updatedTask;
   } catch (e) {
-    console.error(e);
+    console.error('Error updating task:', e);
+    return null;
   }
+}
+
+/**
+ * Student submits completed task (sets status: 'submitted')
+ */
+export function studentSubmitRemoteTask(
+  taskId: string,
+  payload: {
+    studentName?: string;
+    score?: number;
+    attemptId?: string;
+    studentNote?: string;
+  } = {}
+): void {
+  const current = getStoredRemoteTasks();
+  const target = current.find((t) => t.id === taskId);
+
+  updateRemoteTask(taskId, {
+    completed: true,
+    status: 'submitted',
+    studentCompletedAt: new Date().toISOString(),
+    studentScore: payload.score,
+    studentAttemptId: payload.attemptId,
+    studentNote: payload.studentNote,
+  });
+
+  // Broadcast activity so supervisor sees instant toast notification
+  if (target) {
+    logAndBroadcastActivity({
+      userId: target.recipientUserId || 'student',
+      userName: payload.studentName || 'Học sinh',
+      subject: target.subject,
+      type: 'practice_completed',
+      title: `Hoàn thành nhiệm vụ: ${target.title}`,
+      detail: payload.score !== undefined
+        ? `Đã nộp bài với kết quả ${payload.score.toFixed(1)}/10đ`
+        : payload.studentNote || 'Học sinh đã nộp và chờ xác nhận',
+      score: payload.score,
+      examTitle: target.title,
+    });
+  }
+}
+
+/**
+ * Admin / Teacher confirms completed task
+ */
+export function adminConfirmRemoteTask(
+  taskId: string,
+  feedback?: string,
+  adminName: string = 'Người giám sát'
+): void {
+  const current = getStoredRemoteTasks();
+  const target = current.find((t) => t.id === taskId);
+
+  updateRemoteTask(taskId, {
+    completed: true,
+    status: 'confirmed',
+    confirmedByAdminAt: new Date().toISOString(),
+    adminFeedback: feedback,
+  });
+
+  // Send real-time confirmation ping to the student
+  if (target && target.recipientUserId) {
+    sendRemotePing({
+      senderName: adminName,
+      recipientUserId: target.recipientUserId,
+      pingType: 'encouragement',
+      message: feedback
+        ? `🎉 Đã duyệt hoàn thành bài "${target.title}": ${feedback}`
+        : `🎉 Đã xác nhận hoàn thành bài tập "${target.title}"! Em làm rất tốt!`,
+    });
+  }
+}
+
+/**
+ * Admin / Teacher requests redo for a task
+ */
+export function adminRequestRemoteTaskRedo(
+  taskId: string,
+  feedback: string,
+  adminName: string = 'Người giám sát'
+): void {
+  const current = getStoredRemoteTasks();
+  const target = current.find((t) => t.id === taskId);
+
+  updateRemoteTask(taskId, {
+    completed: false,
+    status: 'redo',
+    adminFeedback: feedback,
+  });
+
+  if (target && target.recipientUserId) {
+    sendRemotePing({
+      senderName: adminName,
+      recipientUserId: target.recipientUserId,
+      pingType: 'warning',
+      message: `⚠️ Yêu cầu làm lại bài "${target.title}": ${feedback || 'Em hãy xem lại các lỗi sai và làm lại nhé!'}`,
+    });
+  }
+}
+
+/**
+ * Update deadline for a task
+ */
+export function updateRemoteTaskDeadline(taskId: string, newDeadline: string): void {
+  updateRemoteTask(taskId, { targetDeadline: newDeadline });
+}
+
+/**
+ * Mark a remote task as completed (both locally and on Firebase)
+ */
+export function markRemoteTaskCompleted(taskId: string): void {
+  updateRemoteTask(taskId, {
+    completed: true,
+    status: 'confirmed',
+    confirmedByAdminAt: new Date().toISOString(),
+  });
 }
 
 /**
@@ -331,19 +469,15 @@ export function toggleRemoteTaskCompleted(taskId: string): boolean {
   try {
     const current = getStoredRemoteTasks();
     const target = current.find((t) => t.id === taskId);
-    const newStatus = target ? !target.completed : true;
-    const updated = current.map((t) => (t.id === taskId ? { ...t, completed: newStatus } : t));
-    localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify(updated));
+    const isCompleted = target?.completed || target?.status === 'confirmed' || target?.status === 'submitted';
+    const newStatus = !isCompleted;
 
-    const settings = getCloudDBSettings();
-    if (settings.enabled && settings.roomCode) {
-      const taskRef = ref(database, `rooms/${settings.roomCode}/tasks/${taskId}/completed`);
-      set(taskRef, newStatus).catch((err) =>
-        console.warn('Firebase task complete update failed:', err)
-      );
-    }
+    updateRemoteTask(taskId, {
+      completed: newStatus,
+      status: newStatus ? 'confirmed' : 'pending',
+      confirmedByAdminAt: newStatus ? new Date().toISOString() : undefined,
+    });
 
-    dispatchGlobalSync('TASKS_UPDATED');
     return newStatus;
   } catch (e) {
     console.error(e);

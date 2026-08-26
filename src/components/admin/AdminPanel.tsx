@@ -13,6 +13,9 @@ import {
   toggleRemoteTaskCompleted,
   logAndBroadcastActivity,
   sendRemotePing,
+  adminConfirmRemoteTask,
+  adminRequestRemoteTaskRedo,
+  updateRemoteTaskDeadline,
 } from '../../services/realtimeSyncService';
 import { subscribeToGlobalSync } from '../../services/cookieService';
 import { fetchRoomDataFromOnlineDB } from '../../services/cloudSyncService';
@@ -126,10 +129,18 @@ export const AdminPanel: React.FC = () => {
 
   // Assigned Tasks Management State (Quản lý bài tập đang giao)
   const [assignedTasks, setAssignedTasks] = useState<RemoteTaskAssignment[]>(() => getStoredRemoteTasks());
-  const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'pending' | 'submitted' | 'confirmed' | 'overdue'>('all');
   const [taskStudentFilter, setTaskStudentFilter] = useState<string>('all');
   const [taskSubjectFilter, setTaskSubjectFilter] = useState<'all' | 'math' | 'english'>('all');
   const [taskSearchQuery, setTaskSearchQuery] = useState<string>('');
+
+  // Remote Task Modals: Confirmation, Redo, and Deadline Editing
+  const [confirmModalTask, setConfirmModalTask] = useState<RemoteTaskAssignment | null>(null);
+  const [confirmFeedback, setConfirmFeedback] = useState<string>('');
+  const [redoModalTask, setRedoModalTask] = useState<RemoteTaskAssignment | null>(null);
+  const [redoFeedback, setRedoFeedback] = useState<string>('');
+  const [editDeadlineTask, setEditDeadlineTask] = useState<RemoteTaskAssignment | null>(null);
+  const [editDeadlineInput, setEditDeadlineInput] = useState<string>('');
 
   // Exam preview & origin filter states
   const [selectedExamForPreview, setSelectedExamForPreview] = useState<Exam | null>(null);
@@ -165,6 +176,7 @@ export const AdminPanel: React.FC = () => {
   const [taskTitle, setTaskTitle] = useState<string>('Đề Thi Thử Tuyển Sinh Vào 10 Môn Toán - Đề Số 01');
   const [taskMessage, setTaskMessage] = useState<string>('Em hãy hoàn thành đề thi thử này trong 60 phút và chú ý câu Vi-ét nhé!');
   const [taskAssignedExamId, setTaskAssignedExamId] = useState<string>('math_exam_official_01');
+  const [taskDeadline, setTaskDeadline] = useState<string>('');
   const [taskSuccessMsg, setTaskSuccessMsg] = useState<boolean>(false);
 
   // Sibling Focus Id (default to first student)
@@ -694,6 +706,72 @@ export const AdminPanel: React.FC = () => {
 
   const [isSubmittingTask, setIsSubmittingTask] = useState<boolean>(false);
 
+  // Helper to compute deadline badge data
+  const getTaskDeadlineInfo = (deadlineStr?: string) => {
+    if (!deadlineStr) return null;
+    const deadline = new Date(deadlineStr);
+    const now = new Date();
+    const diffMs = deadline.getTime() - now.getTime();
+    const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    const isOverdue = diffMs < 0;
+    const isUrgent = !isOverdue && diffHours <= 6;
+
+    const dateFormatted = deadline.toLocaleDateString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+    });
+
+    let label = '';
+    if (isOverdue) {
+      const absH = Math.abs(diffHours);
+      label = absH < 24 ? `Quá hạn ${absH}h` : `Quá hạn ${Math.abs(diffDays)} ngày`;
+    } else if (diffHours <= 1) {
+      const diffMins = Math.max(1, Math.round(diffMs / (1000 * 60)));
+      label = `Còn ${diffMins} phút`;
+    } else if (diffHours < 24) {
+      label = `Còn ${diffHours} giờ`;
+    } else {
+      label = `Còn ${diffDays} ngày`;
+    }
+
+    return { dateFormatted, isOverdue, isUrgent, label };
+  };
+
+  // Quick deadline preset helpers
+  const setQuickDeadlineToday2359 = () => {
+    const d = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    setTaskDeadline(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T23:59`);
+  };
+
+  const setQuickDeadlineTomorrow2100 = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    setTaskDeadline(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T21:00`);
+  };
+
+  const setQuickDeadlineInDays = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    d.setHours(21, 0, 0, 0);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    setTaskDeadline(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T21:00`);
+  };
+
+  const setQuickDeadlineSunday = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const daysUntilSunday = (7 - day) % 7 || 7;
+    d.setDate(d.getDate() + daysUntilSunday);
+    d.setHours(22, 0, 0, 0);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    setTaskDeadline(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T22:00`);
+  };
+
   // Remote Task Send Handler
   const handleSendRemoteTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -706,6 +784,7 @@ export const AdminPanel: React.FC = () => {
       title: taskTitle,
       message: taskMessage,
       assignedExamId: taskAssignedExamId,
+      targetDeadline: taskDeadline ? taskDeadline : undefined,
     });
     setAssignedTasks((prev) => [newTask, ...prev.filter((t) => t.id !== newTask.id)]);
     setTaskSuccessMsg(true);
@@ -713,6 +792,7 @@ export const AdminPanel: React.FC = () => {
       setTaskSuccessMsg(false);
       setIsSubmittingTask(false);
       setShowAssignTaskModal(false);
+      setTaskDeadline('');
     }, 1200);
   };
 
@@ -726,17 +806,45 @@ export const AdminPanel: React.FC = () => {
   const handleToggleTaskStatus = (taskId: string) => {
     const newStatus = toggleRemoteTaskCompleted(taskId);
     setAssignedTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, completed: newStatus } : t))
+      prev.map((t) => (t.id === taskId ? { ...t, completed: newStatus, status: newStatus ? 'confirmed' : 'pending' } : t))
     );
+  };
+
+  const handleAdminConfirmTask = (task: RemoteTaskAssignment, feedback?: string) => {
+    adminConfirmRemoteTask(task.id, feedback || 'Làm rất tốt, đạt yêu cầu!', currentUser.name || 'Người giám sát');
+    setAssignedTasks(getStoredRemoteTasks());
+    setConfirmModalTask(null);
+    setConfirmFeedback('');
+  };
+
+  const handleAdminRequestRedo = (task: RemoteTaskAssignment, feedback: string) => {
+    if (!feedback.trim()) {
+      alert('Vui lòng nhập lý do / lời dặn dò khi yêu cầu học sinh làm lại.');
+      return;
+    }
+    adminRequestRemoteTaskRedo(task.id, feedback.trim(), currentUser.name || 'Người giám sát');
+    setAssignedTasks(getStoredRemoteTasks());
+    setRedoModalTask(null);
+    setRedoFeedback('');
+  };
+
+  const handleSaveDeadlineEdit = () => {
+    if (!editDeadlineTask) return;
+    updateRemoteTaskDeadline(editDeadlineTask.id, editDeadlineInput);
+    setAssignedTasks(getStoredRemoteTasks());
+    setEditDeadlineTask(null);
   };
 
   const handleRemindTaskPing = (task: RemoteTaskAssignment) => {
     const targetStudent = studentUsers.find((s) => s.id === task.recipientUserId);
     const stuName = targetStudent?.name || 'Học sinh';
+    const dl = getTaskDeadlineInfo(task.targetDeadline);
+    const deadlineMsg = dl ? ` (Hạn chót: ${dl.dateFormatted} - ${dl.label})` : '';
+
     sendRemotePing({
       senderName: currentUser.name || 'Thầy/Cô (Giám sát)',
       recipientUserId: task.recipientUserId,
-      message: `🔔 Nhắc nhở bài tập: Em hãy vào hoàn thành bài "${task.title}" nhé!`,
+      message: `🔔 Nhắc nhở bài tập: Em hãy vào hoàn thành bài "${task.title}" nhé!${deadlineMsg}`,
       pingType: 'reminder',
     });
     alert(`Đã gửi thông báo nhắc nhở làm bài trực tiếp đến màn hình em ${stuName}!`);
@@ -1837,12 +1945,18 @@ export const AdminPanel: React.FC = () => {
                         <h3 className="text-base font-bold text-[#3D3D2D]">
                           Nhiệm Vụ & Bài Tập Đang Giao
                         </h3>
-                        <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-extrabold rounded-full">
-                          {assignedTasks.filter((t) => !t.completed).length} đang chờ
-                        </span>
+                        {assignedTasks.filter((t) => t.status === 'submitted').length > 0 ? (
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-extrabold rounded-full animate-pulse">
+                            {assignedTasks.filter((t) => t.status === 'submitted').length} cần xác nhận
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-extrabold rounded-full">
+                            {assignedTasks.filter((t) => !t.completed || t.status === 'pending' || t.status === 'redo').length} đang làm
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-[#8A8A70]">
-                        Tiến độ làm bài và phản hồi của học sinh thời gian thực
+                        Tiến độ làm bài, hạn chót và xác nhận bài tập của học sinh
                       </p>
                     </div>
                   </div>
@@ -1890,13 +2004,23 @@ export const AdminPanel: React.FC = () => {
                       const studentAttempt = linkedExam
                         ? allSubmissions.find((sub) => sub.examId === linkedExam.id && sub.userId === task.recipientUserId)
                         : null;
+                      const dl = getTaskDeadlineInfo(task.targetDeadline);
+                      const isConfirmed = task.status === 'confirmed' || (!task.status && task.completed);
+                      const isSubmitted = task.status === 'submitted';
+                      const isRedo = task.status === 'redo';
 
                       return (
                         <div
                           key={task.id}
                           className={`p-3.5 rounded-2xl border transition flex flex-col justify-between space-y-2.5 ${
-                            task.completed
+                            isConfirmed
                               ? 'bg-emerald-50/30 border-emerald-200'
+                              : isSubmitted
+                              ? 'bg-blue-50/50 border-blue-200 shadow-xs'
+                              : isRedo
+                              ? 'bg-rose-50/40 border-rose-200'
+                              : dl?.isOverdue
+                              ? 'bg-amber-50/40 border-amber-300'
                               : 'bg-[#FAF9F6] border-[#EAE7E0] hover:border-[#D9D2C5]'
                           }`}
                         >
@@ -1926,11 +2050,22 @@ export const AdminPanel: React.FC = () => {
                               </div>
                             </div>
 
+                            {/* Status Badge */}
                             <div className="shrink-0 flex items-center space-x-1.5">
-                              {task.completed ? (
+                              {isConfirmed ? (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center space-x-1">
                                   <Check className="w-3 h-3" />
-                                  <span>Đã xong</span>
+                                  <span>Đã duyệt</span>
+                                </span>
+                              ) : isSubmitted ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 flex items-center space-x-1 animate-pulse">
+                                  <Clock className="w-3 h-3 text-blue-600" />
+                                  <span>Chờ duyệt</span>
+                                </span>
+                              ) : isRedo ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center space-x-1">
+                                  <AlertCircle className="w-3 h-3" />
+                                  <span>Cần sửa</span>
                                 </span>
                               ) : (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center space-x-1">
@@ -1941,10 +2076,44 @@ export const AdminPanel: React.FC = () => {
                             </div>
                           </div>
 
+                          {/* Deadline Alert on card */}
+                          {dl && (
+                            <div
+                              className={`flex items-center space-x-1.5 text-[10px] font-bold px-2 py-1 rounded-lg ${
+                                dl.isOverdue
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : dl.isUrgent
+                                  ? 'bg-amber-100 text-amber-900 animate-pulse'
+                                  : 'bg-blue-50 text-blue-800'
+                              }`}
+                            >
+                              <Clock className="w-3 h-3" />
+                              <span>Hạn chót: {dl.dateFormatted}</span>
+                              <span className="opacity-80">({dl.label})</span>
+                            </div>
+                          )}
+
                           {task.message && (
                             <p className="text-[11px] text-[#64748B] italic bg-white/80 p-2 rounded-xl border border-[#EAE7E0]/60 line-clamp-1">
                               💬 "{task.message}"
                             </p>
+                          )}
+
+                          {/* Submission Result / Student Note */}
+                          {isSubmitted && (
+                            <div className="p-2 bg-blue-100/60 rounded-xl border border-blue-200 text-[11px] flex items-center justify-between">
+                              <span className="font-bold text-blue-900">
+                                {task.studentScore !== undefined
+                                  ? `🎯 Điểm nộp: ${task.studentScore.toFixed(1)}/10đ`
+                                  : '📝 Học sinh đã gửi bài nộp'}
+                              </span>
+                              <button
+                                onClick={() => setConfirmModalTask(task)}
+                                className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[10px] font-bold cursor-pointer"
+                              >
+                                Duyệt ngay
+                              </button>
+                            </div>
                           )}
 
                           <div className="flex items-center justify-between pt-1 border-t border-[#EAE7E0]/50 text-[11px]">
@@ -1963,7 +2132,30 @@ export const AdminPanel: React.FC = () => {
                                 </button>
                               )}
 
-                              {!task.completed && (
+                              {isSubmitted && (
+                                <>
+                                  <button
+                                    onClick={() => handleAdminConfirmTask(task)}
+                                    className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold transition flex items-center space-x-1 cursor-pointer"
+                                    title="Xác nhận hoàn thành đạt yêu cầu"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                    <span>Duyệt đạt</span>
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setRedoModalTask(task);
+                                      setRedoFeedback('');
+                                    }}
+                                    className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg text-[10px] font-bold transition cursor-pointer"
+                                    title="Yêu cầu làm lại bài"
+                                  >
+                                    <span>Làm lại</span>
+                                  </button>
+                                </>
+                              )}
+
+                              {!task.completed && !isSubmitted && (
                                 <button
                                   onClick={() => handleRemindTaskPing(task)}
                                   className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-lg text-[10px] font-bold transition flex items-center space-x-1 cursor-pointer"
@@ -1977,9 +2169,9 @@ export const AdminPanel: React.FC = () => {
                               <button
                                 onClick={() => handleToggleTaskStatus(task.id)}
                                 className="p-1 hover:bg-[#EAE7E0] text-[#8A8A70] hover:text-[#3D3D2D] rounded-lg transition cursor-pointer"
-                                title={task.completed ? 'Đánh dấu chưa hoàn thành' : 'Đánh dấu đã xong'}
+                                title={isConfirmed ? 'Mở lại nhiệm vụ' : 'Đánh dấu đã duyệt'}
                               >
-                                <CheckCircle className={`w-3.5 h-3.5 ${task.completed ? 'text-emerald-600' : ''}`} />
+                                <CheckCircle className={`w-3.5 h-3.5 ${isConfirmed ? 'text-emerald-600' : ''}`} />
                               </button>
 
                               <button
@@ -2109,14 +2301,27 @@ export const AdminPanel: React.FC = () => {
       {/* 🎯 TAB: ASSIGNED TASKS MANAGEMENT (QUẢN LÝ BÀI TẬP ĐANG GIAO)             */}
       {/* ========================================================================= */}
       {activeAdminTab === 'tasks' && (() => {
-        const pendingCount = assignedTasks.filter((t) => !t.completed).length;
-        const completedCount = assignedTasks.filter((t) => t.completed).length;
+        const pendingCount = assignedTasks.filter((t) => (!t.completed || t.status === 'pending' || t.status === 'redo') && t.status !== 'submitted' && t.status !== 'confirmed').length;
+        const submittedCount = assignedTasks.filter((t) => t.status === 'submitted').length;
+        const confirmedCount = assignedTasks.filter((t) => t.status === 'confirmed' || (!t.status && t.completed)).length;
+        const overdueCount = assignedTasks.filter((t) => {
+          if (t.status === 'confirmed' || (!t.status && t.completed)) return false;
+          const dl = getTaskDeadlineInfo(t.targetDeadline);
+          return !!dl?.isOverdue;
+        }).length;
         const recipientStudents = Array.from(new Set(assignedTasks.map((t) => t.recipientUserId)));
 
         const filteredTasks = assignedTasks.filter((task) => {
+          const dl = getTaskDeadlineInfo(task.targetDeadline);
+          const isConfirmed = task.status === 'confirmed' || (!task.status && task.completed);
+          const isSubmitted = task.status === 'submitted';
+          const isPending = !isConfirmed && !isSubmitted;
+
           // Status filter
-          if (taskStatusFilter === 'pending' && task.completed) return false;
-          if (taskStatusFilter === 'completed' && !task.completed) return false;
+          if (taskStatusFilter === 'pending' && !isPending) return false;
+          if (taskStatusFilter === 'submitted' && !isSubmitted) return false;
+          if (taskStatusFilter === 'confirmed' && !isConfirmed) return false;
+          if (taskStatusFilter === 'overdue' && (!dl?.isOverdue || isConfirmed)) return false;
 
           // Student filter
           if (taskStudentFilter !== 'all' && task.recipientUserId !== taskStudentFilter) return false;
@@ -2143,7 +2348,7 @@ export const AdminPanel: React.FC = () => {
               <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
                 <div className="flex items-center space-x-1.5 text-xs text-[#8A8A70] font-bold">
                   <ClipboardList className="w-4 h-4 text-[#1E3A8A]" />
-                  <span>Tổng nhiệm vụ đã giao</span>
+                  <span>Tổng nhiệm vụ</span>
                 </div>
                 <p className="text-2xl font-extrabold text-[#3D3D2D]">{assignedTasks.length} <span className="text-xs font-normal text-[#8A8A70]">nhiệm vụ</span></p>
                 <p className="text-[11px] text-[#8A8A70]">Toàn bộ danh sách bài tập</p>
@@ -2155,25 +2360,26 @@ export const AdminPanel: React.FC = () => {
                   <span>Đang chờ hoàn thành</span>
                 </div>
                 <p className="text-2xl font-extrabold text-amber-600">{pendingCount} <span className="text-xs font-normal text-[#8A8A70]">bài</span></p>
-                <p className="text-[11px] text-amber-700/80 font-medium">Học sinh chưa nộp bài</p>
+                <p className="text-[11px] text-amber-700/80 font-medium">Học sinh đang giải bài</p>
+              </div>
+
+              <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-blue-200 shadow-xs space-y-1 relative overflow-hidden">
+                {submittedCount > 0 && <div className="absolute top-0 right-0 w-2 h-2 bg-blue-500 rounded-full animate-ping" />}
+                <div className="flex items-center space-x-1.5 text-xs text-blue-700 font-bold">
+                  <CheckCircle className="w-4 h-4 text-blue-600" />
+                  <span>Chờ bạn xác nhận</span>
+                </div>
+                <p className="text-2xl font-extrabold text-blue-700">{submittedCount} <span className="text-xs font-normal text-blue-600">bài đã nộp</span></p>
+                <p className="text-[11px] text-blue-700/80 font-medium">Học sinh đã làm xong và chờ duyệt</p>
               </div>
 
               <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
                 <div className="flex items-center space-x-1.5 text-xs text-emerald-700 font-bold">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Đã hoàn thành</span>
+                  <span>Đã duyệt đạt</span>
                 </div>
-                <p className="text-2xl font-extrabold text-emerald-700">{completedCount} <span className="text-xs font-normal text-[#8A8A70]">bài</span></p>
-                <p className="text-[11px] text-emerald-700/80 font-medium">Đã làm và nộp bài</p>
-              </div>
-
-              <div className="bg-white p-4 sm:p-5 rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-1">
-                <div className="flex items-center space-x-1.5 text-xs text-[#5A5A40] font-bold">
-                  <Users className="w-4 h-4 text-[#5A5A40]" />
-                  <span>Học sinh được giao</span>
-                </div>
-                <p className="text-2xl font-extrabold text-[#5A5A40]">{recipientStudents.length} <span className="text-xs font-normal text-[#8A8A70]">em</span></p>
-                <p className="text-[11px] text-[#8A8A70]">Đang có bài tập hoạt động</p>
+                <p className="text-2xl font-extrabold text-emerald-700">{confirmedCount} <span className="text-xs font-normal text-[#8A8A70]">bài</span></p>
+                <p className="text-[11px] text-emerald-700/80 font-medium">Đã hoàn thành và xác nhận</p>
               </div>
             </div>
 
@@ -2185,7 +2391,7 @@ export const AdminPanel: React.FC = () => {
                   <h3 className="text-lg font-bold">Trung Tâm Quản Lý & Điều Phối Bài Tập</h3>
                 </div>
                 <p className="text-xs text-blue-100 max-w-xl">
-                  Giao bài tập/đề thi theo thời gian thực tới từng em học sinh, theo dõi tiến độ nộp bài và phát tín hiệu nhắc nhở trực tiếp.
+                  Giao bài tập/đề thi kèm hạn chót (Deadline) theo thời gian thực tới từng em, theo dõi tiến độ nộp bài và duyệt xác nhận kết quả.
                 </p>
               </div>
               <button
@@ -2201,7 +2407,7 @@ export const AdminPanel: React.FC = () => {
             <div className="bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-xs flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
                 {/* Status Filter */}
-                <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5]">
+                <div className="flex bg-[#FAF9F6] p-1 rounded-2xl border border-[#D9D2C5] flex-wrap gap-1">
                   <button
                     onClick={() => setTaskStatusFilter('all')}
                     className={`px-3 py-1.5 rounded-xl transition cursor-pointer ${taskStatusFilter === 'all' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#6B6B54]'
@@ -2214,15 +2420,31 @@ export const AdminPanel: React.FC = () => {
                     className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${taskStatusFilter === 'pending' ? 'bg-amber-600 text-white shadow-xs' : 'text-amber-700'
                       }`}
                   >
-                    <span>🟡 Đang chờ ({pendingCount})</span>
+                    <span>🟡 Đang làm ({pendingCount})</span>
                   </button>
                   <button
-                    onClick={() => setTaskStatusFilter('completed')}
-                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${taskStatusFilter === 'completed' ? 'bg-emerald-700 text-white shadow-xs' : 'text-emerald-700'
+                    onClick={() => setTaskStatusFilter('submitted')}
+                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${taskStatusFilter === 'submitted' ? 'bg-blue-600 text-white shadow-xs' : 'text-blue-700'
                       }`}
                   >
-                    <span>🟢 Đã xong ({completedCount})</span>
+                    <span>🔵 Chờ xác nhận ({submittedCount})</span>
                   </button>
+                  <button
+                    onClick={() => setTaskStatusFilter('confirmed')}
+                    className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${taskStatusFilter === 'confirmed' ? 'bg-emerald-700 text-white shadow-xs' : 'text-emerald-700'
+                      }`}
+                  >
+                    <span>🟢 Đã duyệt ({confirmedCount})</span>
+                  </button>
+                  {overdueCount > 0 && (
+                    <button
+                      onClick={() => setTaskStatusFilter('overdue')}
+                      className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center space-x-1 ${taskStatusFilter === 'overdue' ? 'bg-rose-600 text-white shadow-xs' : 'text-rose-700'
+                        }`}
+                    >
+                      <span>🚨 Quá hạn ({overdueCount})</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* Subject Filter */}
@@ -2285,9 +2507,9 @@ export const AdminPanel: React.FC = () => {
                   🎯
                 </div>
                 <div className="space-y-1">
-                  <h4 className="text-base font-bold text-[#3D3D2D]">Chưa có bài tập nào phù hợp</h4>
+                  <h4 className="text-base font-bold text-[#3D3D2D]">Chưa có bài tập nào phù hợp bộ lọc</h4>
                   <p className="text-xs text-[#8A8A70]">
-                    Hãy nhấn nút "Giao bài tập mới ngay" để giao nhiệm vụ luyện thi cho học sinh.
+                    Hãy đổi bộ lọc hoặc nhấn nút "Giao bài tập mới ngay" để giao nhiệm vụ luyện thi cho học sinh.
                   </p>
                 </div>
                 <button
@@ -2303,22 +2525,31 @@ export const AdminPanel: React.FC = () => {
                 {filteredTasks.map((task) => {
                   const targetStudent = studentUsers.find((s) => s.id === task.recipientUserId);
                   const linkedExam = task.assignedExamId ? exams.find((e) => e.id === task.assignedExamId) : null;
-
-                  // Check if student has submitted an attempt for this linked exam
                   const studentAttempt = linkedExam
                     ? allSubmissions.find((sub) => sub.examId === linkedExam.id && sub.userId === task.recipientUserId)
                     : null;
+                  const dl = getTaskDeadlineInfo(task.targetDeadline);
+                  const isConfirmed = task.status === 'confirmed' || (!task.status && task.completed);
+                  const isSubmitted = task.status === 'submitted';
+                  const isRedo = task.status === 'redo';
 
                   return (
                     <div
                       key={task.id}
-                      className={`bg-white rounded-[2rem] p-5 border transition-all shadow-xs space-y-3.5 flex flex-col justify-between ${task.completed
+                      className={`bg-white rounded-[2rem] p-5 border transition-all shadow-xs space-y-3.5 flex flex-col justify-between ${
+                        isConfirmed
                           ? 'border-emerald-200 bg-emerald-50/20'
+                          : isSubmitted
+                          ? 'border-blue-300 bg-blue-50/20 ring-1 ring-blue-200'
+                          : isRedo
+                          ? 'border-rose-200 bg-rose-50/20'
+                          : dl?.isOverdue
+                          ? 'border-amber-300 bg-amber-50/20'
                           : 'border-[#EAE7E0] hover:border-[#D9D2C5]'
-                        }`}
+                      }`}
                     >
                       {/* Card Top: Student Info + Status */}
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center space-x-2.5">
                           <div
                             className="w-9 h-9 rounded-2xl flex items-center justify-center text-white font-bold text-xs shadow-2xs"
@@ -2343,10 +2574,20 @@ export const AdminPanel: React.FC = () => {
 
                         <div className="flex items-center space-x-1.5">
                           <SubjectBadge subject={task.subject} />
-                          {task.completed ? (
+                          {isConfirmed ? (
                             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center space-x-1">
                               <Check className="w-3 h-3" />
-                              <span>Đã xong</span>
+                              <span>Đã duyệt</span>
+                            </span>
+                          ) : isSubmitted ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 flex items-center space-x-1 animate-pulse">
+                              <Clock className="w-3 h-3 text-blue-600" />
+                              <span>Chờ duyệt</span>
+                            </span>
+                          ) : isRedo ? (
+                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center space-x-1">
+                              <AlertCircle className="w-3 h-3" />
+                              <span>Cần làm lại</span>
                             </span>
                           ) : (
                             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center space-x-1">
@@ -2357,11 +2598,40 @@ export const AdminPanel: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Task Content */}
+                      {/* Task Content & Deadline Badge */}
                       <div className="space-y-2">
                         <h4 className="font-extrabold text-sm text-[#3D3D2D] leading-snug">
                           {task.title}
                         </h4>
+
+                        {/* Deadline Indicator */}
+                        <div className="flex items-center justify-between p-2.5 rounded-xl border bg-white/90 text-xs">
+                          <div className="flex items-center space-x-2">
+                            <Clock className={`w-4 h-4 ${dl?.isOverdue ? 'text-rose-600' : 'text-blue-600'}`} />
+                            <div>
+                              <span className="font-bold text-[#3D3D2D] block">
+                                {dl ? `Hạn chót: ${dl.dateFormatted}` : 'Không đặt hạn chót'}
+                              </span>
+                              {dl && (
+                                <span className={`text-[10px] font-bold ${dl.isOverdue ? 'text-rose-600' : dl.isUrgent ? 'text-amber-700' : 'text-blue-700'}`}>
+                                  {dl.label}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setEditDeadlineTask(task);
+                              setEditDeadlineInput(task.targetDeadline || '');
+                            }}
+                            className="px-2 py-1 text-[11px] font-bold text-[#5A5A40] hover:bg-[#FAF9F6] border border-[#EAE7E0] rounded-lg transition cursor-pointer flex items-center space-x-1"
+                            title="Điều chỉnh hoặc gia hạn deadline"
+                          >
+                            <Calendar className="w-3 h-3" />
+                            <span>{task.targetDeadline ? 'Đổi hạn' : 'Thêm hạn'}</span>
+                          </button>
+                        </div>
+
                         {task.message && (
                           <div className="bg-[#FAF9F6] p-3 rounded-xl border border-[#EAE7E0] text-xs text-[#5A5A40] italic">
                             💬 "{task.message}"
@@ -2391,54 +2661,107 @@ export const AdminPanel: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Submission Result badge if student completed */}
-                        {studentAttempt && (
-                          <div className="flex items-center justify-between bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 text-xs">
-                            <div className="flex items-center space-x-2">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                              <span className="text-emerald-800 font-bold">
-                                Kết quả: {studentAttempt.score.toFixed(1)}/10đ ({studentAttempt.correctCount}/{studentAttempt.totalQuestions} câu)
-                              </span>
+                        {/* Submission Result badge & Student note if student submitted */}
+                        {(isSubmitted || studentAttempt || task.studentScore !== undefined || task.studentNote) && (
+                          <div className={`p-3 rounded-xl border space-y-1.5 text-xs ${
+                            isConfirmed ? 'bg-emerald-50 border-emerald-200' : 'bg-blue-50/80 border-blue-200'
+                          }`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <CheckCircle2 className={`w-4 h-4 ${isConfirmed ? 'text-emerald-600' : 'text-blue-600'}`} />
+                                <span className="font-bold text-[#3D3D2D]">
+                                  {task.studentScore !== undefined
+                                    ? `Kết quả nộp: ${task.studentScore.toFixed(1)}/10 điểm`
+                                    : studentAttempt
+                                    ? `Kết quả: ${studentAttempt.score.toFixed(1)}/10 điểm`
+                                    : 'Học sinh đã báo cáo hoàn thành'}
+                                </span>
+                              </div>
+                              {studentAttempt && (
+                                <button
+                                  onClick={() =>
+                                    setSelectedAttemptForReview({
+                                      attempt: studentAttempt,
+                                      studentName: targetStudent?.name || 'Học sinh',
+                                      studentId: task.recipientUserId,
+                                    })
+                                  }
+                                  className="px-2.5 py-1 bg-white hover:bg-blue-50 text-[#1E3A8A] border border-blue-200 rounded-lg text-[11px] font-bold transition cursor-pointer"
+                                >
+                                  Chi tiết bài làm
+                                </button>
+                              )}
                             </div>
-                            <button
-                              onClick={() =>
-                                setSelectedAttemptForReview({
-                                  attempt: studentAttempt,
-                                  studentName: targetStudent?.name || 'Học sinh',
-                                  studentId: task.recipientUserId,
-                                })
-                              }
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition cursor-pointer"
-                            >
-                              Chi tiết bài làm
-                            </button>
+
+                            {task.studentNote && (
+                              <p className="text-[11px] text-[#64748B] italic bg-white/70 p-2 rounded-lg border border-[#EAE7E0]">
+                                📝 Lời nhắn học sinh: "{task.studentNote}"
+                              </p>
+                            )}
+
+                            {isConfirmed && task.adminFeedback && (
+                              <p className="text-[11px] text-emerald-800 font-medium bg-white/70 p-2 rounded-lg border border-emerald-200">
+                                💬 Nhận xét của bạn: "{task.adminFeedback}"
+                              </p>
+                            )}
+
+                            {isRedo && task.adminFeedback && (
+                              <p className="text-[11px] text-rose-800 font-medium bg-white/70 p-2 rounded-lg border border-rose-200">
+                                ⚠️ Lời dặn làm lại: "{task.adminFeedback}"
+                              </p>
+                            )}
                           </div>
                         )}
                       </div>
 
                       {/* Footer Action Buttons */}
-                      <div className="pt-2 border-t border-[#F5F2ED] flex items-center justify-between gap-2">
-                        <div className="flex items-center space-x-1.5">
-                          {!task.completed && (
-                            <button
-                              onClick={() => handleRemindTaskPing(task)}
-                              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1"
-                              title="Gửi tín hiệu nhắc nhở tới màn hình của em"
-                            >
-                              <Zap className="w-3.5 h-3.5 text-amber-600" />
-                              <span>⚡ Nhắc làm bài</span>
-                            </button>
+                      <div className="pt-2 border-t border-[#F5F2ED] flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center space-x-1.5 flex-wrap gap-1">
+                          {isSubmitted ? (
+                            <>
+                              <button
+                                onClick={() => setConfirmModalTask(task)}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1 shadow-2xs"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Xác nhận đạt</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setRedoModalTask(task);
+                                  setRedoFeedback('');
+                                }}
+                                className="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                <span>Yêu cầu làm lại</span>
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              {!isConfirmed && (
+                                <button
+                                  onClick={() => handleRemindTaskPing(task)}
+                                  className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1"
+                                  title="Gửi tín hiệu nhắc nhở tới màn hình của em"
+                                >
+                                  <Zap className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>⚡ Nhắc làm bài</span>
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleToggleTaskStatus(task.id)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1 ${
+                                  isConfirmed
+                                    ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
+                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                }`}
+                              >
+                                {isConfirmed ? <RotateCcw className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
+                                <span>{isConfirmed ? 'Mở lại' : 'Duyệt hoàn thành'}</span>
+                              </button>
+                            </>
                           )}
-                          <button
-                            onClick={() => handleToggleTaskStatus(task.id)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center space-x-1 ${task.completed
-                                ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
-                                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              }`}
-                          >
-                            {task.completed ? <RotateCcw className="w-3.5 h-3.5" /> : <Check className="w-3.5 h-3.5" />}
-                            <span>{task.completed ? 'Mở lại' : 'Đã nộp'}</span>
-                          </button>
                         </div>
 
                         <button
@@ -3483,6 +3806,71 @@ export const AdminPanel: React.FC = () => {
                 />
               </div>
 
+              {/* Deadline Setting */}
+              <div className="space-y-1.5 p-3 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0]">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-[#5A5A40] flex items-center space-x-1.5">
+                    <Clock className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Hạn chót làm bài (Deadline):</span>
+                  </label>
+                  {taskDeadline && (
+                    <button
+                      type="button"
+                      onClick={() => setTaskDeadline('')}
+                      className="text-[10px] text-rose-600 hover:underline cursor-pointer"
+                    >
+                      Xóa hạn chót
+                    </button>
+                  )}
+                </div>
+
+                <input
+                  type="datetime-local"
+                  value={taskDeadline}
+                  onChange={(e) => setTaskDeadline(e.target.value)}
+                  className="w-full p-2 bg-white border border-[#D9D2C5] rounded-xl outline-hidden font-bold text-xs text-[#3D3D2D]"
+                />
+
+                {/* Quick preset buttons */}
+                <div className="flex flex-wrap gap-1 pt-1 text-[10px] font-bold">
+                  <button
+                    type="button"
+                    onClick={setQuickDeadlineToday2359}
+                    className="px-2 py-1 bg-white hover:bg-blue-50 text-[#1E3A8A] border border-blue-200 rounded-lg transition cursor-pointer"
+                  >
+                    Tối nay 23:59
+                  </button>
+                  <button
+                    type="button"
+                    onClick={setQuickDeadlineTomorrow2100}
+                    className="px-2 py-1 bg-white hover:bg-blue-50 text-[#1E3A8A] border border-blue-200 rounded-lg transition cursor-pointer"
+                  >
+                    Tối mai 21:00
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickDeadlineInDays(2)}
+                    className="px-2 py-1 bg-white hover:bg-[#EAE7E0] text-[#5A5A40] border border-[#D9D2C5] rounded-lg transition cursor-pointer"
+                  >
+                    +2 ngày
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickDeadlineInDays(3)}
+                    className="px-2 py-1 bg-white hover:bg-[#EAE7E0] text-[#5A5A40] border border-[#D9D2C5] rounded-lg transition cursor-pointer"
+                  >
+                    +3 ngày
+                  </button>
+                  <button
+                    type="button"
+                    onClick={setQuickDeadlineSunday}
+                    className="px-2 py-1 bg-white hover:bg-[#EAE7E0] text-[#5A5A40] border border-[#D9D2C5] rounded-lg transition cursor-pointer"
+                  >
+                    Chủ nhật
+                  </button>
+                </div>
+              </div>
+
               {taskSuccessMsg && (
                 <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center space-x-1.5 animate-in fade-in">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -3518,6 +3906,270 @@ export const AdminPanel: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 🚀 MODAL: ADMIN CONFIRM TASK COMPLETION (XÁC NHẬN HOÀN THÀNH BÀI TẬP)     */}
+      {/* ========================================================================= */}
+      {confirmModalTask && (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setConfirmModalTask(null);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in"
+        >
+          <div className="bg-white rounded-[2.5rem] max-w-md w-full p-6 sm:p-7 shadow-2xl border border-emerald-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#3D3D2D] text-base">Xác Nhận Đạt Nhiệm Vụ</h3>
+                  <p className="text-[11px] text-[#8A8A70]">Duyệt kết quả và gửi lời khen đến học sinh</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setConfirmModalTask(null)}
+                className="p-1 text-[#8A8A70] hover:text-[#3D3D2D] rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] space-y-1.5 text-xs">
+              <p className="font-extrabold text-[#3D3D2D]">{confirmModalTask.title}</p>
+              {confirmModalTask.studentScore !== undefined && (
+                <p className="text-emerald-700 font-bold">
+                  🎯 Điểm đạt được: {confirmModalTask.studentScore.toFixed(1)}/10 điểm
+                </p>
+              )}
+              {confirmModalTask.studentNote && (
+                <p className="text-[11px] text-[#64748B] italic">
+                  📝 Lời nhắn học sinh: "{confirmModalTask.studentNote}"
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1 text-xs">
+              <label className="block font-bold text-[#5A5A40]">
+                Lời nhận xét & Khen ngợi (tùy chọn):
+              </label>
+              <textarea
+                rows={2}
+                value={confirmFeedback}
+                onChange={(e) => setConfirmFeedback(e.target.value)}
+                placeholder="Ví dụ: Em làm bài rất tốt, câu khó giải chuẩn xác! Cố gắng phát huy nhé."
+                className="w-full p-2.5 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden focus:ring-1 focus:ring-emerald-600 text-[#3D3D2D]"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-[#F5F2ED]">
+              <button
+                type="button"
+                onClick={() => setConfirmModalTask(null)}
+                className="px-4 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#6B6B54] rounded-xl font-bold transition text-xs cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAdminConfirmTask(confirmModalTask, confirmFeedback)}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs transition flex items-center space-x-1.5 text-xs cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Xác nhận hoàn thành</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 🚀 MODAL: ADMIN REQUEST TASK REDO (YÊU CẦU LÀM LẠI BÀI TẬP)              */}
+      {/* ========================================================================= */}
+      {redoModalTask && (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setRedoModalTask(null);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in"
+        >
+          <div className="bg-white rounded-[2.5rem] max-w-md w-full p-6 sm:p-7 shadow-2xl border border-rose-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-800 flex items-center justify-center font-bold">
+                  <RotateCcw className="w-4 h-4 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#3D3D2D] text-base">Yêu Cầu Làm Lại Nhiệm Vụ</h3>
+                  <p className="text-[11px] text-[#8A8A70]">Gửi yêu cầu làm lại kèm hướng dẫn sửa sai</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRedoModalTask(null)}
+                className="p-1 text-[#8A8A70] hover:text-[#3D3D2D] rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] space-y-1 text-xs">
+              <p className="font-extrabold text-[#3D3D2D]">{redoModalTask.title}</p>
+            </div>
+
+            <div className="space-y-1 text-xs">
+              <label className="block font-bold text-rose-800">
+                Lời dặn dò & Điểm cần sửa (bắt buộc):
+              </label>
+              <textarea
+                rows={3}
+                value={redoFeedback}
+                onChange={(e) => setRedoFeedback(e.target.value)}
+                placeholder="Ví dụ: Em xem lại các câu hình học phần tứ giác nội tiếp và làm lại để đạt trên 8.0 điểm nhé."
+                className="w-full p-2.5 bg-[#FAF9F6] border border-rose-200 rounded-xl outline-hidden focus:ring-1 focus:ring-rose-500 text-[#3D3D2D]"
+                required
+              />
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-[#F5F2ED]">
+              <button
+                type="button"
+                onClick={() => setRedoModalTask(null)}
+                className="px-4 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#6B6B54] rounded-xl font-bold transition text-xs cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAdminRequestRedo(redoModalTask, redoFeedback)}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold shadow-xs transition flex items-center space-x-1.5 text-xs cursor-pointer"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Gửi yêu cầu làm lại</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 🚀 MODAL: EDIT TASK DEADLINE (ĐIỀU CHỈNH / GIA HẠN DEADLINE)              */}
+      {/* ========================================================================= */}
+      {editDeadlineTask && (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setEditDeadlineTask(null);
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in"
+        >
+          <div className="bg-white rounded-[2.5rem] max-w-md w-full p-6 sm:p-7 shadow-2xl border border-blue-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#EAE7E0]">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-bold">
+                  <Calendar className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-[#3D3D2D] text-base">Điều Chỉnh Hạn Chót (Deadline)</h3>
+                  <p className="text-[11px] text-[#8A8A70]">Gia hạn hoặc xóa hạn chót làm bài</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditDeadlineTask(null)}
+                className="p-1 text-[#8A8A70] hover:text-[#3D3D2D] rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] space-y-1 text-xs">
+              <p className="font-extrabold text-[#3D3D2D]">{editDeadlineTask.title}</p>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <label className="font-bold text-[#5A5A40]">Hạn chót mới:</label>
+                {editDeadlineInput && (
+                  <button
+                    type="button"
+                    onClick={() => setEditDeadlineInput('')}
+                    className="text-[10px] text-rose-600 hover:underline cursor-pointer"
+                  >
+                    Xóa hạn chót
+                  </button>
+                )}
+              </div>
+
+              <input
+                type="datetime-local"
+                value={editDeadlineInput}
+                onChange={(e) => setEditDeadlineInput(e.target.value)}
+                className="w-full p-2.5 bg-[#FAF9F6] border border-[#D9D2C5] rounded-xl outline-hidden font-bold text-xs text-[#3D3D2D]"
+              />
+
+              {/* Quick presets for edit modal */}
+              <div className="flex flex-wrap gap-1 pt-1 text-[10px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 1);
+                    d.setHours(21, 0, 0, 0);
+                    const pad = (n: number) => n.toString().padStart(2, '0');
+                    setEditDeadlineInput(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T21:00`);
+                  }}
+                  className="px-2 py-1 bg-[#FAF9F6] hover:bg-blue-50 text-[#1E3A8A] border border-blue-200 rounded-lg transition cursor-pointer"
+                >
+                  Tối mai 21:00
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 3);
+                    d.setHours(21, 0, 0, 0);
+                    const pad = (n: number) => n.toString().padStart(2, '0');
+                    setEditDeadlineInput(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T21:00`);
+                  }}
+                  className="px-2 py-1 bg-[#FAF9F6] hover:bg-[#EAE7E0] text-[#5A5A40] border border-[#D9D2C5] rounded-lg transition cursor-pointer"
+                >
+                  +3 ngày
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() + 7);
+                    d.setHours(21, 0, 0, 0);
+                    const pad = (n: number) => n.toString().padStart(2, '0');
+                    setEditDeadlineInput(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T21:00`);
+                  }}
+                  className="px-2 py-1 bg-[#FAF9F6] hover:bg-[#EAE7E0] text-[#5A5A40] border border-[#D9D2C5] rounded-lg transition cursor-pointer"
+                >
+                  +1 tuần
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-[#F5F2ED]">
+              <button
+                type="button"
+                onClick={() => setEditDeadlineTask(null)}
+                className="px-4 py-2 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#6B6B54] rounded-xl font-bold transition text-xs cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveDeadlineEdit}
+                className="px-5 py-2 bg-[#1E3A8A] hover:bg-[#1E40AF] text-white rounded-xl font-bold shadow-xs transition flex items-center space-x-1.5 text-xs cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Lưu hạn chót</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
