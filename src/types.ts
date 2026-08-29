@@ -219,6 +219,14 @@ export interface PracticeSession {
   userAnswers: Record<string, number>;
 }
 
+export type MistakeReason =
+  | 'careless'          // Đọc ẩu / Nhầm đề
+  | 'knowledge_gap'     // Hổng kiến thức / Quên công thức
+  | 'trap_distractor'   // Dính bẫy đề thi / Phương án lừa
+  | 'calculation'       // Tính toán sai / Dịch nhầm
+  | 'time_pressure'     // Hết giờ / Đoán mò
+  | 'other';
+
 export interface MistakeItem {
   questionId: string;
   subject?: SubjectId;
@@ -227,6 +235,8 @@ export interface MistakeItem {
   consecutiveCorrect: number; // 2 in a row = mastered
   mastered: boolean;
   userNote?: string;
+  reason?: MistakeReason;
+  lastSelectedOption?: number;
 }
 
 export interface UserAccount {

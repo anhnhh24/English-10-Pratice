@@ -51,7 +51,8 @@ export type SyncEventType =
   | 'TASKS_UPDATED'
   | 'ATTEMPTS_UPDATED'
   | 'STUDENT_DATA_UPDATED'
-  | 'ROOM_CODE_CHANGED';
+  | 'ROOM_CODE_CHANGED'
+  | 'VOCAB_UPDATED';
 
 const SYNC_CHANNEL_NAME = 'edu10_global_sync_channel';
 

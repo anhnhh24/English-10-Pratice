@@ -5,6 +5,7 @@ import {
   ExamAttempt,
   PracticeSession,
   MistakeItem,
+  MistakeReason,
   UserAccount,
   TopicId,
   SubjectId,
@@ -113,8 +114,10 @@ interface AppContextType {
 
   // Mistake Notebook (Per User)
   mistakes: Record<string, MistakeItem>;
-  recordAnswerResult: (questionId: string, isCorrect: boolean) => void;
+  recordAnswerResult: (questionId: string, isCorrect: boolean, selectedOption?: number) => void;
   toggleMistakeMastered: (questionId: string) => void;
+  updateMistakeNote: (questionId: string, note: string) => void;
+  updateMistakeReason: (questionId: string, reason: MistakeReason) => void;
   removeMistake: (questionId: string) => void;
   clearMasteredMistakes: () => void;
 
@@ -1187,7 +1190,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Mistake Notebook
-  const recordAnswerResult = (questionId: string, isCorrect: boolean) => {
+  const recordAnswerResult = (questionId: string, isCorrect: boolean, selectedOption?: number) => {
     const q = getQuestionById(questionId);
     const qSubj = q?.subject || currentSubject;
 
@@ -1204,6 +1207,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             consecutiveCorrect: 0,
             mastered: false,
             userNote: existing?.userNote,
+            reason: existing?.reason,
+            lastSelectedOption: selectedOption !== undefined ? selectedOption : existing?.lastSelectedOption,
           },
         };
       } else {
@@ -1217,9 +1222,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             consecutiveCorrect: newConsecutive,
             mastered: isNowMastered,
             lastAttemptDate: new Date().toISOString(),
+            lastSelectedOption: selectedOption !== undefined ? selectedOption : existing.lastSelectedOption,
           },
         };
       }
+    });
+  };
+
+  const updateMistakeNote = (questionId: string, note: string) => {
+    setMistakes((prev) => {
+      const existing = prev[questionId];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        [questionId]: {
+          ...existing,
+          userNote: note,
+        },
+      };
+    });
+  };
+
+  const updateMistakeReason = (questionId: string, reason: MistakeReason) => {
+    setMistakes((prev) => {
+      const existing = prev[questionId];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        [questionId]: {
+          ...existing,
+          reason,
+        },
+      };
     });
   };
 
@@ -1319,14 +1353,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const bulkImportVocabularyWords = (words: VocabularyWord[]): number => {
     if (!words || words.length === 0) return 0;
     setVocabularyWords((prev) => {
-      const existingMap = new Map(prev.map((w) => [w.word.toLowerCase().trim(), w]));
+      const existingMap = new Map<string, VocabularyWord>(prev.map((w) => [w.word.toLowerCase().trim(), w]));
       words.forEach((w) => {
         const key = w.word.toLowerCase().trim();
         if (!existingMap.has(key)) {
           existingMap.set(key, w);
         }
       });
-      const updated = Array.from(existingMap.values());
+      const updated: VocabularyWord[] = Array.from(existingMap.values());
       saveStoredVocabularyWords(updated);
       return updated;
     });
@@ -1662,6 +1696,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         mistakes,
         recordAnswerResult,
         toggleMistakeMastered,
+        updateMistakeNote,
+        updateMistakeReason,
         removeMistake,
         clearMasteredMistakes,
         bookmarks,

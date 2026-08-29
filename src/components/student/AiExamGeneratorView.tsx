@@ -199,7 +199,7 @@ const MATH_SUGGESTIONS = [
 ];
 
 export const AiExamGeneratorView: React.FC<AiExamGeneratorViewProps> = ({ onStartExam }) => {
-  const { currentSubject, switchSubject, addExam, bulkImportQuestions } = useApp();
+  const { currentSubject, currentUser, switchSubject, addExam, bulkImportQuestions } = useApp();
 
   // Selected subject for generation
   const [genSubject, setGenSubject] = useState<SubjectId>(currentSubject);

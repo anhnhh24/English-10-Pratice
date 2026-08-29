@@ -1075,3 +1075,94 @@ Hãy trả về DUY NHẤT một chuỗi JSON thuần túy (không kèm markdown
   }
 }
 
+/**
+ * AI sinh 2-3 câu hỏi tương tự cùng dạng bài, cùng công thức / bẫy đề
+ * để kiểm tra xem học sinh đã hiểu thực chất bài toán hay chỉ nhớ vẹt đáp án.
+ */
+export async function generateSimilarQuestions(
+  apiKey: string,
+  baseQuestion: Question,
+  count = 3,
+  modelName = 'gemini-3.6-flash',
+  fallbackPool: Question[] = []
+): Promise<Question[]> {
+  const isMath = (baseQuestion.subject || 'english') === 'math';
+  const effectiveKey = apiKey || getStoredApiKey();
+
+  if (!effectiveKey) {
+    // Fallback: pick similar questions from question bank
+    const candidates = fallbackPool.filter(
+      (q) => q.id !== baseQuestion.id && q.topicId === baseQuestion.topicId
+    );
+    return candidates.slice(0, count);
+  }
+
+  const prompt = `Bạn là chuyên gia luyện thi tuyển sinh vào Lớp 10 môn ${isMath ? 'Toán' : 'Tiếng Anh'}.
+Dưới đây là một câu hỏi mà học sinh vừa làm sai:
+- Môn: ${isMath ? 'Toán' : 'Tiếng Anh'}
+- Chuyên đề: ${baseQuestion.topicId}
+- Đề bài gốc: "${baseQuestion.content}"
+${baseQuestion.passage ? `- Đoạn văn gốc (nếu có): "${baseQuestion.passage}"` : ''}
+- Đáp án đúng gốc: ${String.fromCharCode(65 + baseQuestion.correctOption)}. ${baseQuestion.options[baseQuestion.correctOption]}
+- Quy tắc / Công thức: ${baseQuestion.grammarRule || 'N/A'}
+- Bẫy đề cần lưu ý: ${baseQuestion.commonMistakeTip || 'N/A'}
+
+YÊU CẦU:
+Hãy biên soạn đúng ${count} câu hỏi TƯƠNG TỰ (cùng dạng bài, cùng quy tắc ngữ pháp hoặc công thức toán, cùng bẫy phân loại nhưng ĐỔI DỮ KIỆN / TỪ VỰNG / SỐ LIỆU) để học sinh luyện tập khắc phục lỗ hổng kiến thức.
+
+ĐỊNH DẠNG TRẢ VỀ:
+Trả về DUY NHẤT một JSON Array hợp lệ (không kèm markdown bọc ngoài nếu có thể):
+[
+  {
+    "content": "Nội dung câu hỏi mới...",
+    "passage": null,
+    "options": ["Phương án A", "Phương án B", "Phương án C", "Phương án D"],
+    "correctOption": 0,
+    "explanation": "Giải thích chi tiết vì sao phương án này đúng...",
+    "grammarRule": "Quy tắc/Công thức cốt lõi...",
+    "commonMistakeTip": "Bẫy học sinh cần cảnh giác...",
+    "difficulty": "${baseQuestion.difficulty || 'medium'}"
+  }
+]`;
+
+  try {
+    const result = await callGeminiApiWithFallback(
+      effectiveKey,
+      modelName,
+      {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: 2500 },
+      }
+    );
+
+    const text = result.text.trim();
+    const cleanJson = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+    const parsed = JSON.parse(cleanJson);
+
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed.map((item, idx) => ({
+        id: `ai_similar_${Date.now()}_${idx + 1}`,
+        subject: baseQuestion.subject || 'english',
+        topicId: baseQuestion.topicId,
+        subTopicId: baseQuestion.subTopicId,
+        content: String(item.content || '').trim(),
+        passage: item.passage ? String(item.passage).trim() : undefined,
+        options: Array.isArray(item.options) && item.options.length === 4 ? item.options : baseQuestion.options,
+        correctOption: typeof item.correctOption === 'number' ? item.correctOption : 0,
+        explanation: String(item.explanation || '').trim(),
+        grammarRule: item.grammarRule ? String(item.grammarRule).trim() : baseQuestion.grammarRule,
+        commonMistakeTip: item.commonMistakeTip ? String(item.commonMistakeTip).trim() : baseQuestion.commonMistakeTip,
+        difficulty: item.difficulty || baseQuestion.difficulty || 'medium',
+      }));
+    }
+  } catch (err) {
+    console.warn('AI Similar generation fallback:', err);
+  }
+
+  // Fallback to bank
+  const candidates = fallbackPool.filter(
+    (q) => q.id !== baseQuestion.id && q.topicId === baseQuestion.topicId
+  );
+  return candidates.slice(0, count);
+}
+
