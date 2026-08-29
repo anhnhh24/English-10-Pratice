@@ -38,6 +38,10 @@ import {
   FileText,
   Zap,
   Wand2,
+  Maximize,
+  Minimize,
+  Save,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface ExamSimulatorViewProps {
@@ -118,6 +122,14 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   const [showScratchpad, setShowScratchpad] = useState<boolean>(false);
   const [paletteFilter, setPaletteFilter] = useState<'all' | 'unanswered' | 'answered' | 'flagged'>('all');
   const [draftExists, setDraftExists] = useState<boolean>(false);
+  const [draftDetails, setDraftDetails] = useState<{
+    userAnswersCount: number;
+    timeLeft: number;
+    timestamp: string;
+    examTitle?: string;
+  } | null>(null);
+  const [lastSavedTime, setLastSavedTime] = useState<string>('');
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [aiQuestionExplain, setAiQuestionExplain] = useState<Record<string, string>>({});
   const [aiQuestionLoading, setAiQuestionLoading] = useState<string | null>(null);
   const [activeQuestionForAiExplainer, setActiveQuestionForAiExplainer] = useState<{
@@ -127,6 +139,48 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
 
   const DRAFT_KEY = `edu10_exam_draft_${examId || selectedExamId}_${currentUser?.id || 'guest'}`;
 
+  // Fullscreen state synchronization
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    document.addEventListener('mozfullscreenchange', handleFsChange);
+    document.addEventListener('MSFullscreenChange', handleFsChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+      document.removeEventListener('mozfullscreenchange', handleFsChange);
+      document.removeEventListener('MSFullscreenChange', handleFsChange);
+    };
+  }, []);
+
+  const toggleFullscreen = () => {
+    try {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    } catch (_) {}
+  };
+
+  // Prevent accidental tab close or reload when active
+  useEffect(() => {
+    if (stage !== 'active') return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = 'Bạn có tiến trình làm bài thi đang diễn ra. Bạn có chắc muốn rời đi?';
+      return e.returnValue;
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [stage]);
+
   // Check draft existence
   useEffect(() => {
     try {
@@ -135,24 +189,39 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
         const parsed = JSON.parse(raw);
         if (parsed && parsed.userAnswers && Object.keys(parsed.userAnswers).length > 0) {
           setDraftExists(true);
+          setDraftDetails({
+            userAnswersCount: Object.keys(parsed.userAnswers).length,
+            timeLeft: parsed.timeLeft || 0,
+            timestamp: parsed.timestamp || '',
+            examTitle: parsed.examTitle || '',
+          });
         }
       }
     } catch (e) { }
   }, [DRAFT_KEY]);
 
-  // Save draft during active exam
+  // Continuous auto-save draft during active exam
   useEffect(() => {
     if (stage === 'active') {
       try {
+        const now = new Date();
+        const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+        
         localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          examId: exam?.id,
+          examTitle: exam?.title,
+          currentIdx,
           userAnswers,
           flaggedIds,
           timeLeft,
-          timestamp: new Date().toISOString()
+          tabSwitchCount,
+          timestamp: now.toISOString()
         }));
+
+        setLastSavedTime(timeStr);
       } catch (e) { }
     }
-  }, [userAnswers, flaggedIds, timeLeft, stage, DRAFT_KEY]);
+  }, [userAnswers, flaggedIds, timeLeft, currentIdx, tabSwitchCount, stage, DRAFT_KEY, exam]);
 
   const handleRestoreDraft = () => {
     try {
@@ -162,6 +231,8 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
         if (parsed.userAnswers) setUserAnswers(parsed.userAnswers);
         if (parsed.flaggedIds) setFlaggedIds(parsed.flaggedIds);
         if (parsed.timeLeft) setTimeLeft(parsed.timeLeft);
+        if (typeof parsed.currentIdx === 'number') setCurrentIdx(parsed.currentIdx);
+        if (typeof parsed.tabSwitchCount === 'number') setTabSwitchCount(parsed.tabSwitchCount);
         setStage('active');
         setDraftExists(false);
       }
@@ -174,6 +245,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
     try {
       localStorage.removeItem(DRAFT_KEY);
       setDraftExists(false);
+      setDraftDetails(null);
     } catch (e) { }
   };
 
@@ -457,33 +529,42 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           </div>
         </div>
 
-        {/* Draft restore banner */}
+        {/* Draft restore banner with detailed progress info */}
         {draftExists && (
-          <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs animate-in fade-in">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-700 flex items-center justify-center font-bold text-lg">
+          <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border-2 border-amber-500/50 rounded-3xl p-4 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm animate-in fade-in">
+            <div className="flex items-center space-x-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/25 text-amber-700 flex items-center justify-center font-bold text-2xl shrink-0">
                 💾
               </div>
-              <div>
-                <h4 className="text-sm font-bold text-[#3D3D2D]">Có bài làm dở chưa nộp</h4>
-                <p className="text-xs text-[#8A8A70]">
-                  Hệ thống đã tự động lưu nháp các câu trả lời bạn vừa tích trước đó.
+              <div className="space-y-0.5">
+                <div className="flex items-center space-x-2">
+                  <h4 className="text-sm sm:text-base font-extrabold text-[#3D3D2D]">
+                    Phát hiện tiến trình bài thi chưa nộp
+                  </h4>
+                  <span className="px-2 py-0.5 bg-amber-200/80 text-amber-900 text-[10px] font-extrabold rounded-md">
+                    Tự động lưu
+                  </span>
+                </div>
+                <p className="text-xs text-[#64748B]">
+                  Đã hoàn thành <strong>{draftDetails?.userAnswersCount || Object.keys(userAnswers).length}</strong> câu
+                  {draftDetails?.timeLeft ? ` • Còn lại: ${formatTime(draftDetails.timeLeft)}` : ''}
+                  {draftDetails?.timestamp ? ` • Lúc: ${new Date(draftDetails.timestamp).toLocaleTimeString()}` : ''}
                 </p>
               </div>
             </div>
-            <div className="flex space-x-2 w-full sm:w-auto">
+            <div className="flex items-center space-x-2 w-full sm:w-auto">
               <button
                 onClick={clearDraft}
-                className="px-3.5 py-2 text-xs font-bold text-[#8A8A70] hover:text-[#3D3D2D] bg-white rounded-xl border border-[#D9D2C5] cursor-pointer"
+                className="flex-1 sm:flex-none px-4 py-2.5 text-xs font-bold text-[#8A8A70] hover:text-[#3D3D2D] bg-white hover:bg-rose-50 hover:text-rose-700 rounded-xl border border-[#D9D2C5] transition cursor-pointer"
               >
-                Bỏ qua
+                Hủy bản nháp
               </button>
               <button
                 onClick={handleRestoreDraft}
-                className="px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs cursor-pointer flex items-center space-x-1.5"
+                className="flex-1 sm:flex-none px-5 py-2.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center space-x-1.5"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Khôi phục bài làm ngay</span>
+                <span>Tiếp tục làm bài</span>
               </button>
             </div>
           </div>
@@ -563,16 +644,31 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                     <div className="text-xs text-[#8A8A70]">
                       <strong>{ex.questionIds.length}</strong> câu hỏi
                     </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleStartExam(ex.id);
-                      }}
-                      className="px-4 sm:px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-full text-xs font-bold shadow-xs transition flex items-center space-x-1 cursor-pointer shrink-0"
-                    >
-                      <span>Bắt đầu thi</span>
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center space-x-1.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFullscreen();
+                          handleStartExam(ex.id);
+                        }}
+                        title="Bắt đầu thi ở chế độ Toàn Màn Hình"
+                        className="px-3 py-2 bg-[#FAF9F6] hover:bg-[#F5F2ED] border border-[#D9D2C5] text-[#5A5A40] rounded-full text-xs font-bold transition flex items-center space-x-1 cursor-pointer shrink-0"
+                      >
+                        <Maximize className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Toàn màn hình</span>
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartExam(ex.id);
+                        }}
+                        className="px-4 sm:px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-full text-xs font-bold shadow-xs transition flex items-center space-x-1 cursor-pointer shrink-0"
+                      >
+                        <span>Bắt đầu thi</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -636,6 +732,31 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
           </div>
 
           <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+            {/* Live Auto-save status indicator */}
+            {lastSavedTime && (
+              <div
+                title={`Tiến trình được tự động lưu liên tục. Lần lưu gần nhất: ${lastSavedTime}`}
+                className="hidden md:flex items-center space-x-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-[11px] font-bold"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Đã lưu {lastSavedTime}</span>
+              </div>
+            )}
+
+            {/* Fullscreen Toggle Button */}
+            <button
+              onClick={toggleFullscreen}
+              title={isFullscreen ? 'Thu nhỏ màn hình (Esc)' : 'Mở Toàn Màn Hình chuẩn phòng thi (F11)'}
+              className={`p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center space-x-1 ${
+                isFullscreen
+                  ? 'bg-purple-100 text-purple-900 border-purple-300 shadow-xs'
+                  : 'bg-[#FAF9F6] text-[#5A5A40] border-[#D9D2C5] hover:bg-[#E8E2D9]'
+              }`}
+            >
+              {isFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{isFullscreen ? 'Thu nhỏ' : 'Toàn màn hình'}</span>
+            </button>
+
             {/* Mobile quick palette button */}
             <button
               onClick={() => setMobilePaletteOpen(true)}
