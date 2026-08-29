@@ -141,6 +141,10 @@ interface AppContextType {
   toggleVocabLearned: (id: string) => void;
   toggleVocabMastered: (id: string) => void;
   toggleVocabStarred: (id: string) => void;
+  vocabSrsData: Record<string, { box: number; nextReviewDate: string; streak: number }>;
+  promoteVocabSrs: (id: string) => void;
+  demoteVocabSrs: (id: string) => void;
+  getVocabBox: (id: string) => number;
 
   // Analytics & Stats (Calculated dynamically for current subject and overall)
   analytics: {
@@ -417,6 +421,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
+    }
+  });
+  const [vocabSrsData, setVocabSrsData] = useState<
+    Record<string, { box: number; nextReviewDate: string; streak: number }>
+  >(() => {
+    try {
+      const raw = localStorage.getItem(`edu10_vocab_srs_${currentUser.id}`);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
     }
   });
 
@@ -1469,6 +1483,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const promoteVocabSrs = (id: string) => {
+    setVocabSrsData((prev) => {
+      const current = prev[id] || { box: 1, nextReviewDate: new Date().toISOString(), streak: 0 };
+      const nextBox = Math.min(current.box + 1, 5);
+      const intervals = [1, 3, 7, 14, 30]; // Days for boxes 1..5
+      const daysToAdd = intervals[nextBox - 1] || 1;
+      const nextDate = new Date();
+      nextDate.setDate(nextDate.getDate() + daysToAdd);
+
+      const updated = {
+        ...prev,
+        [id]: {
+          box: nextBox,
+          nextReviewDate: nextDate.toISOString().split('T')[0],
+          streak: current.streak + 1,
+        },
+      };
+      localStorage.setItem(`edu10_vocab_srs_${currentUser.id}`, JSON.stringify(updated));
+
+      // If reached Box 5, auto-master
+      if (nextBox === 5 && !masteredVocabIds.includes(id)) {
+        setMasteredVocabIds((mPrev) => {
+          const mUpdated = [...mPrev, id];
+          localStorage.setItem(`edu10_mastered_vocab_${currentUser.id}`, JSON.stringify(mUpdated));
+          return mUpdated;
+        });
+      }
+
+      return updated;
+    });
+  };
+
+  const demoteVocabSrs = (id: string) => {
+    setVocabSrsData((prev) => {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      const updated = {
+        ...prev,
+        [id]: {
+          box: 1,
+          nextReviewDate: tomorrow.toISOString().split('T')[0],
+          streak: 0,
+        },
+      };
+      localStorage.setItem(`edu10_vocab_srs_${currentUser.id}`, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const getVocabBox = (id: string): number => {
+    return vocabSrsData[id]?.box || 1;
+  };
+
   // Background midnight auto-check (12h đêm / 00:00)
   useEffect(() => {
     const checkMidnightSync = () => {
@@ -1726,6 +1794,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         learnedVocabIds,
         masteredVocabIds,
         starredVocabIds,
+        vocabSrsData,
+        promoteVocabSrs,
+        demoteVocabSrs,
+        getVocabBox,
         addVocabularyWord,
         updateVocabularyWord,
         deleteVocabularyWord,

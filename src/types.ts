@@ -122,6 +122,13 @@ export interface Lesson {
   keySignals: string[];
 }
 
+export interface WordFamily {
+  noun?: string;
+  verb?: string;
+  adj?: string;
+  adv?: string;
+}
+
 export interface VocabularyWord {
   id: string;
   word: string;
@@ -137,6 +144,8 @@ export interface VocabularyWord {
   audioText?: string;
   synonyms?: string[];
   antonyms?: string[];
+  wordFamily?: WordFamily;
+  mnemonic?: string; // Mẹo nhớ siêu trí nhớ & âm thanh tương tự
   dateAdded?: string;
   dailyBatch?: string; // e.g. '2026-08-25'
   source?: 'system' | 'admin' | 'ai_daily' | 'imported';

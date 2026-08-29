@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { MATH_FORMULA_CARDS } from '../../data/mathFormulaCards';
 import { VOCAB_CATEGORIES } from '../../data/vocabCuratedBank';
@@ -32,6 +32,10 @@ import {
   Clock,
   ArrowRight,
   Brain,
+  Timer,
+  Boxes,
+  BookMarked,
+  Smile,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { VocabularyWord, MathFormulaCard } from '../../types';
@@ -42,24 +46,28 @@ export const VocabFlashcardsView: React.FC = () => {
     vocabularyWords,
     masteredVocabIds,
     starredVocabIds = [],
+    vocabSrsData = {},
     toggleVocabMastered,
     toggleVocabStarred,
+    promoteVocabSrs,
+    demoteVocabSrs,
+    getVocabBox,
   } = useApp();
 
-  // Mode: 'flashcard' | 'cloze' | 'matching' | 'quiz' | 'dictation'
-  const [studyMode, setStudyMode] = useState<'flashcard' | 'cloze' | 'matching' | 'quiz' | 'dictation'>('flashcard');
+  // Mode: 'flashcard' | 'cloze' | 'matching' | 'quiz' | 'dictation' | 'blitz60'
+  const [studyMode, setStudyMode] = useState<'flashcard' | 'cloze' | 'matching' | 'quiz' | 'dictation' | 'blitz60'>('flashcard');
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'unmastered' | 'mastered' | 'starred' | 'daily'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'unmastered' | 'mastered' | 'starred' | 'daily' | 'srs_due' | 'box1' | 'box5'>('all');
 
   // Flashcard State
   const [vocabIdx, setVocabIdx] = useState<number>(0);
   const [isFlipped, setIsFlipped] = useState<boolean>(false);
 
-  // Mode 2: Context Cloze / Word Form Fill-in State
+  // Mode 2: Context Cloze State
   const [clozeIdx, setClozeIdx] = useState<number>(0);
   const [clozeInput, setClozeInput] = useState<string>('');
   const [clozeChecked, setClozeChecked] = useState<boolean>(false);
@@ -92,15 +100,20 @@ export const VocabFlashcardsView: React.FC = () => {
   const [dictationScore, setDictationScore] = useState<number>(0);
   const [dictationFinished, setDictationFinished] = useState<boolean>(false);
 
+  // Mode 6: 60-Second Survival Blitz Challenge State
+  const [blitzTimeLeft, setBlitzTimeLeft] = useState<number>(60);
+  const [blitzScore, setBlitzScore] = useState<number>(0);
+  const [blitzStreak, setBlitzStreak] = useState<number>(0);
+  const [blitzMaxStreak, setBlitzMaxStreak] = useState<number>(0);
+  const [blitzIsActive, setBlitzIsActive] = useState<boolean>(false);
+  const [blitzGameOver, setBlitzGameOver] = useState<boolean>(false);
+  const [blitzWordIdx, setBlitzWordIdx] = useState<number>(0);
+  const [blitzFeedback, setBlitzFeedback] = useState<'correct' | 'wrong' | null>(null);
+
   // Math State
   const [selectedMathCategory, setSelectedMathCategory] = useState<string>('all');
   const [mathIdx, setMathIdx] = useState<number>(0);
   const [mathMastered, setMathMastered] = useState<string[]>([]);
-  const [mathStudyMode, setMathStudyMode] = useState<'flashcard' | 'quiz'>('flashcard');
-  const [mathQuizIdx, setMathQuizIdx] = useState<number>(0);
-  const [mathQuizScore, setMathQuizScore] = useState<number>(0);
-  const [mathQuizSelected, setMathQuizSelected] = useState<number | null>(null);
-  const [mathQuizChecked, setMathQuizChecked] = useState<boolean>(false);
 
   // AI Exam Sentences Modal State
   const [aiModalOpen, setAiModalOpen] = useState<boolean>(false);
@@ -109,6 +122,11 @@ export const VocabFlashcardsView: React.FC = () => {
     Array<{ question: string; options: string[]; correctIdx: number; explanation: string }>
   >([]);
   const [aiModalLoading, setAiModalLoading] = useState<boolean>(false);
+
+  // AI Story Builder Modal State
+  const [aiStoryModalOpen, setAiStoryModalOpen] = useState<boolean>(false);
+  const [aiGeneratedStory, setAiGeneratedStory] = useState<{ storyEn: string; storyVi: string; wordsUsed: string[] } | null>(null);
+  const [aiStoryLoading, setAiStoryLoading] = useState<boolean>(false);
 
   const todayStr = getTodayDateString();
 
@@ -136,6 +154,12 @@ export const VocabFlashcardsView: React.FC = () => {
     setDictationIsCorrect(null);
     setDictationScore(0);
     setDictationFinished(false);
+
+    setBlitzIsActive(false);
+    setBlitzGameOver(false);
+    setBlitzTimeLeft(60);
+    setBlitzScore(0);
+    setBlitzStreak(0);
   }, [currentSubject, studyMode, selectedCategory, selectedDifficulty, filterStatus]);
 
   // Today's words
@@ -146,6 +170,8 @@ export const VocabFlashcardsView: React.FC = () => {
   // Filtered English words
   const filteredWords: VocabularyWord[] = useMemo(() => {
     return vocabularyWords.filter((w) => {
+      const box = getVocabBox(w.id);
+
       // Search filter
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim();
@@ -160,13 +186,23 @@ export const VocabFlashcardsView: React.FC = () => {
         return w.dailyBatch === todayStr;
       }
       if (filterStatus === 'mastered') {
-        return masteredVocabIds.includes(w.id) || masteredVocabIds.includes(w.word);
+        return masteredVocabIds.includes(w.id) || masteredVocabIds.includes(w.word) || box === 5;
       }
       if (filterStatus === 'unmastered') {
-        return !masteredVocabIds.includes(w.id) && !masteredVocabIds.includes(w.word);
+        return !masteredVocabIds.includes(w.id) && !masteredVocabIds.includes(w.word) && box < 5;
       }
       if (filterStatus === 'starred') {
         return starredVocabIds.includes(w.id) || starredVocabIds.includes(w.word);
+      }
+      if (filterStatus === 'box1') {
+        return box === 1;
+      }
+      if (filterStatus === 'box5') {
+        return box === 5;
+      }
+      if (filterStatus === 'srs_due') {
+        const nextReview = vocabSrsData[w.id]?.nextReviewDate;
+        return !nextReview || nextReview <= todayStr;
       }
 
       // Category filter
@@ -186,7 +222,7 @@ export const VocabFlashcardsView: React.FC = () => {
 
       return true;
     });
-  }, [vocabularyWords, searchQuery, selectedCategory, selectedDifficulty, filterStatus, todayWords, masteredVocabIds, starredVocabIds, todayStr]);
+  }, [vocabularyWords, searchQuery, selectedCategory, selectedDifficulty, filterStatus, todayWords, masteredVocabIds, starredVocabIds, vocabSrsData, todayStr, getVocabBox]);
 
   const wordsToDisplay = filteredWords.length > 0 ? filteredWords : vocabularyWords;
   const currentWord: VocabularyWord = wordsToDisplay[vocabIdx] || wordsToDisplay[0];
@@ -207,7 +243,6 @@ export const VocabFlashcardsView: React.FC = () => {
     if (studyMode !== 'flashcard' || currentSubject === 'math') return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in an input
       if (['input', 'textarea', 'select'].includes((e.target as HTMLElement)?.tagName?.toLowerCase())) {
         return;
       }
@@ -255,17 +290,14 @@ export const VocabFlashcardsView: React.FC = () => {
   // ─── MODE 2: CONTEXT CLOZE HANDLERS ───
   const currentClozeWord = wordsToDisplay[clozeIdx] || wordsToDisplay[0];
 
-  // Helper to extract cloze sentence
   const clozeSentence = useMemo(() => {
     if (!currentClozeWord || !currentClozeWord.exampleEn) {
       return { masked: 'The student learns new _______ every day.', target: currentClozeWord?.word || '' };
     }
     const target = currentClozeWord.word.trim();
-    // Case-insensitive regex to replace target word with blank
     const regex = new RegExp(`\\b${target}\\b`, 'gi');
     let masked = currentClozeWord.exampleEn.replace(regex, '_______');
     if (!masked.includes('_______')) {
-      // If exact word boundary didn't match, replace substring
       masked = currentClozeWord.exampleEn.replace(new RegExp(target, 'gi'), '_______');
     }
     return { masked, target };
@@ -282,8 +314,11 @@ export const VocabFlashcardsView: React.FC = () => {
 
     if (isRight) {
       setClozeScore((prev) => prev + 1);
+      promoteVocabSrs(currentClozeWord.id);
       confetti({ particleCount: 35, spread: 60, origin: { y: 0.7 } });
       speakWord(currentClozeWord.word);
+    } else {
+      demoteVocabSrs(currentClozeWord.id);
     }
   };
 
@@ -343,7 +378,6 @@ export const VocabFlashcardsView: React.FC = () => {
     }
   }, [studyMode, wordsToDisplay]);
 
-  // Matching game timer
   useEffect(() => {
     if (studyMode !== 'matching' || matchGameOver) return;
     const interval = setInterval(() => {
@@ -363,17 +397,16 @@ export const VocabFlashcardsView: React.FC = () => {
         return;
       }
 
-      // Check if matching pair
       if (selectedMatchFirst.wordId === tile.wordId && selectedMatchFirst.type !== tile.type) {
         // MATCHED!
         setMatchCards((prev) =>
           prev.map((c) => (c.wordId === tile.wordId ? { ...c, matched: true } : c))
         );
         setMatchScore((prev) => prev + 10);
+        promoteVocabSrs(tile.wordId);
         confetti({ particleCount: 25, spread: 50, origin: { y: 0.7 } });
         setSelectedMatchFirst(null);
 
-        // Check if all matched
         const remaining = matchCards.filter((c) => !c.matched && c.wordId !== tile.wordId);
         if (remaining.length === 0) {
           setMatchGameOver(true);
@@ -391,7 +424,6 @@ export const VocabFlashcardsView: React.FC = () => {
     if (wordsToDisplay.length === 0) return null;
     const targetWord = wordsToDisplay[quizIdx] || wordsToDisplay[0];
 
-    // Pick 3 wrong options
     const otherWords = vocabularyWords.filter((w) => w.id !== targetWord.id);
     const shuffledOthers = [...otherWords].sort(() => 0.5 - Math.random()).slice(0, 3);
     const options = [
@@ -415,8 +447,11 @@ export const VocabFlashcardsView: React.FC = () => {
 
     if (optionIdx === currentQuizItem.correctIndex) {
       setQuizScore((prev) => prev + 1);
+      promoteVocabSrs(currentQuizItem.word.id);
       confetti({ particleCount: 40, spread: 60, origin: { y: 0.7 } });
       speakWord(currentQuizItem.word.word);
+    } else {
+      demoteVocabSrs(currentQuizItem.word.id);
     }
   };
 
@@ -442,7 +477,10 @@ export const VocabFlashcardsView: React.FC = () => {
 
     if (isRight) {
       setDictationScore((prev) => prev + 1);
+      promoteVocabSrs(currentDictationWord.id);
       confetti({ particleCount: 35, spread: 60, origin: { y: 0.7 } });
+    } else {
+      demoteVocabSrs(currentDictationWord.id);
     }
   };
 
@@ -456,6 +494,77 @@ export const VocabFlashcardsView: React.FC = () => {
       setDictationFinished(true);
       confetti({ particleCount: 80, spread: 90, origin: { y: 0.5 } });
     }
+  };
+
+  // ─── MODE 6: 60-SECOND VOCAB BLITZ SURVIVAL ───
+  const startBlitzSurvival = () => {
+    setBlitzTimeLeft(60);
+    setBlitzScore(0);
+    setBlitzStreak(0);
+    setBlitzMaxStreak(0);
+    setBlitzIsActive(true);
+    setBlitzGameOver(false);
+    setBlitzWordIdx(0);
+  };
+
+  useEffect(() => {
+    if (!blitzIsActive || blitzGameOver) return;
+    const timer = setInterval(() => {
+      setBlitzTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setBlitzGameOver(true);
+          setBlitzIsActive(false);
+          confetti({ particleCount: 70, spread: 80, origin: { y: 0.5 } });
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [blitzIsActive, blitzGameOver]);
+
+  const currentBlitzItem = useMemo(() => {
+    if (!blitzIsActive || wordsToDisplay.length === 0) return null;
+    const targetWord = wordsToDisplay[blitzWordIdx % wordsToDisplay.length];
+    const otherWords = vocabularyWords.filter((w) => w.id !== targetWord.id);
+    const shuffledOthers = [...otherWords].sort(() => 0.5 - Math.random()).slice(0, 3);
+    const options = [
+      targetWord.meaningVi,
+      ...shuffledOthers.map((w) => w.meaningVi || 'Nghĩa khác'),
+    ].sort(() => 0.5 - Math.random());
+
+    const correctIndex = options.indexOf(targetWord.meaningVi);
+    return { targetWord, options, correctIndex };
+  }, [blitzIsActive, blitzWordIdx, wordsToDisplay, vocabularyWords]);
+
+  const handleBlitzAnswer = (optionIdx: number) => {
+    if (!currentBlitzItem || blitzGameOver) return;
+    const isRight = optionIdx === currentBlitzItem.correctIndex;
+
+    if (isRight) {
+      setBlitzScore((prev) => prev + 1);
+      setBlitzStreak((prev) => {
+        const next = prev + 1;
+        setBlitzMaxStreak((m) => Math.max(m, next));
+        return next;
+      });
+      // Time bonus +2s
+      setBlitzTimeLeft((prev) => Math.min(prev + 2, 90));
+      promoteVocabSrs(currentBlitzItem.targetWord.id);
+      setBlitzFeedback('correct');
+    } else {
+      setBlitzStreak(0);
+      // Time penalty -3s
+      setBlitzTimeLeft((prev) => Math.max(prev - 3, 0));
+      demoteVocabSrs(currentBlitzItem.targetWord.id);
+      setBlitzFeedback('wrong');
+    }
+
+    setTimeout(() => {
+      setBlitzFeedback(null);
+      setBlitzWordIdx((prev) => prev + 1);
+    }, 250);
   };
 
   // ─── AI EXAM QUESTIONS GENERATOR MODAL ───
@@ -507,22 +616,62 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
       }
     } catch (err) {
       console.warn('AI vocab exam gen error:', err);
-      setAiGeneratedExamQuestions([
-        {
-          question: `Complete the sentence: "Many tourists visit the village to admire the _______ pottery."`,
-          options: [w.word, 'careless', 'polluted', 'impossible'],
-          correctIdx: 0,
-          explanation: `"${w.word}" mang ý nghĩa phù hợp nhất với cấu trúc câu.`,
-        },
-      ]);
     } finally {
       setAiModalLoading(false);
     }
   };
 
+  // ─── AI NARRATIVE CONTEXT STORY BUILDER ───
+  const handleOpenAiStoryBuilder = async () => {
+    setAiStoryModalOpen(true);
+    setAiStoryLoading(true);
+    setAiGeneratedStory(null);
+
+    const apiKey = getStoredApiKey();
+    const sampleWords = wordsToDisplay.slice(0, 6);
+    const wordsListStr = sampleWords.map((w) => `"${w.word}" (${w.meaningVi})`).join(', ');
+
+    if (!apiKey) {
+      setAiGeneratedStory({
+        storyEn: `Once upon a time in a bustling village, a skilled craftsman tried to preserve ancient pottery techniques. Despite many difficulties, he never gave up his passion.`,
+        storyVi: `Ngày xửa ngày xưa tại một ngôi làng nhộn nhịp, một người thợ thủ công lành nghề đã cố gắng bảo tồn các kỹ thuật làm gốm cổ xưa. Dù gặp nhiều khó khăn, ông không bao giờ từ bỏ niềm đam mê của mình.`,
+        wordsUsed: sampleWords.map((w) => w.word),
+      });
+      setAiStoryLoading(false);
+      return;
+    }
+
+    const prompt = `Bạn là chuyên gia giảng dạy Tiếng Anh theo phương pháp Siêu Trí Nhớ (Storytelling & Context Learning).
+Hãy sáng tác 1 ĐOẠN VĂN KỂ CHUYỆN NGẮN (5 - 6 câu) vui nhộn, giàu cảm xúc và hình ảnh, LỒNG GHÉP TẤT CẢ các từ vựng sau:
+${wordsListStr}
+
+ĐỊNH DẠNG TRẢ VỀ:
+Trả về DUY NHẤT một JSON object:
+{
+  "storyEn": "Đoạn văn tiếng Anh 5-6 câu có in hoa hoặc in đậm các từ vựng mục tiêu...",
+  "storyVi": "Bản dịch tiếng Việt mạch lạc, dễ hiểu...",
+  "wordsUsed": ["từ 1", "từ 2"]
+}`;
+
+    try {
+      const { text } = await callGeminiApiWithFallback(apiKey, 'gemini-3.6-flash', {
+        contents: [{ parts: [{ text: prompt }] }],
+      });
+      const clean = text.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+      const parsed = JSON.parse(clean);
+      if (parsed && parsed.storyEn) {
+        setAiGeneratedStory(parsed);
+      }
+    } catch (err) {
+      console.warn('AI Story Builder error:', err);
+    } finally {
+      setAiStoryLoading(false);
+    }
+  };
+
   // ═════════════════════════════════════════════════════════════════
-  // 1. MATH FORMULA FLASHCARD & QUIZ VIEW
-  // ═════════════════════════════════════════════════════════════════
+  // 1. MATH FORMULA FLASHCARD VIEW
+  // ═════════════════════════════════════════════════════════════
   const filteredMathCards: MathFormulaCard[] =
     selectedMathCategory === 'all'
       ? MATH_FORMULA_CARDS
@@ -542,7 +691,6 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
 
     return (
       <div className="max-w-4xl mx-auto space-y-6 pb-16">
-        {/* Header Banner */}
         <div className="bg-[#1E3A8A] text-white p-6 sm:p-8 rounded-[2.5rem] shadow-sm">
           <div className="max-w-2xl space-y-2">
             <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
@@ -699,9 +847,10 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
   }
 
   // ═════════════════════════════════════════════════════════════════
-  // 2. ENGLISH VOCABULARY MULTI-SENSORY MASTERY VIEW
-  // ═════════════════════════════════════════════════════════════════
-  const isEnglishMastered = masteredVocabIds.includes(currentWord?.id || currentWord?.word);
+  // 2. ENGLISH VOCABULARY ADVANCED MEMORY VIEW
+  // ═════════════════════════════════════════════════════════════
+  const currentBox = getVocabBox(currentWord?.id);
+  const isEnglishMastered = masteredVocabIds.includes(currentWord?.id || currentWord?.word) || currentBox === 5;
   const isEnglishStarred = starredVocabIds.includes(currentWord?.id || currentWord?.word);
 
   return (
@@ -713,7 +862,7 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
         <div className="max-w-2xl space-y-2 relative z-10">
           <div className="flex items-center space-x-2 flex-wrap gap-y-1">
             <span className="px-3 py-1 bg-white/20 rounded-full text-xs font-semibold text-[#E8E2D9]">
-              🇬🇧 Kho Từ Vựng & Flashcards Đa Giác Quan Lớp 9
+              🧠 Siêu Trí Nhớ Từ Vựng Lớp 9 (6 Phương Pháp Khoa Học)
             </span>
             {todayWords.length > 0 && (
               <span className="px-3 py-1 bg-amber-400 text-amber-950 rounded-full text-xs font-extrabold flex items-center space-x-1 shadow-sm">
@@ -726,13 +875,13 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
             Luyện Từ Vựng Toàn Diện Vào Lớp 10
           </h1>
           <p className="text-xs sm:text-sm text-[#D9D2C5] leading-relaxed">
-            Áp dụng phương pháp Active Recall, Spaced Repetition và Game phản xạ giúp ghi nhớ từ vựng 12 Unit, Phrasal Verbs, Collocations & Idioms bền vững.
+            Kết hợp <strong>Cây Họ Từ (Word Families)</strong>, <strong>Mẹo Liên Tưởng (Mnemonics)</strong>, <strong>Hộp Leitner SRS</strong> và <strong>Thử Thách Sinh Tồn 60s</strong> giúp khắc sâu vào trí nhớ dài hạn.
           </p>
         </div>
 
         {/* Stats Pill */}
         <div className="bg-[#FDFCFB]/95 backdrop-blur-sm text-[#3D3D2D] p-4 rounded-[2rem] border border-[#D9D2C5] text-center shrink-0 w-full sm:w-44 shadow-lg space-y-1">
-          <span className="text-[10px] font-extrabold uppercase text-[#8A8A70] block">Đã làm chủ</span>
+          <span className="text-[10px] font-extrabold uppercase text-[#8A8A70] block">🏆 Đã làm chủ (Hộp 5)</span>
           <p className="text-3xl font-black text-emerald-700">
             {masteredVocabIds.length} <span className="text-xs font-bold text-[#64748B]">/ {vocabularyWords.length}</span>
           </p>
@@ -743,56 +892,66 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
       </div>
 
       {/* ═════════════════════════════════════════════════════════════ */}
-      {/* 5-MODE NAVIGATION SWITCHER BAR                                */}
+      {/* 6-MODE NAVIGATION SWITCHER BAR                                */}
       {/* ═════════════════════════════════════════════════════════════ */}
-      <div className="flex bg-[#E8E2D9] p-1.5 rounded-2xl max-w-2xl mx-auto text-xs font-bold gap-1 shadow-2xs overflow-x-auto no-scrollbar">
+      <div className="flex bg-[#E8E2D9] p-1.5 rounded-2xl max-w-3xl mx-auto text-xs font-bold gap-1 shadow-2xs overflow-x-auto no-scrollbar">
         <button
           onClick={() => setStudyMode('flashcard')}
-          className={`flex-1 min-w-[110px] py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+          className={`flex-1 min-w-[100px] py-2 px-2.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 whitespace-nowrap ${
             studyMode === 'flashcard' ? 'bg-white text-[#3D3D2D] shadow-xs' : 'text-[#6B6B54] hover:text-[#3D3D2D]'
           }`}
         >
-          <BookOpen className="w-4 h-4" />
-          <span>Thẻ 3D</span>
+          <BookOpen className="w-3.5 h-3.5" />
+          <span>Thẻ 3D & Họ Từ</span>
+        </button>
+
+        <button
+          onClick={() => setStudyMode('blitz60')}
+          className={`flex-1 min-w-[100px] py-2 px-2.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 whitespace-nowrap ${
+            studyMode === 'blitz60' ? 'bg-rose-600 text-white shadow-xs animate-pulse' : 'text-rose-800 hover:text-rose-950'
+          }`}
+        >
+          <Timer className="w-3.5 h-3.5 text-amber-300" />
+          <span>⚡ Sinh Tồn 60s</span>
         </button>
 
         <button
           onClick={() => setStudyMode('cloze')}
-          className={`flex-1 min-w-[110px] py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+          className={`flex-1 min-w-[100px] py-2 px-2.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 whitespace-nowrap ${
             studyMode === 'cloze' ? 'bg-[#5A5A40] text-white shadow-xs' : 'text-[#5A5A40] hover:text-[#3D3D2D]'
           }`}
         >
-          <PenTool className="w-4 h-4 text-amber-300" />
+          <PenTool className="w-3.5 h-3.5 text-amber-300" />
           <span>Điền Ngữ Cảnh</span>
         </button>
 
         <button
           onClick={() => setStudyMode('matching')}
-          className={`flex-1 min-w-[110px] py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+          className={`flex-1 min-w-[100px] py-2 px-2.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 whitespace-nowrap ${
             studyMode === 'matching' ? 'bg-orange-700 text-white shadow-xs' : 'text-orange-900 hover:text-[#3D3D2D]'
           }`}
         >
-          <Grid className="w-4 h-4" />
+          <Grid className="w-3.5 h-3.5" />
           <span>Ghép Cặp Nhanh</span>
         </button>
 
         <button
           onClick={() => setStudyMode('quiz')}
-          className={`flex-1 min-w-[110px] py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+          className={`flex-1 min-w-[100px] py-2 px-2.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 whitespace-nowrap ${
             studyMode === 'quiz' ? 'bg-[#1E3A8A] text-white shadow-xs' : 'text-[#1E3A8A] hover:text-[#3D3D2D]'
           }`}
         >
-          <HelpCircle className="w-4 h-4" />
+          <HelpCircle className="w-3.5 h-3.5" />
           <span>Mini Quiz</span>
         </button>
 
         <button
           onClick={() => setStudyMode('dictation')}
-          className={`flex-1 min-w-[110px] py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1.5 whitespace-nowrap ${
+          className={`flex-1 min-w-[100px] py-2 px-2.5 rounded-xl transition cursor-pointer flex items-center justify-center space-x-1 whitespace-nowrap ${
             studyMode === 'dictation' ? 'bg-purple-700 text-white shadow-xs' : 'text-purple-900 hover:text-[#3D3D2D]'
           }`}
         >
-          <Headphones className="w-4 h-4" />
+          <Headphones className="w-3.5 h-3.5" />
           <span>Nghe Chính Tả</span>
         </button>
       </div>
@@ -812,7 +971,7 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
             />
           </div>
 
-          {/* Status Pills */}
+          {/* Status & SRS Leitner Filter Pills */}
           <div className="flex items-center space-x-1 bg-[#F5F2ED] p-1 rounded-2xl text-xs font-bold w-full sm:w-auto overflow-x-auto no-scrollbar">
             <button
               onClick={() => setFilterStatus('all')}
@@ -821,6 +980,14 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
               }`}
             >
               Tất cả ({vocabularyWords.length})
+            </button>
+            <button
+              onClick={() => setFilterStatus('srs_due')}
+              className={`px-3 py-1.5 rounded-xl transition cursor-pointer whitespace-nowrap ${
+                filterStatus === 'srs_due' ? 'bg-indigo-700 text-white shadow-xs' : 'text-indigo-900 hover:text-[#3D3D2D]'
+              }`}
+            >
+              🔔 Cần ôn SRS
             </button>
             <button
               onClick={() => setFilterStatus('daily')}
@@ -844,12 +1011,12 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
                 filterStatus === 'mastered' ? 'bg-[#8BA888] text-white shadow-xs' : 'text-[#6B6B54] hover:text-[#3D3D2D]'
               }`}
             >
-              Đã thuộc ({masteredVocabIds.length})
+              🏆 Đã thuộc
             </button>
           </div>
         </div>
 
-        {/* Dropdown Selects */}
+        {/* Dropdown Selects & AI Story button */}
         <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-[#F5F2ED] text-xs">
           <div className="flex flex-wrap items-center gap-2 font-bold">
             <select
@@ -875,6 +1042,15 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
               <option value="medium">🟡 Khá - Giỏi (7.5 - 8.75đ)</option>
               <option value="hard">🔴 Nâng cao (9 - 10đ)</option>
             </select>
+
+            {/* AI Narrative Context Story Builder Button */}
+            <button
+              onClick={handleOpenAiStoryBuilder}
+              className="px-3 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold transition flex items-center space-x-1.5 cursor-pointer shadow-xs"
+            >
+              <BookMarked className="w-3.5 h-3.5" />
+              <span>📖 AI Kể Chuyện Xâu Chuỗi Từ Vựng</span>
+            </button>
           </div>
 
           <span className="text-xs text-[#64748B]">
@@ -884,14 +1060,20 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
       </div>
 
       {/* ═════════════════════════════════════════════════════════════ */}
-      {/* MODE 1: 3D INTERACTIVE FLASHCARD                              */}
+      {/* MODE 1: 3D INTERACTIVE FLASHCARD WITH WORD FAMILY & MNEMONICS  */}
       {/* ═════════════════════════════════════════════════════════════ */}
       {studyMode === 'flashcard' && (
-        <div className="max-w-xl mx-auto space-y-4">
+        <div className="max-w-2xl mx-auto space-y-4">
           <div className="flex items-center justify-between text-xs text-[#64748B] px-2 font-medium">
-            <span>
-              Thẻ {vocabIdx + 1} / {wordsToDisplay.length}
-            </span>
+            <div className="flex items-center space-x-2">
+              <span>
+                Thẻ {vocabIdx + 1} / {wordsToDisplay.length}
+              </span>
+              <span className="px-2 py-0.5 bg-indigo-100 text-indigo-900 text-[10px] font-extrabold rounded-md flex items-center space-x-1">
+                <Boxes className="w-3 h-3" />
+                <span>Hộp Leitner {currentBox}/5</span>
+              </span>
+            </div>
             <span className="hidden sm:inline text-[11px] text-[#8A8A70]">
               Phím tắt: [Space] Lật thẻ • [← / →] Chuyển từ • [S] Phát âm
             </span>
@@ -900,7 +1082,7 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
           {/* Flashcard Box */}
           <div
             onClick={() => setIsFlipped(!isFlipped)}
-            className="relative min-h-[380px] bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-sm p-7 sm:p-8 flex flex-col justify-between cursor-pointer hover:border-[#D9D2C5] transition select-none group"
+            className="relative min-h-[420px] bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-sm p-7 sm:p-8 flex flex-col justify-between cursor-pointer hover:border-[#D9D2C5] transition select-none group"
           >
             {/* Top meta */}
             <div className="flex items-center justify-between">
@@ -916,7 +1098,6 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
               </div>
 
               <div className="flex items-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
-                {/* Audio button */}
                 <button
                   onClick={() => speakWord(currentWord.word)}
                   className="p-2 rounded-xl bg-[#F5F2ED] text-[#5A5A40] hover:bg-blue-100 hover:text-blue-800 transition cursor-pointer"
@@ -925,7 +1106,6 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
                   <Volume2 className="w-4 h-4" />
                 </button>
 
-                {/* Star difficult toggle */}
                 <button
                   onClick={() => toggleVocabStarred(currentWord.id || currentWord.word)}
                   className={`p-2 rounded-xl border transition cursor-pointer ${
@@ -938,7 +1118,6 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
                   <Star className={`w-4 h-4 ${isEnglishStarred ? 'fill-current' : ''}`} />
                 </button>
 
-                {/* Mastered toggle */}
                 <button
                   onClick={() => toggleVocabMastered(currentWord.id || currentWord.word)}
                   className={`p-2 rounded-xl border transition cursor-pointer ${
@@ -979,20 +1158,22 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
                 </span>
                 <p className="text-xs text-emerald-700 font-semibold pt-4 flex items-center justify-center space-x-1">
                   <RotateCw className="w-3.5 h-3.5" />
-                  <span>Nhấn để xem nghĩa tiếng Việt & câu ví dụ</span>
+                  <span>Nhấn để xem nghĩa, Cây họ từ & Mẹo siêu trí nhớ</span>
                 </p>
               </div>
             ) : (
-              <div className="text-center space-y-3.5 py-2 animate-in fade-in zoom-in-95 duration-150">
-                <div className="space-y-0.5">
+              <div className="space-y-3 py-2 animate-in fade-in zoom-in-95 duration-150">
+                {/* Meaning */}
+                <div className="text-center space-y-0.5">
                   <span className="text-xs uppercase font-bold text-[#64748B]">Nghĩa tiếng Việt</span>
                   <h3 className="text-2xl sm:text-3xl font-extrabold text-[#E67E22]">
                     {currentWord.meaningVi}
                   </h3>
                 </div>
 
+                {/* Example sentence */}
                 {currentWord.exampleEn && (
-                  <div className="p-3.5 bg-[#FAF9F6] rounded-2xl border border-[#D9D2C5] text-left text-xs sm:text-sm text-[#3D3D2D] space-y-1">
+                  <div className="p-3 bg-[#FAF9F6] rounded-2xl border border-[#D9D2C5] text-xs text-[#3D3D2D] space-y-0.5">
                     <p className="italic font-medium">"{currentWord.exampleEn}"</p>
                     {currentWord.exampleVi && (
                       <p className="text-[#64748B] font-medium">→ {currentWord.exampleVi}</p>
@@ -1000,20 +1181,93 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
                   </div>
                 )}
 
-                {currentWord.collocations && currentWord.collocations.length > 0 && (
-                  <div className="text-xs text-[#5A5A40] font-medium">
-                    <strong>Collocations:</strong> {currentWord.collocations.join(', ')}
+                {/* 🌳 1. WORD FAMILY TREE (CÂY HỌ TỪ) */}
+                {currentWord.wordFamily && (
+                  <div className="p-3 bg-indigo-50/70 rounded-2xl border border-indigo-200 text-xs space-y-1.5">
+                    <div className="flex items-center space-x-1.5 font-bold text-indigo-950 text-[11px] uppercase">
+                      <span>🌳 Cây Họ Từ (Word Family):</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                      {currentWord.wordFamily.noun && (
+                        <div className="p-1.5 bg-white rounded-lg border border-indigo-100">
+                          <strong className="text-indigo-700">Noun:</strong> {currentWord.wordFamily.noun}
+                        </div>
+                      )}
+                      {currentWord.wordFamily.verb && (
+                        <div className="p-1.5 bg-white rounded-lg border border-indigo-100">
+                          <strong className="text-indigo-700">Verb:</strong> {currentWord.wordFamily.verb}
+                        </div>
+                      )}
+                      {currentWord.wordFamily.adj && (
+                        <div className="p-1.5 bg-white rounded-lg border border-indigo-100">
+                          <strong className="text-indigo-700">Adj:</strong> {currentWord.wordFamily.adj}
+                        </div>
+                      )}
+                      {currentWord.wordFamily.adv && (
+                        <div className="p-1.5 bg-white rounded-lg border border-indigo-100">
+                          <strong className="text-indigo-700">Adv:</strong> {currentWord.wordFamily.adv}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
+                {/* 💡 2. MNEMONIC STORY (MẸO LIÊN TƯỞNG SIÊU TRÍ NHỚ) */}
+                {currentWord.mnemonic && (
+                  <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-xs space-y-1">
+                    <div className="flex items-center space-x-1.5 font-bold text-amber-950 text-[11px]">
+                      <Lightbulb className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Mẹo Siêu Trí Nhớ & Câu Chuyện Liên Tưởng:</span>
+                    </div>
+                    <p className="text-amber-950 font-medium leading-relaxed italic">
+                      "{currentWord.mnemonic}"
+                    </p>
+                  </div>
+                )}
+
+                {/* 🎯 3. SYNONYMS & ANTONYMS */}
+                {(currentWord.synonyms || currentWord.antonyms) && (
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {currentWord.synonyms && currentWord.synonyms.length > 0 && (
+                      <div className="flex-1 min-w-[140px] p-2 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-950">
+                        <strong>= Đồng nghĩa:</strong> {currentWord.synonyms.join(', ')}
+                      </div>
+                    )}
+                    {currentWord.antonyms && currentWord.antonyms.length > 0 && (
+                      <div className="flex-1 min-w-[140px] p-2 bg-rose-50 rounded-xl border border-rose-200 text-[11px] text-rose-950">
+                        <strong>≠ Trái nghĩa:</strong> {currentWord.antonyms.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 📦 4. LEITNER SRS RATING BUTTONS */}
+                <div className="pt-2 flex items-center justify-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => demoteVocabSrs(currentWord.id)}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    🔴 Chưa nhớ (Reset Hộp 1)
+                  </button>
+                  <button
+                    onClick={() => {
+                      promoteVocabSrs(currentWord.id);
+                      confetti({ particleCount: 20, spread: 40, origin: { y: 0.8 } });
+                    }}
+                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    🟢 Nhớ tốt (+1 Hộp SRS)
+                  </button>
+                </div>
+
                 {/* AI Exam Questions Button */}
-                <div className="pt-2" onClick={(e) => e.stopPropagation()}>
+                <div className="pt-1 text-center" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => handleOpenAiExamGen(currentWord)}
-                    className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5 mx-auto cursor-pointer shadow-xs"
+                    className="px-3.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition inline-flex items-center space-x-1.5 cursor-pointer shadow-xs"
                   >
                     <Brain className="w-3.5 h-3.5 text-amber-300" />
-                    <span>🤖 AI Đặt 3 Câu Đề Thi Thực Chiến</span>
+                    <span>🤖 AI Đặt 3 Câu Đề Thi Vào 10</span>
                   </button>
                 </div>
               </div>
@@ -1051,6 +1305,103 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════════ */}
+      {/* MODE 6: 60-SECOND VOCAB BLITZ SURVIVAL CHALLENGE              */}
+      {/* ═════════════════════════════════════════════════════════════ */}
+      {studyMode === 'blitz60' && (
+        <div className="max-w-xl mx-auto space-y-4">
+          {!blitzIsActive && !blitzGameOver && (
+            <div className="p-8 sm:p-10 bg-white rounded-[2.5rem] border border-[#EAE7E0] text-center space-y-5 shadow-sm">
+              <div className="w-20 h-20 rounded-3xl bg-rose-100 text-rose-700 flex items-center justify-center text-4xl mx-auto animate-pulse">
+                ⚡
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black text-[#3D3D2D]">Thử Thách Sinh Tồn 60 Giây</h3>
+                <p className="text-xs sm:text-sm text-[#64748B] leading-relaxed">
+                  Nhận diện nhanh nghĩa từ vựng dưới áp lực thời gian!
+                  <br />
+                  <strong className="text-emerald-700">Đúng: +2 giây</strong> • <strong className="text-rose-700">Sai: -3 giây</strong>
+                </p>
+              </div>
+              <button
+                onClick={startBlitzSurvival}
+                className="px-8 py-3.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-sm rounded-2xl transition cursor-pointer shadow-md"
+              >
+                Bắt đầu thử thách ngay!
+              </button>
+            </div>
+          )}
+
+          {blitzGameOver && (
+            <div className="p-8 sm:p-10 bg-white rounded-[2.5rem] border border-[#EAE7E0] text-center space-y-5 shadow-sm animate-in zoom-in-95">
+              <div className="w-20 h-20 rounded-3xl bg-amber-100 text-amber-700 flex items-center justify-center text-4xl mx-auto">
+                🏆
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black text-[#3D3D2D]">Hết Giờ Sinh Tồn!</h3>
+                <p className="text-sm text-[#64748B]">
+                  Bạn đã vượt qua được <strong className="text-emerald-700 text-lg font-black">{blitzScore}</strong> từ vựng!
+                </p>
+                <div className="p-3 bg-[#FAF9F6] rounded-xl border border-[#D9D2C5] text-xs text-[#5A5A40] font-bold">
+                  🔥 Chuỗi đúng liên tiếp dài nhất: {blitzMaxStreak} câu
+                </div>
+              </div>
+              <button
+                onClick={startBlitzSurvival}
+                className="px-8 py-3.5 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-2xl transition cursor-pointer shadow-xs"
+              >
+                Chơi lại ván mới
+              </button>
+            </div>
+          )}
+
+          {blitzIsActive && currentBlitzItem && (
+            <div className="bg-white rounded-[2.5rem] border border-[#EAE7E0] p-6 sm:p-8 space-y-5 shadow-sm">
+              {/* Blitz Timer and Score bar */}
+              <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED]">
+                <div className="flex items-center space-x-2">
+                  <Timer className={`w-5 h-5 ${blitzTimeLeft < 15 ? 'text-rose-600 animate-bounce' : 'text-orange-600'}`} />
+                  <span className={`text-base font-black font-mono ${blitzTimeLeft < 15 ? 'text-rose-600' : 'text-[#3D3D2D]'}`}>
+                    {blitzTimeLeft}s
+                  </span>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-bold text-amber-700">🔥 Combo x{blitzStreak}</span>
+                  <span className="px-3 py-1 bg-emerald-100 text-emerald-900 rounded-full text-xs font-black">
+                    Điểm: {blitzScore}
+                  </span>
+                </div>
+              </div>
+
+              {/* Word Box */}
+              <div className={`text-center space-y-2 py-4 rounded-2xl transition-colors ${
+                blitzFeedback === 'correct' ? 'bg-emerald-50' : blitzFeedback === 'wrong' ? 'bg-red-50' : ''
+              }`}>
+                <h3 className="text-3xl sm:text-4xl font-black text-[#3D3D2D]">
+                  {currentBlitzItem.targetWord.word}
+                </h3>
+                <p className="text-xs text-[#8A8A70] font-mono">{currentBlitzItem.targetWord.ipa}</p>
+              </div>
+
+              {/* 4 Options */}
+              <div className="grid grid-cols-1 gap-2.5">
+                {currentBlitzItem.options.map((opt, optIdx) => (
+                  <button
+                    key={optIdx}
+                    onClick={() => handleBlitzAnswer(optIdx)}
+                    className="p-4 rounded-2xl border bg-[#FAF9F6] border-[#EAE7E0] hover:border-rose-500 hover:bg-rose-50/50 text-xs sm:text-sm font-bold text-[#3D3D2D] transition text-left cursor-pointer active:scale-98"
+                  >
+                    <span className="mr-2">{String.fromCharCode(65 + optIdx)}.</span>
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1139,7 +1490,6 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
                   )}
                 </div>
 
-                {/* Result banner if checked */}
                 {clozeChecked && (
                   <div className={`p-4 rounded-2xl text-xs font-medium space-y-1 ${
                     clozeIsCorrect ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-red-100 text-red-900 border border-red-300'
@@ -1185,7 +1535,6 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
       {/* ═════════════════════════════════════════════════════════════ */}
       {studyMode === 'matching' && (
         <div className="max-w-2xl mx-auto space-y-4">
-          {/* Header timer & score */}
           <div className="bg-white p-4 rounded-[2rem] border border-[#EAE7E0] shadow-sm flex items-center justify-between">
             <div className="flex items-center space-x-2 text-xs font-bold text-[#3D3D2D]">
               <Clock className="w-4 h-4 text-orange-600" />
@@ -1526,6 +1875,78 @@ Trả về DUY NHẤT một JSON Array hợp lệ:
                 Không tạo được câu hỏi. Vui lòng thử lại sau.
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ═════════════════════════════════════════════════════════════ */}
+      {/* AI NARRATIVE CONTEXT STORY BUILDER MODAL                      */}
+      {/* ═════════════════════════════════════════════════════════════ */}
+      {aiStoryModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-2xl max-w-2xl w-full p-6 sm:p-8 space-y-5 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#F5F2ED]">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <BookMarked className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-extrabold text-[#3D3D2D]">
+                    AI Kể Chuyện Xâu Chuỗi Từ Vựng
+                  </h3>
+                  <p className="text-[11px] text-[#8A8A70]">
+                    Kích hoạt Narrative Memory để ghi nhớ từ vựng qua một câu chuyện ngắn
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setAiStoryModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-[#FAF9F6] text-[#8A8A70] hover:text-[#3D3D2D] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {aiStoryLoading ? (
+              <div className="py-12 text-center space-y-3">
+                <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                <p className="text-xs font-bold text-[#5A5A40]">
+                  AI đang sáng tác câu chuyện xâu chuỗi các từ vựng cho bạn...
+                </p>
+              </div>
+            ) : aiGeneratedStory ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-emerald-50/70 rounded-2xl border border-emerald-200 space-y-2">
+                  <span className="text-xs font-extrabold text-emerald-900 block">🇬🇧 Câu chuyện Tiếng Anh:</span>
+                  <p className="text-xs sm:text-sm text-emerald-950 leading-relaxed font-medium">
+                    {aiGeneratedStory.storyEn}
+                  </p>
+                </div>
+
+                <div className="p-4 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] space-y-2">
+                  <span className="text-xs font-extrabold text-[#5A5A40] block">🇻🇳 Bản dịch Tiếng Việt:</span>
+                  <p className="text-xs sm:text-sm text-[#4A4A4A] leading-relaxed">
+                    {aiGeneratedStory.storyVi}
+                  </p>
+                </div>
+
+                {aiGeneratedStory.wordsUsed && (
+                  <div className="text-xs text-[#64748B]">
+                    <strong>Từ vựng đã dùng: </strong> {aiGeneratedStory.wordsUsed.join(', ')}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            <div className="flex items-center justify-end pt-2 border-t border-[#F5F2ED]">
+              <button
+                onClick={() => setAiStoryModalOpen(false)}
+                className="px-5 py-2 bg-[#5A5A40] hover:bg-[#3D3D2D] text-white rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}
