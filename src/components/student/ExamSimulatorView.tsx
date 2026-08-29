@@ -46,12 +46,14 @@ import {
 
 interface ExamSimulatorViewProps {
   examId?: string;
+  autoStart?: boolean;
   onBackToDashboard: () => void;
   onOpenAiTutor?: (q: Question) => void;
 }
 
 export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   examId,
+  autoStart = false,
   onBackToDashboard,
 }) => {
   const {
@@ -79,19 +81,48 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
   const exam = exams.find((e) => e.id === selectedExamId) || subjectExams[0] || exams[0];
 
   useEffect(() => {
-    setStage('intro');
     setCompletedAttempt(null);
     setUserAnswers({});
     setFlaggedIds([]);
     setCurrentIdx(0);
     setAiEvaluation(null);
     setAiError(null);
-    if (examId && subjectExams.some((e) => e.id === examId)) {
-      setSelectedExamId(examId);
-    } else if (subjectExams.length > 0) {
-      setSelectedExamId(subjectExams[0].id);
+
+    const targetId =
+      examId && subjectExams.some((e) => e.id === examId)
+        ? examId
+        : subjectExams.length > 0
+        ? subjectExams[0].id
+        : defaultInitialExamId;
+
+    setSelectedExamId(targetId);
+
+    if (autoStart) {
+      // Auto-start directly into active exam without intro screen!
+      const targetExam = exams.find((e) => e.id === targetId) || subjectExams[0] || exams[0];
+      if (targetExam) {
+        try {
+          const dKey = `edu10_exam_draft_${targetId}_${currentUser?.id || 'guest'}`;
+          const raw = localStorage.getItem(dKey);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.userAnswers && Object.keys(parsed.userAnswers).length > 0) {
+              setUserAnswers(parsed.userAnswers);
+              if (parsed.flaggedIds) setFlaggedIds(parsed.flaggedIds);
+              if (parsed.timeLeft) setTimeLeft(parsed.timeLeft);
+              if (typeof parsed.currentIdx === 'number') setCurrentIdx(parsed.currentIdx);
+              setStage('active');
+              return;
+            }
+          }
+        } catch (_) {}
+
+        handleStartExam(targetId);
+      }
+    } else {
+      setStage('intro');
     }
-  }, [examId, currentSubject]);
+  }, [examId, autoStart, currentSubject]);
 
   // Exam States
   const [stage, setStage] = useState<'intro' | 'active' | 'result'>('intro');
@@ -715,7 +746,7 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
     const isCurrentBookmarked = isBookmarked(currentQ.id);
 
     return (
-      <div className="max-w-6xl mx-auto space-y-3 sm:space-y-4 pb-6">
+      <div className={isFullscreen ? "fixed inset-0 z-50 bg-[#FAF9F6] p-3 sm:p-6 overflow-y-auto flex flex-col justify-between shadow-2xl" : "max-w-6xl mx-auto space-y-3 sm:space-y-4 pb-6"}>
         {/* Top Control Bar */}
         <div className="bg-white rounded-2xl sm:rounded-[2rem] border border-[#EAE7E0] shadow-xs p-3 sm:p-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 sm:gap-4 sticky top-0 sm:top-2 z-20">
           <div className="min-w-0 flex-1">
@@ -776,35 +807,40 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
               <span>{formatTime(timeLeft)}</span>
             </div>
 
-            {/* Zen / Focus Mode Toggle */}
-            <button
-              onClick={() => setIsFocusMode(!isFocusMode)}
-              title="Chế độ tập trung (Zen Mode)"
-              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center space-x-1 ${isFocusMode ? 'bg-[#1E3A8A] text-white border-blue-900 shadow-sm' : 'bg-[#FAF9F6] text-[#5A5A40] border-[#D9D2C5] hover:bg-[#E8E2D9]'
-                }`}
-            >
-              <span>🎯</span>
-              <span className="hidden sm:inline">{isFocusMode ? 'Thoát Zen Mode' : 'Zen Mode'}</span>
-            </button>
+            {/* Only show Zen mode and Scratchpad if NOT in pure fullscreen mode */}
+            {!isFullscreen && (
+              <>
+                {/* Zen / Focus Mode Toggle */}
+                <button
+                  onClick={() => setIsFocusMode(!isFocusMode)}
+                  title="Chế độ tập trung (Zen Mode)"
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center space-x-1 ${isFocusMode ? 'bg-[#1E3A8A] text-white border-blue-900 shadow-sm' : 'bg-[#FAF9F6] text-[#5A5A40] border-[#D9D2C5] hover:bg-[#E8E2D9]'
+                    }`}
+                >
+                  <span>🎯</span>
+                  <span className="hidden sm:inline">{isFocusMode ? 'Thoát Zen Mode' : 'Zen Mode'}</span>
+                </button>
 
-            {/* Scratchpad Toggle */}
-            <button
-              onClick={handleOpenScratchpad}
-              title="Bảng nháp / Tính nhanh"
-              className="px-2.5 py-1.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#5A5A40] transition cursor-pointer flex items-center space-x-1"
-            >
-              <span>📝</span>
-              <span className="hidden sm:inline">Nháp</span>
-            </button>
+                {/* Scratchpad Toggle */}
+                <button
+                  onClick={handleOpenScratchpad}
+                  title="Bảng nháp / Tính nhanh"
+                  className="px-2.5 py-1.5 bg-[#FAF9F6] hover:bg-[#E8E2D9] border border-[#D9D2C5] rounded-xl text-xs font-bold text-[#5A5A40] transition cursor-pointer flex items-center space-x-1"
+                >
+                  <span>📝</span>
+                  <span className="hidden sm:inline">Nháp</span>
+                </button>
 
-            {/* Abandon Exam Button */}
-            <button
-              onClick={handleAbandonExam}
-              title="Tạm dừng / Hủy bài thi"
-              className="px-2.5 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition cursor-pointer hidden sm:block"
-            >
-              <span>Thoát</span>
-            </button>
+                {/* Abandon Exam Button */}
+                <button
+                  onClick={handleAbandonExam}
+                  title="Tạm dừng / Hủy bài thi"
+                  className="px-2.5 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition cursor-pointer hidden sm:block"
+                >
+                  <span>Thoát</span>
+                </button>
+              </>
+            )}
 
             <button
               onClick={() => setShowSubmitModal(true)}

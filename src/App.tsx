@@ -76,10 +76,12 @@ const AppContent: React.FC = () => {
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
   const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false);
   const [activeExamId, setActiveExamId] = useState<string>('exam_official_01');
+  const [autoStartExam, setAutoStartExam] = useState<boolean>(false);
   const [activePracticeTopicId, setActivePracticeTopicId] = useState<string>('grammar');
 
-  const handleStartExam = (examId: string) => {
+  const handleStartExam = (examId: string, autoStart = true) => {
     setActiveExamId(examId);
+    setAutoStartExam(autoStart);
     setActiveTab('mock_exam');
   };
 
@@ -174,23 +176,27 @@ const AppContent: React.FC = () => {
     );
   }
 
+  const isExamMode = activeTab === 'mock_exam';
+
   // ═════════════════════════════════════════════════════════════════
   // 🎓 STUDENT PORTAL (Trang Luyện Thi Cho Học Sinh)
   // ═════════════════════════════════════════════════════════════════
   return (
     <div className={`flex flex-col lg:flex-row h-screen w-full ${isMath ? 'bg-[#F0F4F8]' : 'bg-[#F5F2ED]'} text-[#334155] font-sans overflow-hidden transition-colors duration-300`}>
-      {/* Sidebar Navigation (Desktop) & Top Header + Bottom Bar (Mobile) */}
-      <Navbar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        onOpenTargetModal={() => setTargetModalOpen(true)}
-        onOpenAuthModal={() => setAuthModalOpen(true)}
-        onOpenProfileModal={() => setProfileModalOpen(true)}
-      />
+      {/* Sidebar Navigation (Desktop) & Top Header + Bottom Bar (Mobile) - Hidden during exam */}
+      {!isExamMode && (
+        <Navbar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onOpenTargetModal={() => setTargetModalOpen(true)}
+          onOpenAuthModal={() => setAuthModalOpen(true)}
+          onOpenProfileModal={() => setProfileModalOpen(true)}
+        />
+      )}
 
       {/* Main Content Area */}
-      <main className="flex-1 p-3.5 sm:p-6 lg:p-8 pb-20 lg:pb-8 flex flex-col overflow-y-auto w-full">
-        <div className="max-w-6xl w-full mx-auto">
+      <main className={`flex-1 flex flex-col overflow-y-auto w-full ${isExamMode ? 'p-2 sm:p-4 md:p-6' : 'p-3.5 sm:p-6 lg:p-8 pb-20 lg:pb-8'}`}>
+        <div className={`${isExamMode ? 'max-w-7xl' : 'max-w-6xl'} w-full mx-auto`}>
           <Suspense fallback={<LoadingSpinner />}>
             {activeTab === 'dashboard' && (
               <Dashboard
@@ -215,7 +221,11 @@ const AppContent: React.FC = () => {
             {activeTab === 'mock_exam' && (
               <ExamSimulatorView
                 examId={activeExamId}
-                onBackToDashboard={() => setActiveTab('dashboard')}
+                autoStart={autoStartExam}
+                onBackToDashboard={() => {
+                  setAutoStartExam(false);
+                  setActiveTab('dashboard');
+                }}
               />
             )}
 
@@ -252,11 +262,13 @@ const AppContent: React.FC = () => {
         </div>
       </main>
 
-      {/* Real-time remote task listener banner */}
-      <RealtimeStudentTaskListener
-        onStartExam={handleStartExam}
-        onPracticeTopic={handlePracticeTopic}
-      />
+      {/* Real-time remote task listener banner - Hidden during exam */}
+      {!isExamMode && (
+        <RealtimeStudentTaskListener
+          onStartExam={handleStartExam}
+          onPracticeTopic={handlePracticeTopic}
+        />
+      )}
 
       {/* Target Setting Modal */}
       <TargetSettingModal
