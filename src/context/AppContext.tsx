@@ -131,6 +131,7 @@ interface AppContextType {
   dailyVocabConfig: DailyVocabSyncConfig;
   learnedVocabIds: string[];
   masteredVocabIds: string[];
+  starredVocabIds: string[];
   addVocabularyWord: (word: Omit<VocabularyWord, 'id'>) => VocabularyWord;
   updateVocabularyWord: (id: string, updates: Partial<VocabularyWord>) => void;
   deleteVocabularyWord: (id: string) => void;
@@ -139,6 +140,7 @@ interface AppContextType {
   updateDailyVocabConfig: (updates: Partial<DailyVocabSyncConfig>) => void;
   toggleVocabLearned: (id: string) => void;
   toggleVocabMastered: (id: string) => void;
+  toggleVocabStarred: (id: string) => void;
 
   // Analytics & Stats (Calculated dynamically for current subject and overall)
   analytics: {
@@ -404,6 +406,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [masteredVocabIds, setMasteredVocabIds] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem(`edu10_mastered_vocab_${currentUser.id}`);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [starredVocabIds, setStarredVocabIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(`edu10_starred_vocab_${currentUser.id}`);
       return raw ? JSON.parse(raw) : [];
     } catch {
       return [];
@@ -1451,6 +1461,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const toggleVocabStarred = (id: string) => {
+    setStarredVocabIds((prev) => {
+      const updated = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      localStorage.setItem(`edu10_starred_vocab_${currentUser.id}`, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   // Background midnight auto-check (12h đêm / 00:00)
   useEffect(() => {
     const checkMidnightSync = () => {
@@ -1707,6 +1725,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dailyVocabConfig,
         learnedVocabIds,
         masteredVocabIds,
+        starredVocabIds,
         addVocabularyWord,
         updateVocabularyWord,
         deleteVocabularyWord,
@@ -1715,6 +1734,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateDailyVocabConfig,
         toggleVocabLearned,
         toggleVocabMastered,
+        toggleVocabStarred,
         themeMode,
         setThemeMode,
         analytics,
