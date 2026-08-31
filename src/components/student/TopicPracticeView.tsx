@@ -1,12 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { TOPICS_META } from '../../data/topicsMeta';
 import { MATH_TOPICS_META } from '../../data/mathTopicsMeta';
-import { Question, TopicId } from '../../types';
+import { SENTENCE_REWRITE_PROBLEMS } from '../../data/sentenceRewriteData';
+import { Question, TopicId, SentenceRewriteProblem, SentenceGradingResult } from '../../types';
 import {
   generateExamWithAI,
   getStoredApiKey,
 } from '../../services/aiExamService';
+import { evaluateSentenceRewriteWithAI } from '../../services/aiSentenceGradingService';
+import { QuickVocabNoteModal } from '../common/QuickVocabNoteModal';
 import {
   CheckCircle2,
   XCircle,
@@ -22,6 +25,14 @@ import {
   Zap,
   Lightbulb,
   AlertTriangle,
+  PenTool,
+  Check,
+  Send,
+  HelpCircle,
+  BookMarked,
+  Layers,
+  ArrowRight,
+  CheckCheck,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -53,7 +64,10 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('all');
   const [questionCount, setQuestionCount] = useState<number>(10);
 
-  // Active practice session states
+  // Practice Mode: 'quiz' (Trắc nghiệm) or 'essay' (Tự luận viết lại câu)
+  const [practiceMode, setPracticeMode] = useState<'quiz' | 'essay'>('quiz');
+
+  // Active Multiple-Choice practice session states
   const [isPracticing, setIsPracticing] = useState<boolean>(false);
   const [practiceQuestions, setPracticeQuestions] = useState<Question[]>([]);
   const [currentIdx, setCurrentIdx] = useState<number>(0);
@@ -62,19 +76,101 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
   const [isFinished, setIsFinished] = useState<boolean>(false);
   const [startTime, setStartTime] = useState<number>(Date.now());
 
+  // Active Sentence Rewrite Essay states
+  const [essayProblems, setEssayProblems] = useState<SentenceRewriteProblem[]>([]);
+  const [essayIdx, setEssayIdx] = useState<number>(0);
+  const [studentEssayInput, setStudentEssayInput] = useState<string>('');
+  const [essayResults, setEssayResults] = useState<Record<string, SentenceGradingResult>>({});
+  const [isGradingEssay, setIsGradingEssay] = useState<boolean>(false);
+  const [essayFinished, setEssayFinished] = useState<boolean>(false);
+
+  // Quick Vocab Modal State
+  const [vocabModalOpen, setVocabModalOpen] = useState<boolean>(false);
+  const [vocabModalWord, setVocabModalWord] = useState<string>('');
+  const [vocabModalContext, setVocabModalContext] = useState<string>('');
+  const [vocabModalSource, setVocabModalSource] = useState<string>('Luyện chuyên đề');
+
+  // Floating text selection state
+  const [selectedText, setSelectedText] = useState<string>('');
+  const [floatingPos, setFloatingPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Listen for text selection
+  useEffect(() => {
+    const handleSelection = () => {
+      if (typeof window === 'undefined') return;
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) {
+        const text = sel.toString().trim();
+        if (text.length >= 2 && text.length <= 60 && !text.includes('\n')) {
+          const range = sel.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          setSelectedText(text);
+          setFloatingPos({
+            x: Math.max(10, Math.min(window.innerWidth - 160, rect.left + rect.width / 2 - 60)),
+            y: Math.max(10, rect.top - 42 + window.scrollY),
+          });
+          return;
+        }
+      }
+      setFloatingPos(null);
+    };
+
+    document.addEventListener('mouseup', handleSelection);
+    document.addEventListener('keyup', handleSelection);
+    return () => {
+      document.removeEventListener('mouseup', handleSelection);
+      document.removeEventListener('keyup', handleSelection);
+    };
+  }, []);
+
+  const openVocabModalWithSelection = () => {
+    if (!selectedText) return;
+    setVocabModalWord(selectedText);
+    setVocabModalContext(
+      practiceMode === 'essay' && essayProblems[essayIdx]
+        ? essayProblems[essayIdx].originalSentence
+        : currentQ?.content || ''
+    );
+    setVocabModalSource(
+      `Chuyên đề: ${currentTopicsMeta.find((t) => t.id === selectedTopic)?.nameVi || 'Luyện tập'}`
+    );
+    setVocabModalOpen(true);
+    setFloatingPos(null);
+  };
+
   // Update selected topic & reset practice state when subject changes
   useEffect(() => {
     setIsPracticing(false);
     setIsFinished(false);
+    setEssayFinished(false);
     setUserAnswers({});
     setCheckedQuestions({});
+    setEssayResults({});
+    setStudentEssayInput('');
     setCurrentIdx(0);
+    setEssayIdx(0);
+
     if (initialTopicId) {
       setSelectedTopic(initialTopicId as TopicId);
+      if (initialTopicId === 'sentence_rewrite') {
+        setPracticeMode('essay');
+      } else {
+        setPracticeMode('quiz');
+      }
     } else {
       setSelectedTopic(currentSubject === 'math' ? 'math_pt_bac_hai_viet' : 'grammar');
+      setPracticeMode('quiz');
     }
   }, [currentSubject, initialTopicId]);
+
+  // When switching topic to sentence_rewrite, default to essay mode
+  useEffect(() => {
+    if (selectedTopic === 'sentence_rewrite') {
+      setPracticeMode('essay');
+    } else {
+      setPracticeMode('quiz');
+    }
+  }, [selectedTopic]);
 
   // AI Topic Generator States
   const [showAiModal, setShowAiModal] = useState<boolean>(false);
@@ -94,7 +190,7 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
     selectedBorder: isMath ? 'border-[#1E3A8A]' : 'border-[#5A5A40]',
   };
 
-  // Filter pool by topic, subject & difficulty
+  // Filter pool for multiple-choice
   const topicQuestionsPool = questions.filter((q) => {
     if ((q.subject || 'english') !== currentSubject) return false;
     if (q.topicId !== selectedTopic) return false;
@@ -102,7 +198,19 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
     return true;
   });
 
+  // Filter pool for Sentence Rewrite Essay
+  const essayProblemsPool = SENTENCE_REWRITE_PROBLEMS.filter((p) => {
+    if (selectedDifficulty !== 'all' && p.difficulty !== selectedDifficulty) return false;
+    return true;
+  });
+
+  // START MULTIPLE-CHOICE PRACTICE
   const handleStartPractice = () => {
+    if (selectedTopic === 'sentence_rewrite' && practiceMode === 'essay') {
+      handleStartEssayPractice();
+      return;
+    }
+
     const shuffled = [...topicQuestionsPool].sort(() => 0.5 - Math.random());
     const picked = shuffled.slice(0, Math.min(questionCount, shuffled.length));
 
@@ -127,6 +235,25 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
     setStartTime(Date.now());
   };
 
+  // START ESSAY PRACTICE
+  const handleStartEssayPractice = () => {
+    const shuffled = [...essayProblemsPool].sort(() => 0.5 - Math.random());
+    const picked = shuffled.slice(0, Math.min(questionCount, shuffled.length));
+
+    if (picked.length === 0) {
+      picked.push(...SENTENCE_REWRITE_PROBLEMS.slice(0, questionCount));
+    }
+
+    setEssayProblems(picked);
+    setEssayIdx(0);
+    setStudentEssayInput('');
+    setEssayResults({});
+    setEssayFinished(false);
+    setIsPracticing(true);
+    setStartTime(Date.now());
+  };
+
+  // AI GENERATION HANDLER
   const handleGenerateWithAI = async () => {
     setAiLoading(true);
     setAiError(null);
@@ -171,6 +298,7 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
     }
   };
 
+  // MULTIPLE CHOICE HANDLERS
   const currentQ = practiceQuestions[currentIdx];
   const isCurrentChecked = currentQ ? checkedQuestions[currentQ.id] : false;
   const userChoice = currentQ ? userAnswers[currentQ.id] : undefined;
@@ -224,10 +352,97 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
     }
   };
 
+  // ESSAY PRACTICE HANDLERS
+  const currentEssay = essayProblems[essayIdx];
+  const currentEssayResult = currentEssay ? essayResults[currentEssay.id] : undefined;
+
+  const handleGradeCurrentEssay = async () => {
+    if (!currentEssay || !studentEssayInput.trim() || isGradingEssay) return;
+
+    setIsGradingEssay(true);
+    try {
+      const res = await evaluateSentenceRewriteWithAI(currentEssay, studentEssayInput);
+      setEssayResults((prev) => ({ ...prev, [currentEssay.id]: res }));
+      if (res.isCorrect && res.score >= 8.5) {
+        confetti({ particleCount: 40, spread: 50 });
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsGradingEssay(false);
+    }
+  };
+
+  const handleNextEssay = () => {
+    if (essayIdx < essayProblems.length - 1) {
+      setEssayIdx((prev) => prev + 1);
+      setStudentEssayInput('');
+    } else {
+      finishEssayPractice();
+    }
+  };
+
+  const finishEssayPractice = () => {
+    let totalScore = 0;
+    let correctCount = 0;
+    essayProblems.forEach((p) => {
+      const res = essayResults[p.id];
+      if (res) {
+        totalScore += res.score;
+        if (res.isCorrect || res.score >= 8.0) correctCount += 1;
+      }
+    });
+
+    const totalQ = essayProblems.length;
+    const avgScore = totalQ > 0 ? totalScore / totalQ : 0;
+    const timeSpent = Math.round((Date.now() - startTime) / 1000);
+    const scorePct = Math.round(avgScore * 10);
+
+    savePracticeSession({
+      subject: currentSubject,
+      type: 'topic',
+      topicId: 'sentence_rewrite',
+      date: new Date().toISOString(),
+      totalQuestions: totalQ,
+      correctCount,
+      scorePercent: scorePct,
+      timeSpentSeconds: timeSpent,
+      questionIds: essayProblems.map((p) => p.id),
+      userAnswers: {},
+    });
+
+    setEssayFinished(true);
+    if (scorePct >= 70) {
+      confetti({ particleCount: 60, spread: 60 });
+    }
+  };
+
+  // ═══════════════════════════════════════════════
   // 1. CONFIGURATION VIEW
+  // ═══════════════════════════════════════════════
   if (!isPracticing) {
     return (
       <div className="max-w-4xl mx-auto space-y-6 pb-12">
+        {/* Floating Quick Vocab Note Pill */}
+        {floatingPos && selectedText && (
+          <div
+            style={{ top: `${floatingPos.y}px`, left: `${floatingPos.x}px` }}
+            className="fixed z-50 bg-[#3D3D2D] text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-2xl flex items-center space-x-1.5 animate-in fade-in cursor-pointer hover:bg-black"
+            onClick={openVocabModalWithSelection}
+          >
+            <BookMarked className="w-3.5 h-3.5 text-[#8BA888]" />
+            <span>Note từ mới: "{selectedText.slice(0, 15)}..."</span>
+          </div>
+        )}
+
+        <QuickVocabNoteModal
+          isOpen={vocabModalOpen}
+          onClose={() => setVocabModalOpen(false)}
+          initialWord={vocabModalWord}
+          contextSentence={vocabModalContext}
+          sourceTitle={vocabModalSource}
+        />
+
         <div className="flex items-center space-x-3">
           <button
             onClick={onBackToDashboard}
@@ -240,7 +455,7 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
               Luyện Chuyên Đề: {currentSubject === 'math' ? 'Môn Toán 10' : 'Môn Tiếng Anh 10'}
             </h2>
             <p className="text-xs sm:text-sm text-[#8A8A70]">
-              Chủ động lựa chọn nội dung kiến thức, độ khó và số lượng câu muốn ôn luyện
+              Chủ động lựa chọn nội dung kiến thức, chế độ tự luận hoặc trắc nghiệm để ôn luyện
             </p>
           </div>
         </div>
@@ -253,9 +468,10 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {currentTopicsMeta.map((t) => {
               const isSelected = selectedTopic === t.id;
-              const countInBank = questions.filter(
-                (q) => (q.subject || 'english') === currentSubject && q.topicId === t.id
-              ).length;
+              const countInBank =
+                t.id === 'sentence_rewrite'
+                  ? `${SENTENCE_REWRITE_PROBLEMS.length} câu tự luận`
+                  : `${questions.filter((q) => (q.subject || 'english') === currentSubject && q.topicId === t.id).length} câu`;
 
               return (
                 <button
@@ -281,10 +497,17 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
                           isSelected ? 'text-[#D9D2C5]' : 'text-[#8A8A70]'
                         }`}
                       >
-                        {countInBank} câu
+                        {countInBank}
                       </span>
                     </div>
-                    <h4 className="font-bold text-xs sm:text-sm leading-tight">{t.nameVi}</h4>
+                    <h4 className="font-bold text-xs sm:text-sm leading-tight flex items-center space-x-1.5">
+                      <span>{t.nameVi}</span>
+                      {t.id === 'sentence_rewrite' && (
+                        <span className="px-1.5 py-0.5 bg-amber-400 text-amber-950 text-[9px] font-black rounded-md uppercase tracking-wider">
+                          Tự Luận AI
+                        </span>
+                      )}
+                    </h4>
                   </div>
                   <p
                     className={`text-[11px] mt-2 line-clamp-2 ${
@@ -298,6 +521,61 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
             })}
           </div>
         </div>
+
+        {/* Special Essay Mode Toggle for Sentence Rewriting */}
+        {selectedTopic === 'sentence_rewrite' && currentSubject === 'english' && (
+          <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-[2rem] space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <PenTool className="w-5 h-5 text-blue-600" />
+                <h4 className="text-sm font-bold text-blue-900">
+                  Chế độ Làm Bài Cho Chuyên Đề Viết Lại Câu:
+                </h4>
+              </div>
+              <span className="px-2.5 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded-full">
+                AI Chấm & Sửa Lỗi Chi Tiết
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPracticeMode('essay')}
+                className={`p-3 rounded-2xl border text-left font-bold transition cursor-pointer flex items-center space-x-2.5 ${
+                  practiceMode === 'essay'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                    : 'bg-white text-blue-900 border-blue-200 hover:bg-blue-100/50'
+                }`}
+              >
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${practiceMode === 'essay' ? 'bg-white/20' : 'bg-blue-100'}`}>
+                  ✍️
+                </div>
+                <div>
+                  <p className="text-xs">Chế Độ Tự Luận (Khuyên dùng)</p>
+                  <p className="text-[10px] font-normal opacity-85">Tự gõ câu viết lại, AI chấm điểm 10/10</p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPracticeMode('quiz')}
+                className={`p-3 rounded-2xl border text-left font-bold transition cursor-pointer flex items-center space-x-2.5 ${
+                  practiceMode === 'quiz'
+                    ? 'bg-[#5A5A40] text-white border-[#5A5A40] shadow-sm'
+                    : 'bg-white text-[#4A4A4A] border-[#EAE7E0] hover:bg-[#FAF9F6]'
+                }`}
+              >
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${practiceMode === 'quiz' ? 'bg-white/20' : 'bg-[#F5F2ED]'}`}>
+                  🔘
+                </div>
+                <div>
+                  <p className="text-xs">Chế Độ Trắc Nghiệm</p>
+                  <p className="text-[10px] font-normal opacity-85">Chọn 1 trong 4 đáp án A, B, C, D</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Options: Difficulty & Question Count */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white p-6 rounded-[2.5rem] border border-[#EAE7E0] shadow-sm">
@@ -348,211 +626,330 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
             </div>
 
             <div className={`mt-4 p-3.5 rounded-2xl text-xs flex items-center justify-between ${isMath ? 'bg-blue-50 text-blue-900 border border-blue-200' : 'bg-[#FAF9F6] text-[#5A5A40] border border-[#D9D2C5]'}`}>
-              <span>Có <strong>{topicQuestionsPool.length}</strong> câu hỏi có sẵn trong kho đề.</span>
-            </div>
-          </div>
-        </div>
-
-        {/* AI Generator Feature Card */}
-        <div className={`p-5 rounded-[2.5rem] text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm ${isMath ? 'bg-gradient-to-r from-[#1E3A8A] to-[#2563EB]' : 'bg-gradient-to-r from-[#5A5A40] to-[#789675]'}`}>
-          <div className="space-y-1">
-            <div className="flex items-center space-x-2">
-              <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-200">
-                AI Exam Generator Cho Chuyên Đề
+              <span>
+                {selectedTopic === 'sentence_rewrite' && practiceMode === 'essay'
+                  ? `Có ${essayProblemsPool.length} câu tự luận viết lại câu chuẩn thi vào 10.`
+                  : `Có ${topicQuestionsPool.length} câu hỏi có sẵn trong kho đề.`}
               </span>
             </div>
-            <h4 className="text-base font-bold text-white">
-              Cần thêm câu hỏi mới về "{currentTopicsMeta.find((t) => t.id === selectedTopic)?.nameVi}"?
-            </h4>
-            <p className="text-xs text-white/80 max-w-lg">
-              Yêu cầu Gemini AI tự động biên soạn 5 - 15 câu hỏi mới toanh kèm lời giải chi tiết và bẫy thi cử cho riêng chuyên đề này!
-            </p>
           </div>
-
-          <button
-            onClick={() => setShowAiModal(true)}
-            className="px-5 py-3 bg-white text-[#1E293B] hover:bg-white/90 rounded-2xl text-xs font-bold shadow-sm transition flex items-center space-x-2 shrink-0 cursor-pointer"
-          >
-            <Wand2 className="w-4 h-4 text-amber-500" />
-            <span>AI Tạo Đề Chuyên Đề</span>
-          </button>
         </div>
 
         {/* Start Button */}
         <button
           onClick={handleStartPractice}
           id="btn-start-topic-practice"
-          className={`w-full py-4 ${theme.primaryBg} hover:opacity-90 text-white rounded-[2rem] text-sm font-bold shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer`}
+          className={`w-full py-4 ${selectedTopic === 'sentence_rewrite' && practiceMode === 'essay' ? 'bg-blue-600 hover:bg-blue-700' : theme.primaryBg} hover:opacity-90 text-white rounded-[2rem] text-sm font-bold shadow-sm transition flex items-center justify-center space-x-2 cursor-pointer`}
         >
-          <span>Bắt đầu Luyện tập ({topicQuestionsPool.length} câu có sẵn)</span>
+          <span>
+            {selectedTopic === 'sentence_rewrite' && practiceMode === 'essay'
+              ? `Bắt đầu Luyện Tự Luận Viết Lại Câu (AI Chấm Điểm)`
+              : `Bắt đầu Luyện tập (${topicQuestionsPool.length} câu có sẵn)`}
+          </span>
           <ChevronRight className="w-5 h-5" />
         </button>
-
-        {/* AI Generation Modal */}
-        {showAiModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in">
-            <div className="bg-white rounded-[2.5rem] max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-[#E2E8F0] space-y-5 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between pb-3 border-b border-[#F1F5F9]">
-                <div className="flex items-center space-x-2.5">
-                  <div className={`w-10 h-10 rounded-2xl ${theme.primaryBg} text-white flex items-center justify-center font-bold shadow-xs`}>
-                    <Wand2 className="w-5 h-5 text-amber-300" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-[#1E293B] text-base">AI Sinh Đề Luyện Chuyên Đề</h3>
-                    <p className="text-[11px] text-[#64748B]">
-                      Chuyên đề: {currentTopicsMeta.find((t) => t.id === selectedTopic)?.nameVi}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => setShowAiModal(false)}
-                  disabled={aiLoading}
-                  className="p-1.5 text-[#64748B] hover:text-[#1E293B] rounded-xl transition"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="space-y-4 text-xs">
-                <div>
-                  <label className="block font-bold text-[#1E293B] mb-1.5">1. Số lượng câu hỏi muốn tạo:</label>
-                  <div className="flex gap-2">
-                    {[5, 10, 15].map((num) => (
-                      <button
-                        key={num}
-                        type="button"
-                        onClick={() => setAiCount(num)}
-                        className={`flex-1 py-2.5 rounded-xl font-bold border transition ${
-                          aiCount === num
-                            ? `${theme.primaryBg} text-white shadow-xs`
-                            : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#64748B] hover:bg-[#F1F5F9]'
-                        }`}
-                      >
-                        {num} câu
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-[#1E293B] mb-1.5">2. Độ khó:</label>
-                  <div className="flex gap-2">
-                    {[
-                      { id: 'standard', label: 'Cơ bản (7 - 8đ)' },
-                      { id: 'advanced', label: 'Khá - Giỏi (8 - 9đ)' },
-                      { id: 'challenge', label: 'Phân loại (9.5 - 10đ)' },
-                    ].map((d) => (
-                      <button
-                        key={d.id}
-                        type="button"
-                        onClick={() => setAiDifficulty(d.id as any)}
-                        className={`flex-1 py-2.5 rounded-xl font-bold border text-[11px] transition ${
-                          aiDifficulty === d.id
-                            ? `${theme.primaryBg} text-white shadow-xs`
-                            : 'bg-[#F8FAFC] border-[#E2E8F0] text-[#64748B] hover:bg-[#F1F5F9]'
-                        }`}
-                      >
-                        {d.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-[#1E293B] mb-1.5">
-                    3. Yêu cầu trọng tâm riêng cho AI (Tùy chọn):
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={aiCustomPrompt}
-                    onChange={(e) => setAiCustomPrompt(e.target.value)}
-                    placeholder={
-                      isMath
-                        ? 'Ví dụ: Tập trung vào dạng tìm tham số m để phương trình có 2 nghiệm thỏa mãn x1 = 2*x2, có nhiều bẫy điều kiện...'
-                        : 'Ví dụ: Tập trung vào dạng câu điều kiện loại 2, câu ước wish và câu bị động đặc biệt...'
-                    }
-                    className="w-full p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl outline-hidden text-[#1E293B]"
-                  />
-                </div>
-
-                {/* Quick suggestions */}
-                <div className="space-y-1">
-                  <p className="text-[10px] font-bold text-[#64748B] uppercase">Gợi ý nhanh:</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(isMath
-                      ? ['Có bẫy điều kiện xác định', 'Dạng tìm tham số m', 'Kỹ thuật chọn điểm rơi', 'Bài toán thực tế']
-                      : ['Câu bị động nâng cao', 'Mệnh đề quan hệ', 'Cụm động từ khó', 'Từ vựng chủ đề môi trường']
-                    ).map((sug) => (
-                      <button
-                        key={sug}
-                        type="button"
-                        onClick={() => setAiCustomPrompt(sug)}
-                        className="px-2.5 py-1 bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] rounded-lg text-[10px] font-medium"
-                      >
-                        + {sug}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {aiStatusMsg && (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 text-[11px] flex items-center space-x-2">
-                    <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-blue-600" />
-                    <span>{aiStatusMsg}</span>
-                  </div>
-                )}
-
-                {aiError && (
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-[11px] flex items-start space-x-2">
-                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    <span>{aiError}</span>
-                  </div>
-                )}
-
-                <div className="flex space-x-2 pt-2 border-t border-[#F1F5F9]">
-                  <button
-                    type="button"
-                    onClick={() => setShowAiModal(false)}
-                    disabled={aiLoading}
-                    className="flex-1 py-2.5 bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] rounded-xl font-bold transition cursor-pointer"
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleGenerateWithAI}
-                    disabled={aiLoading}
-                    className={`flex-1 py-2.5 ${theme.primaryBg} hover:opacity-90 text-white rounded-xl font-bold shadow-xs transition flex items-center justify-center space-x-1.5 cursor-pointer disabled:opacity-50`}
-                  >
-                    {aiLoading ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Đang tạo đề...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4 text-amber-300" />
-                        <span>Tạo Đề & Luyện Ngay</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
 
-  // 2. PRACTICE SESSION VIEW
+  // ═══════════════════════════════════════════════
+  // 2. ESSAY PRACTICE SESSION VIEW (Viết lại câu Tự luận)
+  // ═══════════════════════════════════════════════
+  if (isPracticing && !essayFinished && practiceMode === 'essay' && currentEssay) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-5 pb-12">
+        {/* Floating Quick Vocab Note Pill */}
+        {floatingPos && selectedText && (
+          <div
+            style={{ top: `${floatingPos.y}px`, left: `${floatingPos.x}px` }}
+            className="fixed z-50 bg-[#3D3D2D] text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-2xl flex items-center space-x-1.5 animate-in fade-in cursor-pointer hover:bg-black"
+            onClick={openVocabModalWithSelection}
+          >
+            <BookMarked className="w-3.5 h-3.5 text-[#8BA888]" />
+            <span>Note từ mới: "{selectedText.slice(0, 15)}..."</span>
+          </div>
+        )}
+
+        <QuickVocabNoteModal
+          isOpen={vocabModalOpen}
+          onClose={() => setVocabModalOpen(false)}
+          initialWord={vocabModalWord}
+          contextSentence={vocabModalContext || currentEssay.originalSentence}
+          sourceTitle={`Chuyên đề Viết lại câu`}
+        />
+
+        {/* Top Control Bar */}
+        <div className="bg-white rounded-[2rem] border border-[#EAE7E0] shadow-xs p-4 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <span className="px-3 py-1 bg-blue-600 text-white font-bold text-xs rounded-xl">
+              Câu {essayIdx + 1}/{essayProblems.length} (Tự luận)
+            </span>
+            <span className="text-xs font-bold text-[#3D3D2D] capitalize">
+              {currentEssay.subTopicTitleVi}
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => {
+                setVocabModalWord(currentEssay.originalSentence.slice(0, 20));
+                setVocabModalContext(currentEssay.originalSentence);
+                setVocabModalOpen(true);
+              }}
+              title="Lưu từ mới vào Sổ tay"
+              className="flex items-center space-x-1 px-2.5 py-1 bg-[#FAF9F6] border border-[#EAE7E0] text-[#5A5A40] rounded-xl text-xs font-bold hover:bg-[#EAE7E0] transition cursor-pointer"
+            >
+              <BookMarked className="w-3.5 h-3.5 text-[#8BA888]" />
+              <span className="hidden sm:inline">Note từ mới</span>
+            </button>
+            <button
+              onClick={() => setIsPracticing(false)}
+              className="text-xs font-bold text-[#8A8A70] hover:text-[#3D3D2D] underline px-2 cursor-pointer"
+            >
+              Thoát
+            </button>
+          </div>
+        </div>
+
+        {/* Essay Problem Box */}
+        <div className="bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-sm p-6 sm:p-8 space-y-5">
+          {/* Header Tag */}
+          <div className="flex items-center justify-between pb-2 border-b border-[#F5F2ED]">
+            <span className="px-2.5 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 rounded-md text-[11px] font-bold">
+              {currentEssay.sourceExam || 'Đề thi Tuyển sinh vào 10'}
+            </span>
+            {currentEssay.keyword && (
+              <span className="px-2.5 py-0.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-md text-[11px] font-bold">
+                Từ bắt buộc dùng: <strong className="font-mono">{currentEssay.keyword}</strong>
+              </span>
+            )}
+          </div>
+
+          {/* Original Sentence */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-[#8A8A70] uppercase tracking-wider">
+              Câu gốc (Original Sentence):
+            </label>
+            <div className="p-4 bg-[#FAF9F6] border border-[#EAE7E0] rounded-2xl text-sm sm:text-base font-bold text-[#3D3D2D] leading-relaxed">
+              "{currentEssay.originalSentence}"
+            </div>
+          </div>
+
+          {/* Given Beginning Prompt */}
+          <div className="space-y-2">
+            <label className="text-[11px] font-bold text-[#8A8A70] uppercase tracking-wider flex items-center space-x-1">
+              <PenTool className="w-3.5 h-3.5 text-blue-600" />
+              <span>Viết lại câu bắt đầu bằng:</span>
+            </label>
+
+            {currentEssay.givenBeginning && (
+              <div className="text-xs font-bold text-blue-900 bg-blue-50 px-3 py-1.5 rounded-xl inline-block border border-blue-200">
+                Gợi ý đầu câu: <strong>"{currentEssay.givenBeginning}..."</strong>
+              </div>
+            )}
+
+            <div className="relative">
+              <textarea
+                rows={3}
+                value={studentEssayInput}
+                onChange={(e) => setStudentEssayInput(e.target.value)}
+                placeholder={`Nhập câu viết lại hoàn chỉnh của bạn tại đây... ${currentEssay.givenBeginning ? `(VD: ${currentEssay.givenBeginning} ...)` : ''}`}
+                className="w-full p-4 bg-white border-2 border-[#D9D2C5] focus:border-blue-600 rounded-2xl outline-hidden text-sm sm:text-base text-[#3D3D2D] font-medium leading-relaxed shadow-inner"
+              />
+            </div>
+          </div>
+
+          {/* AI Grading Result Feedback Card */}
+          {currentEssayResult && (
+            <div
+              className={`p-5 rounded-2xl border space-y-3.5 text-xs animate-in fade-in ${
+                currentEssayResult.isCorrect && currentEssayResult.score >= 8.0
+                  ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+                  : currentEssayResult.score >= 5.0
+                  ? 'bg-amber-50/80 border-amber-300 text-amber-950'
+                  : 'bg-rose-50/80 border-rose-300 text-rose-950'
+              }`}
+            >
+              {/* Score Header */}
+              <div className="flex items-center justify-between pb-2 border-b border-black/10">
+                <div className="flex items-center space-x-2">
+                  <span className="text-lg">
+                    {currentEssayResult.score >= 8.5 ? '🎉' : currentEssayResult.score >= 5.0 ? '💡' : '⚠️'}
+                  </span>
+                  <span className="font-bold text-sm">
+                    {currentEssayResult.status === 'perfect'
+                      ? 'Chính xác hoàn hảo!'
+                      : currentEssayResult.status === 'acceptable'
+                      ? 'Đúng ngữ nghĩa & ngữ pháp'
+                      : currentEssayResult.status === 'minor_error'
+                      ? 'Đã đúng hướng (Cần sửa lỗi nhỏ)'
+                      : 'Chưa chính xác'}
+                  </span>
+                </div>
+                <div className="px-3 py-1 bg-white rounded-full font-black text-sm shadow-xs border border-black/10">
+                  {currentEssayResult.score.toFixed(1)} / 10đ
+                </div>
+              </div>
+
+              {/* Feedback text */}
+              <p className="leading-relaxed font-medium whitespace-pre-line text-xs sm:text-sm">
+                {currentEssayResult.feedback}
+              </p>
+
+              {/* Standard Key Comparison */}
+              <div className="p-3 bg-white/90 rounded-xl border border-black/10 space-y-1">
+                <p className="text-[10px] font-bold uppercase text-slate-500">Đáp án chuẩn của Sở GD&ĐT:</p>
+                <p className="font-bold text-[#3D3D2D] text-xs sm:text-sm font-mono">
+                  {currentEssayResult.standardKey}
+                </p>
+              </div>
+
+              {/* Acceptable variations if any */}
+              {currentEssayResult.alternativeAnswers && currentEssayResult.alternativeAnswers.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase text-slate-500">Các cách viết tương đương hợp lệ khác:</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-700">
+                    {currentEssayResult.alternativeAnswers.map((alt, aIdx) => (
+                      <li key={aIdx} className="font-mono">{alt}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Grammar Rule & Traps */}
+              <div className="p-3 bg-white/70 rounded-xl border border-black/10 text-[11px] space-y-1">
+                <p className="font-bold text-[#5A5A40]">📘 Cấu trúc & Quy tắc ngữ pháp:</p>
+                <p className="font-mono text-slate-800">{currentEssay.grammarStructure}</p>
+                {currentEssay.commonTraps && (
+                  <p className="text-amber-800 font-medium pt-1">💡 {currentEssay.commonTraps}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="pt-3 border-t border-[#F5F2ED] flex items-center justify-end space-x-3">
+            {!currentEssayResult ? (
+              <button
+                onClick={handleGradeCurrentEssay}
+                disabled={!studentEssayInput.trim() || isGradingEssay}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-full text-xs sm:text-sm font-bold shadow-xs transition flex items-center space-x-2 cursor-pointer"
+              >
+                {isGradingEssay ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                    <span>AI đang chấm bài...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>Chấm Điểm Bằng AI</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                onClick={handleNextEssay}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs sm:text-sm font-bold shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+              >
+                <span>{essayIdx < essayProblems.length - 1 ? 'Câu tự luận tiếp theo' : 'Xem tổng kết'}</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════
+  // 3. ESSAY FINISHED SUMMARY VIEW
+  // ═══════════════════════════════════════════════
+  if (essayFinished && practiceMode === 'essay') {
+    let totalScore = 0;
+    let correctCount = 0;
+    essayProblems.forEach((p) => {
+      const res = essayResults[p.id];
+      if (res) {
+        totalScore += res.score;
+        if (res.isCorrect || res.score >= 8.0) correctCount += 1;
+      }
+    });
+    const totalQ = essayProblems.length;
+    const avgScore = totalQ > 0 ? (totalScore / totalQ).toFixed(1) : '0';
+    const scorePct = totalQ > 0 ? Math.round((Number(avgScore) / 10) * 100) : 0;
+
+    return (
+      <div className="max-w-md mx-auto bg-white rounded-[2.5rem] border border-[#EAE7E0] shadow-xl p-8 text-center space-y-6">
+        <div className="w-16 h-16 rounded-[2rem] bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-200">
+          <Award className="w-8 h-8" />
+        </div>
+
+        <div className="space-y-1">
+          <h3 className="text-xl font-bold text-[#3D3D2D]">Hoàn Thành Bài Luyện Tự Luận!</h3>
+          <p className="text-xs text-[#8A8A70]">
+            Chuyên đề Viết Lại Câu & Biến Đổi Cấu Trúc (AI Đã Chấm Điểm)
+          </p>
+        </div>
+
+        <div className="p-4 bg-[#FAF9F6] rounded-2xl border border-[#EAE7E0] space-y-2 text-xs">
+          <div className="flex justify-between">
+            <span className="text-[#8A8A70]">Điểm trung bình:</span>
+            <strong className="text-blue-600 font-bold text-sm">{avgScore} / 10đ</strong>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[#8A8A70]">Số câu đạt chuẩn:</span>
+            <strong className="text-emerald-600 font-bold">{correctCount}/{totalQ} câu</strong>
+          </div>
+        </div>
+
+        <div className="space-y-2 pt-2">
+          <button
+            onClick={handleStartEssayPractice}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-xs font-bold shadow-xs transition flex items-center justify-center space-x-1.5 cursor-pointer"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Luyện thêm đề tự luận khác</span>
+          </button>
+          <button
+            onClick={() => setIsPracticing(false)}
+            className="w-full py-3 bg-[#FAF9F6] hover:bg-[#E8E2D9] text-[#4A4A4A] rounded-full text-xs font-bold transition cursor-pointer"
+          >
+            Đổi chuyên đề khác
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════
+  // 4. MULTIPLE CHOICE PRACTICE VIEW
+  // ═══════════════════════════════════════════════
   if (isPracticing && !isFinished && currentQ) {
     const isCorrect = userChoice === currentQ.correctOption;
 
     return (
       <div className="max-w-3xl mx-auto space-y-5 pb-12">
+        {/* Floating Quick Vocab Note Pill */}
+        {floatingPos && selectedText && (
+          <div
+            style={{ top: `${floatingPos.y}px`, left: `${floatingPos.x}px` }}
+            className="fixed z-50 bg-[#3D3D2D] text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-2xl flex items-center space-x-1.5 animate-in fade-in cursor-pointer hover:bg-black"
+            onClick={openVocabModalWithSelection}
+          >
+            <BookMarked className="w-3.5 h-3.5 text-[#8BA888]" />
+            <span>Note từ mới: "{selectedText.slice(0, 15)}..."</span>
+          </div>
+        )}
+
+        <QuickVocabNoteModal
+          isOpen={vocabModalOpen}
+          onClose={() => setVocabModalOpen(false)}
+          initialWord={vocabModalWord}
+          contextSentence={vocabModalContext || currentQ.content}
+          sourceTitle={`Chuyên đề: ${currentQ.topicId}`}
+        />
+
         {/* Practice Top Header */}
         <div className="bg-white rounded-[2rem] border border-[#EAE7E0] shadow-xs p-4 flex items-center justify-between">
           <div className="flex items-center space-x-3">
@@ -565,6 +962,21 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
+            {currentSubject === 'english' && (
+              <button
+                onClick={() => {
+                  setVocabModalWord(currentQ.content.slice(0, 20));
+                  setVocabModalContext(currentQ.content);
+                  setVocabModalOpen(true);
+                }}
+                title="Lưu từ mới vào Sổ tay"
+                className="flex items-center space-x-1 px-2.5 py-1 bg-[#FAF9F6] border border-[#EAE7E0] text-[#5A5A40] rounded-xl text-xs font-bold hover:bg-[#EAE7E0] transition cursor-pointer"
+              >
+                <BookMarked className="w-3.5 h-3.5 text-[#8BA888]" />
+                <span className="hidden sm:inline">Note từ mới</span>
+              </button>
+            )}
+
             <button
               onClick={() => toggleBookmark(currentQ.id)}
               className={`p-2 rounded-xl border transition cursor-pointer ${
@@ -687,7 +1099,9 @@ export const TopicPracticeView: React.FC<TopicPracticeViewProps> = ({
     );
   }
 
-  // 3. FINISHED SUMMARY VIEW
+  // ═══════════════════════════════════════════════
+  // 5. FINISHED SUMMARY VIEW
+  // ═══════════════════════════════════════════════
   if (isFinished) {
     let correctCount = 0;
     practiceQuestions.forEach((q) => {

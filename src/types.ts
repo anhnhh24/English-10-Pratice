@@ -390,3 +390,36 @@ export interface MathEssayProblem {
   }[];
   finalAnswer: string;
 }
+
+export interface SentenceRewriteProblem {
+  id: string;
+  topic: string; // e.g. 'conditionals', 'passive_voice', 'reported_speech', 'connectors', 'tenses', 'wish', 'so_such_too_enough', 'comparison', 'used_to', 'relative_clauses'
+  subTopicTitleVi: string; // e.g. 'Chuyển đổi Câu điều kiện (If / Unless)'
+  difficulty: 'easy' | 'medium' | 'hard';
+  originalSentence: string; // e.g. "She started learning English 5 years ago."
+  keyword?: string; // e.g. "FOR" or "SINCE" or "WISH"
+  givenBeginning?: string; // e.g. "She has" or "If I were you,"
+  standardKey: string; // e.g. "She has learned English for 5 years."
+  acceptableVariations: string[]; // e.g. ["She has been learning English for 5 years.", "She has studied English for 5 years."]
+  grammarStructure: string; // e.g. "S + started/began + V-ing/to V + time + ago ==> S + have/has + V3/ed + for + time"
+  commonTraps: string; // e.g. "Chú ý dùng 'for 5 years' chứ không dùng 'since 5 years'."
+  hint?: string;
+  sourceExam?: string; // e.g. "Đề thi Tuyển sinh vào 10 Hà Nội"
+}
+
+export interface SentenceGradingResult {
+  isCorrect: boolean;
+  score: number; // 0 to 10
+  status: 'perfect' | 'acceptable' | 'minor_error' | 'incorrect';
+  feedback: string;
+  grammarAnalysis: string;
+  highlightedMistakes?: {
+    word: string;
+    correction: string;
+    reason: string;
+  }[];
+  alternativeAnswers: string[];
+  standardKey: string;
+  correctedFullSentence?: string;
+}
+

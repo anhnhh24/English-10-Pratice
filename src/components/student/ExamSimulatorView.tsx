@@ -13,6 +13,7 @@ import {
 import { logAndBroadcastActivity, getStoredRemoteTasks, studentSubmitRemoteTask } from '../../services/realtimeSyncService';
 import { AiQuestionExplainerModal } from '../common/AiQuestionExplainerModal';
 import { ScratchpadModal } from '../common/ScratchpadModal';
+import { QuickVocabNoteModal } from '../common/QuickVocabNoteModal';
 import confetti from 'canvas-confetti';
 import {
   Clock,
@@ -42,7 +43,9 @@ import {
   Minimize,
   Save,
   ShieldCheck,
+  BookMarked,
 } from 'lucide-react';
+
 
 interface ExamSimulatorViewProps {
   examId?: string;
@@ -167,6 +170,54 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
     question: Question;
     userSelectedOption?: number;
   } | null>(null);
+
+  // Quick Vocab Note modal state
+  const [vocabModalOpen, setVocabModalOpen] = useState<boolean>(false);
+  const [vocabModalWord, setVocabModalWord] = useState<string>('');
+  const [vocabModalContext, setVocabModalContext] = useState<string>('');
+  const [vocabModalSource, setVocabModalSource] = useState<string>('Phòng thi thử');
+
+  // Floating text selection state
+  const [selectedText, setSelectedText] = useState<string>('');
+  const [floatingPos, setFloatingPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Listen for text selection in exam
+  useEffect(() => {
+    const handleSelection = () => {
+      if (typeof window === 'undefined') return;
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) {
+        const text = sel.toString().trim();
+        if (text.length >= 2 && text.length <= 60 && !text.includes('\n')) {
+          const range = sel.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          setSelectedText(text);
+          setFloatingPos({
+            x: Math.max(10, Math.min(window.innerWidth - 160, rect.left + rect.width / 2 - 60)),
+            y: Math.max(10, rect.top - 42 + window.scrollY),
+          });
+          return;
+        }
+      }
+      setFloatingPos(null);
+    };
+
+    document.addEventListener('mouseup', handleSelection);
+    document.addEventListener('keyup', handleSelection);
+    return () => {
+      document.removeEventListener('mouseup', handleSelection);
+      document.removeEventListener('keyup', handleSelection);
+    };
+  }, []);
+
+  const openVocabModalWithSelection = () => {
+    if (!selectedText) return;
+    setVocabModalWord(selectedText);
+    setVocabModalContext(currentQ?.content || exam?.title || '');
+    setVocabModalSource(exam?.title || 'Phòng thi thử');
+    setVocabModalOpen(true);
+    setFloatingPos(null);
+  };
 
   const DRAFT_KEY = `edu10_exam_draft_${examId || selectedExamId}_${currentUser?.id || 'guest'}`;
 
@@ -886,6 +937,22 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                 </div>
 
                 <div className="flex items-center space-x-1.5 sm:space-x-2">
+                  {currentSubject === 'english' && (
+                    <button
+                      onClick={() => {
+                        setVocabModalWord(currentQ.content.slice(0, 20));
+                        setVocabModalContext(currentQ.content);
+                        setVocabModalSource(exam.title);
+                        setVocabModalOpen(true);
+                      }}
+                      title="Lưu từ mới vào Sổ tay Flashcard"
+                      className="flex items-center space-x-1 px-2.5 sm:px-3 py-1 rounded-xl text-xs font-semibold border bg-[#FAF9F6] border-[#EAE7E0] text-[#5A5A40] hover:bg-[#F5F2ED] transition cursor-pointer"
+                    >
+                      <BookMarked className="w-3.5 h-3.5 text-[#8BA888]" />
+                      <span className="hidden sm:inline">Note từ mới</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => toggleFlag(currentQ.id)}
                     className={`flex items-center space-x-1 px-2.5 sm:px-3 py-1 rounded-xl text-xs font-semibold border transition cursor-pointer ${isCurrentFlagged
@@ -1258,6 +1325,27 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             </div>
           </div>
         )}
+
+        {/* Floating Quick Vocab Note Pill */}
+        {floatingPos && selectedText && (
+          <div
+            style={{ top: `${floatingPos.y}px`, left: `${floatingPos.x}px` }}
+            className="fixed z-50 bg-[#3D3D2D] text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-2xl flex items-center space-x-1.5 animate-in fade-in cursor-pointer hover:bg-black"
+            onClick={openVocabModalWithSelection}
+          >
+            <BookMarked className="w-3.5 h-3.5 text-[#8BA888]" />
+            <span>Note từ mới: "{selectedText.slice(0, 15)}..."</span>
+          </div>
+        )}
+
+        {/* Quick Vocab Note Modal */}
+        <QuickVocabNoteModal
+          isOpen={vocabModalOpen}
+          onClose={() => setVocabModalOpen(false)}
+          initialWord={vocabModalWord}
+          contextSentence={vocabModalContext || currentQ?.content}
+          sourceTitle={vocabModalSource}
+        />
       </div>
     );
   }
@@ -1678,17 +1766,34 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
                     </span>
                   </div>
 
-                  {isCorrect ? (
-                    <span className="inline-flex items-center space-x-1 text-xs font-bold text-[#8BA888]">
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Đúng</span>
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center space-x-1 text-xs font-bold text-[#E67E22]">
-                      <XCircle className="w-4 h-4" />
-                      <span>Sai (Đã lưu vào Sổ câu sai)</span>
-                    </span>
-                  )}
+                  <div className="flex items-center space-x-2">
+                    {currentSubject === 'english' && (
+                      <button
+                        onClick={() => {
+                          setVocabModalWord(q.content.slice(0, 20));
+                          setVocabModalContext(q.content);
+                          setVocabModalSource(exam.title);
+                          setVocabModalOpen(true);
+                        }}
+                        title="Lưu từ mới vào Sổ tay"
+                        className="flex items-center space-x-1 px-2.5 py-1 rounded-xl text-xs font-semibold bg-[#FAF9F6] border border-[#EAE7E0] text-[#5A5A40] hover:bg-[#EAE7E0] transition cursor-pointer"
+                      >
+                        <BookMarked className="w-3.5 h-3.5 text-[#8BA888]" />
+                        <span className="hidden sm:inline">Note từ</span>
+                      </button>
+                    )}
+                    {isCorrect ? (
+                      <span className="inline-flex items-center space-x-1 text-xs font-bold text-[#8BA888]">
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Đúng</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center space-x-1 text-xs font-bold text-[#E67E22]">
+                        <XCircle className="w-4 h-4" />
+                        <span>Sai (Đã lưu vào Sổ câu sai)</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {q.passage && (
@@ -1783,6 +1888,27 @@ export const ExamSimulatorView: React.FC<ExamSimulatorViewProps> = ({
             onClose={() => setActiveQuestionForAiExplainer(null)}
           />
         )}
+
+        {/* Floating Quick Vocab Note Pill */}
+        {floatingPos && selectedText && (
+          <div
+            style={{ top: `${floatingPos.y}px`, left: `${floatingPos.x}px` }}
+            className="fixed z-50 bg-[#3D3D2D] text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-2xl flex items-center space-x-1.5 animate-in fade-in cursor-pointer hover:bg-black"
+            onClick={openVocabModalWithSelection}
+          >
+            <BookMarked className="w-3.5 h-3.5 text-[#8BA888]" />
+            <span>Note từ mới: "{selectedText.slice(0, 15)}..."</span>
+          </div>
+        )}
+
+        {/* Quick Vocab Note Modal */}
+        <QuickVocabNoteModal
+          isOpen={vocabModalOpen}
+          onClose={() => setVocabModalOpen(false)}
+          initialWord={vocabModalWord}
+          contextSentence={vocabModalContext}
+          sourceTitle={vocabModalSource}
+        />
       </div>
     );
   }

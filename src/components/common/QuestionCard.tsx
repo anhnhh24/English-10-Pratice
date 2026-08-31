@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Question } from '../../types';
-import { Bookmark, Check, X, Sparkles, Lightbulb } from 'lucide-react';
+import { Bookmark, Check, X, Sparkles, Lightbulb, BookMarked } from 'lucide-react';
 import { SubjectBadge } from './SubjectBadge';
 import { formatTopicTitle } from '../../utils/formatters';
+import { QuickVocabNoteModal } from './QuickVocabNoteModal';
 
 interface QuestionCardProps {
   question: Question;
@@ -36,6 +37,7 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   const [showFullExp, setShowFullExp] = useState(showExplanation);
   const [editingNote, setEditingNote] = useState(false);
   const [noteInput, setNoteInput] = useState(userNote || '');
+  const [vocabModalOpen, setVocabModalOpen] = useState(false);
 
   const handleSaveNote = () => {
     if (onSaveNote) {
@@ -48,6 +50,14 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     <div
       className={`p-5 sm:p-7 bg-white rounded-[2rem] border border-[#EAE7E0] shadow-xs space-y-4 transition ${className}`}
     >
+      <QuickVocabNoteModal
+        isOpen={vocabModalOpen}
+        onClose={() => setVocabModalOpen(false)}
+        initialWord={question.content.slice(0, 25)}
+        contextSentence={question.content}
+        sourceTitle="Sổ tay câu hỏi"
+      />
+
       {/* Header Info */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center space-x-2 flex-wrap gap-y-1">
@@ -68,20 +78,33 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           </span>
         </div>
 
-        {onToggleBookmark && (
-          <button
-            onClick={() => onToggleBookmark(question.id)}
-            className={`p-2 rounded-xl transition cursor-pointer ${
-              isBookmarked
-                ? 'bg-amber-50 text-amber-600 border border-amber-200'
-                : 'text-[#8A8A70] hover:bg-[#FAF9F6]'
-            }`}
-            title={isBookmarked ? 'Đã lưu câu hỏi' : 'Lưu câu hỏi'}
-          >
-            <Bookmark className={`w-4 h-4 ${isBookmarked ? 'fill-amber-600' : ''}`} />
-          </button>
-        )}
+        <div className="flex items-center space-x-1.5">
+          {question.subject !== 'math' && (
+            <button
+              onClick={() => setVocabModalOpen(true)}
+              className="p-2 text-[#5A5A40] hover:bg-[#FAF9F6] rounded-xl border border-transparent hover:border-[#EAE7E0] transition cursor-pointer"
+              title="Lưu từ mới vào Sổ tay Flashcard"
+            >
+              <BookMarked className="w-4 h-4 text-[#8BA888]" />
+            </button>
+          )}
+
+          {onToggleBookmark && (
+            <button
+              onClick={() => onToggleBookmark(question.id)}
+              className={`p-2 rounded-xl transition cursor-pointer ${
+                isBookmarked
+                  ? 'bg-amber-50 text-amber-600 border border-amber-200'
+                  : 'text-[#8A8A70] hover:bg-[#FAF9F6]'
+              }`}
+              title={isBookmarked ? 'Đã lưu câu hỏi' : 'Lưu câu hỏi'}
+            >
+              <Bookmark className={`w-4 h-4 ${isBookmarked ? 'fill-amber-600' : ''}`} />
+            </button>
+          )}
+        </div>
       </div>
+
 
       {/* Passage if any */}
       {question.passage && (
