@@ -3,6 +3,7 @@ import {
   getCloudDBSettings,
   saveCloudDBSettings,
   fetchRoomDataFromOnlineDB,
+  clearLocalCachesAndHardReset,
   CloudDBSettings,
 } from '../../services/cloudSyncService';
 import {
@@ -12,12 +13,14 @@ import {
   Copy,
   Check,
   X,
+  Laptop,
   Radio,
   Server,
   Key,
   ShieldCheck,
   ExternalLink,
   Sparkles,
+  Info,
 } from 'lucide-react';
 
 interface CloudSyncModalProps {
@@ -76,8 +79,8 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
               <Database className="w-5 h-5 text-[#8BA888]" />
             </div>
             <div>
-              <h3 className="font-bold text-[#3D3D2D] text-base">Cấu Hình Cơ Sở Dữ Liệu Online</h3>
-              <p className="text-[11px] text-[#8A8A70]">Đồng bộ dữ liệu của em qua Internet / Nhiều thiết bị</p>
+              <h3 className="font-bold text-[#3D3D2D] text-base">Đồng Bộ Đám Mây Đa Thiết Bị (Multi-Device)</h3>
+              <p className="text-[11px] text-[#8A8A70]">Tự động đồng bộ thời gian thực giữa 2 máy / nhiều thiết bị</p>
             </div>
           </div>
 
@@ -94,9 +97,9 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           <div className="flex items-center space-x-2.5">
             <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping shrink-0" />
             <div>
-              <p className="text-xs font-bold text-[#3D3D2D]">Trạng thái: Đang kết nối Cloud DB</p>
+              <p className="text-xs font-bold text-[#3D3D2D]">Trạng thái: Realtime Cloud DB Kết Nối</p>
               <p className="text-[10px] text-[#8A8A70]">
-                Đồng bộ lần cuối: {settings.lastSyncTimestamp ? new Date(settings.lastSyncTimestamp).toLocaleTimeString('vi-VN') : 'Vừa xong'}
+                Mã phòng: <span className="font-mono font-bold text-[#5A5A40]">{settings.roomCode}</span> • {settings.lastSyncTimestamp ? new Date(settings.lastSyncTimestamp).toLocaleTimeString('vi-VN') : 'Vừa xong'}
               </p>
             </div>
           </div>
@@ -111,6 +114,17 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           </button>
         </div>
 
+        {/* Multi-Device Explanation Banner */}
+        <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl flex items-start space-x-2.5">
+          <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+          <div className="text-[11px] text-blue-900 leading-relaxed">
+            <p className="font-bold">Cơ chế chống lệch dữ liệu giữa 2 máy:</p>
+            <p className="text-blue-700 mt-0.5">
+              Hệ thống đã kích hoạt cơ chế <strong>hợp nhất dữ liệu thông minh (Smart Non-Destructive Merge)</strong> và <strong>kênh nghe thời gian thực (Live Firebase Subscriptions)</strong>. Mọi bài thi, sổ tay lỗi sai, câu hỏi tự tạo và tài khoản đăng ký trên máy này sẽ tự động cập nhật ngay sang máy kia mà không bị ghi đè hay mất dữ liệu do cache/cookie cũ.
+            </p>
+          </div>
+        </div>
+
         {syncStatusMsg && (
           <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center space-x-1.5">
             <Check className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -123,10 +137,10 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
           {/* Room Key Box */}
           <div className="space-y-1.5">
             <label className="block font-bold text-[#5A5A40]">
-              Mã Phòng Đồng Bộ Online (Shared Family/Class Room Key):
+              Mã Phòng Đồng Bộ (Shared Room Key):
             </label>
             <p className="text-[11px] text-[#8A8A70]">
-              Nhập cùng mã phòng này trên điện thoại/máy tính của em bạn để tự động kết nối chung 1 database.
+              Cả 2 máy chỉ cần nhập <strong>cùng mã phòng này</strong> là sẽ tự động kết nối và đồng bộ 100% dữ liệu với nhau.
             </p>
             <div className="flex space-x-2">
               <input
@@ -134,7 +148,7 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
                 value={settings.roomCode}
                 onChange={(e) => setSettings({ ...settings, roomCode: e.target.value.toUpperCase() })}
                 className="flex-1 px-3.5 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl font-mono font-bold text-[#3D3D2D] outline-hidden focus:border-[#5A5A40]"
-                placeholder="VD: VAO10_EMTOI_8888"
+                placeholder="VD: VAO10_GIAMSAT_2026"
                 required
               />
               <button
@@ -148,93 +162,19 @@ export const CloudSyncModal: React.FC<CloudSyncModalProps> = ({
             </div>
           </div>
 
-          {/* Provider Selection */}
-          <div className="space-y-1.5">
-            <label className="block font-bold text-[#5A5A40]">Nhà cung cấp Database Online:</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setSettings({ ...settings, provider: 'auto_cloud' })}
-                className={`p-3 rounded-2xl border text-left font-bold transition cursor-pointer ${
-                  settings.provider === 'auto_cloud'
-                    ? 'bg-[#5A5A40] text-white border-[#5A5A40] shadow-xs'
-                    : 'bg-[#FAF9F6] text-[#6B6B54] border-[#EAE7E0]'
-                }`}
-              >
-                <Cloud className="w-4 h-4 mb-1" />
-                <p className="text-xs">Cloud Relay Tự Động</p>
-                <p className="text-[10px] font-normal opacity-80">Miễn phí, 0ms, không cần cài đặt</p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSettings({ ...settings, provider: 'firebase' })}
-                className={`p-3 rounded-2xl border text-left font-bold transition cursor-pointer ${
-                  settings.provider === 'firebase'
-                    ? 'bg-[#5A5A40] text-white border-[#5A5A40] shadow-xs'
-                    : 'bg-[#FAF9F6] text-[#6B6B54] border-[#EAE7E0]'
-                }`}
-              >
-                <Server className="w-4 h-4 mb-1" />
-                <p className="text-xs">Firebase Realtime DB</p>
-                <p className="text-[10px] font-normal opacity-80">Tùy biến cho Server riêng</p>
-              </button>
-            </div>
-          </div>
-
-          {/* Firebase Custom Endpoint */}
-          {settings.provider === 'firebase' && (
-            <div className="p-3.5 bg-[#FAF9F6] rounded-2xl border border-[#D9D2C5] space-y-2 animate-in fade-in">
-              <label className="block font-bold text-[#5A5A40]">Firebase Realtime Database URL:</label>
-              <input
-                type="url"
-                value={settings.customEndpoint || ''}
-                onChange={(e) => setSettings({ ...settings, customEndpoint: e.target.value })}
-                placeholder="https://your-project-default-rtdb.firebaseio.com"
-                className="w-full px-3 py-2 bg-white border border-[#EAE7E0] rounded-xl outline-hidden text-xs"
-              />
-              <p className="text-[10px] text-[#8A8A70]">
-                Nhập link Firebase RTDB của bạn. Ứng dụng sẽ tự động lưu và đọc dữ liệu qua REST API chuẩn.
-              </p>
-            </div>
-          )}
-
-          {/* Auto-Sync Interval */}
-          <div className="space-y-1">
-            <label className="block font-bold text-[#5A5A40]">Tần suất tự động quét kết quả mới từ Online DB:</label>
-            <select
-              value={settings.autoSyncIntervalSec}
-              onChange={(e) => setSettings({ ...settings, autoSyncIntervalSec: parseInt(e.target.value) })}
-              className="w-full px-3 py-2 bg-[#FAF9F6] border border-[#EAE7E0] rounded-xl outline-hidden text-xs cursor-pointer font-bold text-[#3D3D2D]"
-            >
-              <option value={5}>Mỗi 5 giây (Thời gian thực siêu nhanh)</option>
-              <option value={15}>Mỗi 15 giây (Khuyên dùng)</option>
-              <option value={30}>Mỗi 30 giây</option>
-              <option value={60}>Mỗi 1 phút</option>
-            </select>
-          </div>
-
           {/* Danger Zone: Clean Cache Button */}
           <div className="pt-2 border-t border-[#F5F2ED] flex items-center justify-between">
             <button
               type="button"
               onClick={() => {
-                if (confirm('Bạn có chắc muốn xóa sạch toàn bộ bộ nhớ đệm (Cache) trên trình duyệt này và tải lại sạch 100% từ Database Online?')) {
-                  const keysToRemove = [
-                    'edu10_custom_questions',
-                    'edu10_global_custom_exams',
-                    'edu10_userdata_user_student_1',
-                    'edu10_userdata_user_admin_1',
-                    'edu10_realtime_activities',
-                    'edu10_remote_tasks',
-                  ];
-                  keysToRemove.forEach((k) => localStorage.removeItem(k));
+                if (confirm('Bạn có chắc muốn xóa sạch toàn bộ bộ nhớ đệm (Cache/Cookie) trên máy này và tải dữ liệu mới nhất 100% từ Database Online về?')) {
+                  clearLocalCachesAndHardReset();
                   window.location.reload();
                 }
               }}
               className="text-[11px] text-red-600 hover:text-red-700 font-bold underline cursor-pointer"
             >
-              🧹 Xóa cache trên máy & Tải lại sạch từ DB
+              🧹 Xóa sạch Cache/Cookie máy này & Tải lại từ Cloud
             </button>
 
             <div className="flex space-x-2">

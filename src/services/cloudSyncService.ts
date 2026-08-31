@@ -5,7 +5,7 @@
  */
 import { database, ref, set, get, onValue, off, remove, update } from './firebaseConfig';
 import type { DataSnapshot } from 'firebase/database';
-import { Exam, Question, ExamAttempt } from '../types';
+import { Exam, Question, ExamAttempt, UserAccount } from '../types';
 
 import { dispatchGlobalSync } from './cookieService';
 
@@ -585,4 +585,275 @@ export function subscribeToDeletedIdsFromOnlineDB(
   onValue(delRef, handler);
   return () => off(delRef, 'value', handler);
 }
+
+// ═════════════════════════════════════════════════════════════
+// 5. USER ACCOUNTS SYNC (Cross-Device Accounts & Registration)
+// ═════════════════════════════════════════════════════════════
+
+/**
+ * Save / Update a user account in Firebase Realtime DB
+ */
+export async function saveUserToOnlineDB(user: UserAccount): Promise<{ success: boolean; message: string }> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) {
+    return { success: false, message: 'Cloud DB chưa được kích hoạt' };
+  }
+  try {
+    const userRef = ref(database, `rooms/${settings.roomCode}/users/${user.id}`);
+    await set(userRef, cleanForFirebase({
+      ...user,
+      updatedAt: new Date().toISOString(),
+    }));
+    return { success: true, message: 'Đã lưu tài khoản lên Cloud DB' };
+  } catch (err: any) {
+    console.error('Firebase saveUser error:', err);
+    return { success: false, message: err.message || 'Lỗi lưu tài khoản lên Cloud DB' };
+  }
+}
+
+/**
+ * Save multiple user accounts in a single batch
+ */
+export async function saveUsersToOnlineDB(users: UserAccount[]): Promise<{ success: boolean; message: string }> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode || users.length === 0) {
+    return { success: true, message: 'Không có tài khoản cần lưu' };
+  }
+  try {
+    const updates: Record<string, any> = {};
+    const timestamp = new Date().toISOString();
+    users.forEach((u) => {
+      updates[`rooms/${settings.roomCode}/users/${u.id}`] = cleanForFirebase({
+        ...u,
+        updatedAt: timestamp,
+      });
+    });
+    await update(ref(database), updates);
+    return { success: true, message: `Đã lưu ${users.length} tài khoản lên Cloud DB` };
+  } catch (err: any) {
+    console.error('Firebase saveUsers error:', err);
+    return { success: false, message: err.message };
+  }
+}
+
+/**
+ * Fetch all registered users from Firebase Realtime DB
+ */
+export async function fetchUsersFromOnlineDB(): Promise<UserAccount[]> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return [];
+  try {
+    const usersRef = ref(database, `rooms/${settings.roomCode}/users`);
+    const snapshot = await get(usersRef);
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      if (data && typeof data === 'object') {
+        return Object.values(data) as UserAccount[];
+      }
+    }
+  } catch (err) {
+    console.warn('fetchUsersFromOnlineDB error:', err);
+  }
+  return [];
+}
+
+/**
+ * Subscribe to real-time changes of user accounts in the room
+ */
+export function subscribeToUsersFromOnlineDB(
+  callback: (users: UserAccount[]) => void
+): () => void {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return () => {};
+
+  const usersRef = ref(database, `rooms/${settings.roomCode}/users`);
+  const handler = (snapshot: DataSnapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      if (data && typeof data === 'object') {
+        callback(Object.values(data) as UserAccount[]);
+      }
+    } else {
+      callback([]);
+    }
+  };
+
+  onValue(usersRef, handler);
+  return () => off(usersRef, 'value', handler);
+}
+
+/**
+ * Delete a user account from Firebase Realtime DB
+ */
+export async function deleteUserFromOnlineDB(userId: string): Promise<boolean> {
+  const settings = getCloudDBSettings();
+  if (!settings.enabled || !settings.roomCode) return false;
+  try {
+    const userRef = ref(database, `rooms/${settings.roomCode}/users/${userId}`);
+    await remove(userRef);
+    await deleteStudentFromOnlineDB(userId);
+    return true;
+  } catch (err) {
+    console.error('Firebase deleteUser error:', err);
+    return false;
+  }
+}
+
+// ═════════════════════════════════════════════════════════════
+// 6. SMART MERGE UTILITIES (Zero Data Loss Multi-Device Merge)
+// ═════════════════════════════════════════════════════════════
+
+/**
+ * Non-destructively merge local user progress with incoming cloud data
+ */
+export function mergeUserScopedData(
+  local: { examAttempts?: ExamAttempt[]; practiceSessions?: any[]; mistakes?: Record<string, any>; bookmarks?: string[] },
+  cloud: { examAttempts?: ExamAttempt[]; practiceSessions?: any[]; mistakes?: Record<string, any>; bookmarks?: string[] }
+): {
+  examAttempts: ExamAttempt[];
+  practiceSessions: any[];
+  mistakes: Record<string, any>;
+  bookmarks: string[];
+} {
+  // 1. Merge Exam Attempts by ID (deduplicated, sorted newest first)
+  const attemptMap = new Map<string, ExamAttempt>();
+  (cloud?.examAttempts || []).forEach((a) => {
+    if (a && a.id && !a.id.startsWith('attempt_demo_')) {
+      attemptMap.set(a.id, a);
+    }
+  });
+  (local?.examAttempts || []).forEach((a) => {
+    if (a && a.id && !a.id.startsWith('attempt_demo_')) {
+      attemptMap.set(a.id, a);
+    }
+  });
+  const mergedAttempts = Array.from(attemptMap.values()).sort(
+    (a, b) => new Date(b.date || (b as any).savedAt || 0).getTime() - new Date(a.date || (a as any).savedAt || 0).getTime()
+  );
+
+  // 2. Merge Practice Sessions by ID
+  const sessionMap = new Map<string, any>();
+  (cloud?.practiceSessions || []).forEach((s) => {
+    if (s && s.id) sessionMap.set(s.id, s);
+  });
+  (local?.practiceSessions || []).forEach((s) => {
+    if (s && s.id) sessionMap.set(s.id, s);
+  });
+  const mergedSessions = Array.from(sessionMap.values()).sort(
+    (a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()
+  );
+
+  // 3. Merge Mistakes Map (preserve highest wrongCount, latest note, highest consecutiveCorrect)
+  const mergedMistakes: Record<string, any> = { ...(cloud?.mistakes || {}) };
+  if (local?.mistakes) {
+    Object.entries(local.mistakes).forEach(([qId, locM]) => {
+      const cloudM = mergedMistakes[qId];
+      if (!cloudM) {
+        mergedMistakes[qId] = locM;
+      } else {
+        const wrongCount = Math.max(locM.wrongCount || 0, cloudM.wrongCount || 0);
+        const consecutiveCorrect = Math.max(locM.consecutiveCorrect || 0, cloudM.consecutiveCorrect || 0);
+        const mastered = Boolean(locM.mastered || cloudM.mastered || consecutiveCorrect >= 2);
+        const dateLoc = new Date(locM.lastAttemptDate || 0).getTime();
+        const dateCloud = new Date(cloudM.lastAttemptDate || 0).getTime();
+        const newest = dateLoc >= dateCloud ? locM : cloudM;
+
+        mergedMistakes[qId] = {
+          ...newest,
+          wrongCount,
+          consecutiveCorrect,
+          mastered,
+          userNote: locM.userNote || cloudM.userNote,
+          reason: locM.reason || cloudM.reason,
+        };
+      }
+    });
+  }
+
+  // 4. Merge Bookmarks (Set union)
+  const bookmarkSet = new Set<string>([
+    ...(cloud?.bookmarks || []),
+    ...(local?.bookmarks || []),
+  ]);
+
+  return {
+    examAttempts: mergedAttempts,
+    practiceSessions: mergedSessions,
+    mistakes: mergedMistakes,
+    bookmarks: Array.from(bookmarkSet),
+  };
+}
+
+/**
+ * Merge exam lists deduplicated by ID and filtered by deleted IDs
+ */
+export function mergeExamsList(local: Exam[], cloud: Exam[], deletedIds: string[] = []): Exam[] {
+  const deletedSet = new Set(deletedIds);
+  const map = new Map<string, Exam>();
+  cloud.forEach((e) => {
+    if (e && e.id && !deletedSet.has(e.id)) map.set(e.id, e);
+  });
+  local.forEach((e) => {
+    if (e && e.id && !deletedSet.has(e.id)) map.set(e.id, e);
+  });
+  return Array.from(map.values());
+}
+
+/**
+ * Merge questions list deduplicated by ID and filtered by deleted IDs
+ */
+export function mergeQuestionsList(local: Question[], cloud: Question[], deletedIds: string[] = []): Question[] {
+  const deletedSet = new Set(deletedIds);
+  const map = new Map<string, Question>();
+  cloud.forEach((q) => {
+    if (q && q.id && !deletedSet.has(q.id)) map.set(q.id, q);
+  });
+  local.forEach((q) => {
+    if (q && q.id && !deletedSet.has(q.id)) map.set(q.id, q);
+  });
+  return Array.from(map.values());
+}
+
+/**
+ * Merge user account lists deduplicated by ID
+ */
+export function mergeUsersList(defaultUsers: UserAccount[], localUsers: UserAccount[], cloudUsers: UserAccount[]): UserAccount[] {
+  const map = new Map<string, UserAccount>();
+  defaultUsers.forEach((u) => map.set(u.id, u));
+  localUsers.forEach((u) => map.set(u.id, { ...(map.get(u.id) || {}), ...u }));
+  cloudUsers.forEach((u) => map.set(u.id, { ...(map.get(u.id) || {}), ...u }));
+  return Array.from(map.values());
+}
+
+/**
+ * Clear all local caches, cookies, and trigger a 100% clean fetch from Cloud DB
+ */
+export function clearLocalCachesAndHardReset(): void {
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('edu10_') || key.startsWith('practice_') || key.startsWith('exam_'))) {
+        // Keep room code settings so the user stays in the same shared room
+        if (key !== STORAGE_SETTINGS_KEY) {
+          keysToRemove.push(key);
+        }
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+
+    // Clear cookies
+    if (typeof document !== 'undefined') {
+      document.cookie.split(';').forEach((c) => {
+        const name = c.split('=')[0].trim();
+        if (name.startsWith('edu10_')) {
+          document.cookie = `${encodeURIComponent(name)}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=Lax`;
+        }
+      });
+    }
+  } catch (e) {
+    console.error('Error clearing local caches:', e);
+  }
+}
+
 

@@ -34,6 +34,20 @@ import {
   deleteStudentFromOnlineDB,
   clearOnlineStudentData,
   syncDeletedIdToOnlineDB,
+  saveUserToOnlineDB,
+  saveUsersToOnlineDB,
+  fetchUsersFromOnlineDB,
+  subscribeToUsersFromOnlineDB,
+  deleteUserFromOnlineDB,
+  mergeUserScopedData,
+  mergeExamsList,
+  mergeQuestionsList,
+  mergeUsersList,
+  subscribeToStudentData,
+  subscribeToRoomData,
+  subscribeToExamsFromOnlineDB,
+  subscribeToQuestionsFromOnlineDB,
+  subscribeToDeletedIdsFromOnlineDB,
 } from '../services/cloudSyncService';
 import {
   setCookie,
@@ -458,22 +472,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const allExams: Exam[] = Array.from(allExamsMap.values());
 
-  // Load Cloud Data ONCE on initial mount using get() (Bandwidth-safe, no onValue download loops)
+  // Hydration state flags to protect against race conditions and stale overwrites
+  const isCloudHydratingRef = useRef(false);
+  const isCloudHydratedRef = useRef(false);
+  const hasMountedRef = useRef(false);
+
+  // Helper to update user state from non-destructive merged payload
+  const updateStatesFromMerged = (mergedData: UserScopedData) => {
+    if (!mergedData) return;
+
+    isCloudHydratingRef.current = true;
+    lastSyncedDataRef.current = JSON.stringify({
+      examAttempts: mergedData.examAttempts || [],
+      practiceSessions: mergedData.practiceSessions || [],
+      mistakes: mergedData.mistakes || {},
+      bookmarks: mergedData.bookmarks || [],
+    });
+
+    if (Array.isArray(mergedData.examAttempts)) {
+      const cleanAttempts = mergedData.examAttempts.filter(
+        (a: any) => a && a.id && !a.id.startsWith('attempt_demo_')
+      );
+      setExamAttempts(cleanAttempts);
+    }
+    if (Array.isArray(mergedData.practiceSessions)) {
+      setPracticeSessions(mergedData.practiceSessions);
+    }
+    if (mergedData.mistakes && typeof mergedData.mistakes === 'object') {
+      setMistakes(mergedData.mistakes);
+    }
+    if (Array.isArray(mergedData.bookmarks)) {
+      setBookmarks(mergedData.bookmarks);
+    }
+
+    try {
+      localStorage.setItem(getUserDataKey(currentUser.id), JSON.stringify(mergedData));
+    } catch (_) {}
+  };
+
+  // ═════════════════════════════════════════════════════════════
+  // CLOUD SYNC: INITIAL LOAD & LIVE REALTIME MULTI-DEVICE LISTENERS
+  // ═════════════════════════════════════════════════════════════
   useEffect(() => {
-    let isMounted = true;
+    let isSubscribed = true;
+    isCloudHydratedRef.current = false;
+
+    // 1. Initial async fetch: Load from Cloud DB and deep-merge with LocalStorage
     const initializeCloudData = async () => {
       try {
-        // 1. Fetch Deleted IDs once
-        const delData = await fetchDeletedIdsFromOnlineDB();
-        if (!isMounted) return;
-        if (delData.deletedExamIds && delData.deletedExamIds.length > 0) {
+        const [delData, cloudExams, cloudQuestions, cloudUsers, cloudStudent] = await Promise.all([
+          fetchDeletedIdsFromOnlineDB(),
+          fetchExamsFromOnlineDB(),
+          fetchQuestionsFromOnlineDB(),
+          fetchUsersFromOnlineDB(),
+          fetchStudentDataFromOnlineDB(currentUser.id),
+        ]);
+
+        if (!isSubscribed) return;
+
+        // A. Merge Deleted Blacklist IDs
+        if (delData.deletedExamIds?.length > 0) {
           setDeletedExamIds((prev) => {
             const merged = Array.from(new Set([...prev, ...delData.deletedExamIds]));
             try { localStorage.setItem('edu10_deleted_exam_ids', JSON.stringify(merged)); } catch (_) {}
             return merged;
           });
         }
-        if (delData.deletedQuestionIds && delData.deletedQuestionIds.length > 0) {
+        if (delData.deletedQuestionIds?.length > 0) {
           setDeletedQuestionIds((prev) => {
             const merged = Array.from(new Set([...prev, ...delData.deletedQuestionIds]));
             try { localStorage.setItem('edu10_deleted_question_ids', JSON.stringify(merged)); } catch (_) {}
@@ -481,81 +546,143 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
 
-        // 2. Fetch Custom Exams once
-        const cloudExams = await fetchExamsFromOnlineDB();
-        if (!isMounted) return;
+        // B. Merge Custom Exams
         if (cloudExams && cloudExams.length > 0) {
+          setCustomExams((prevLocal) => {
+            const merged = mergeExamsList(prevLocal, cloudExams, delData.deletedExamIds);
+            try {
+              localStorage.setItem('edu10_custom_exams', JSON.stringify(merged));
+              localStorage.setItem('edu10_global_custom_exams', JSON.stringify(merged));
+            } catch (_) {}
+            return merged;
+          });
           setDbExams(cloudExams);
         }
 
-        // 3. Fetch Custom Questions once
-        const cloudQuestions = await fetchQuestionsFromOnlineDB();
-        if (!isMounted) return;
+        // C. Merge Custom Questions
         if (cloudQuestions && cloudQuestions.length > 0) {
           setCustomQuestions((prevLocal) => {
-            const mergedMap = new Map<string, Question>();
-            prevLocal.forEach((q) => mergedMap.set(q.id, q));
-            cloudQuestions.forEach((q) => mergedMap.set(q.id, q));
-            const merged = Array.from(mergedMap.values());
+            const merged = mergeQuestionsList(prevLocal, cloudQuestions, delData.deletedQuestionIds);
             try { localStorage.setItem('edu10_custom_questions', JSON.stringify(merged)); } catch (_) {}
             return merged;
           });
         }
 
-        // 4. Fetch student data once for active user
-        const cloudStudent = await fetchStudentDataFromOnlineDB(currentUser.id);
-        if (!isMounted) return;
+        // D. Merge Users List (accounts registered on any device)
+        if (cloudUsers && cloudUsers.length > 0) {
+          setUsersList((prevLocal) => {
+            const merged = mergeUsersList(DEFAULT_USERS, prevLocal, cloudUsers);
+            try { localStorage.setItem('edu10_users', JSON.stringify(merged)); } catch (_) {}
+            return merged;
+          });
+        }
+
+        // E. Merge Student Progress for current active user
         if (cloudStudent && cloudStudent.userData) {
-          updateStatesFromCloud(cloudStudent.userData);
+          const localData = loadUserData(currentUser.id);
+          const mergedData = mergeUserScopedData(localData, cloudStudent.userData);
+          updateStatesFromMerged(mergedData);
         }
       } catch (err) {
         console.warn('Initial cloud data fetch failed:', err);
+      } finally {
+        if (isSubscribed) {
+          isCloudHydratedRef.current = true;
+        }
       }
     };
 
     initializeCloudData();
 
+    // 2. Set up Live Realtime Subscriptions from Firebase (Cross-Device Instant Sync)
+    // 2a. Live Student Data Listener
+    const unsubStudent = subscribeToStudentData(currentUser.id, (cloudPayload) => {
+      if (!isSubscribed || !cloudPayload?.userData) return;
+      const localData = loadUserData(currentUser.id);
+      const mergedData = mergeUserScopedData(localData, cloudPayload.userData);
+      updateStatesFromMerged(mergedData);
+    });
+
+    // 2b. Live Exams Listener
+    const unsubExams = subscribeToExamsFromOnlineDB((cloudExams) => {
+      if (!isSubscribed || !Array.isArray(cloudExams)) return;
+      setCustomExams((prevLocal) => {
+        const merged = mergeExamsList(prevLocal, cloudExams, deletedExamIds);
+        try {
+          localStorage.setItem('edu10_custom_exams', JSON.stringify(merged));
+          localStorage.setItem('edu10_global_custom_exams', JSON.stringify(merged));
+        } catch (_) {}
+        return merged;
+      });
+      setDbExams(cloudExams);
+    });
+
+    // 2c. Live Questions Listener
+    const unsubQuestions = subscribeToQuestionsFromOnlineDB((cloudQuestions) => {
+      if (!isSubscribed || !Array.isArray(cloudQuestions)) return;
+      setCustomQuestions((prevLocal) => {
+        const merged = mergeQuestionsList(prevLocal, cloudQuestions, deletedQuestionIds);
+        try { localStorage.setItem('edu10_custom_questions', JSON.stringify(merged)); } catch (_) {}
+        return merged;
+      });
+    });
+
+    // 2d. Live Deleted Blacklist Listener
+    const unsubDeleted = subscribeToDeletedIdsFromOnlineDB((delData) => {
+      if (!isSubscribed) return;
+      if (delData.deletedExamIds?.length) {
+        setDeletedExamIds((prev) => {
+          const merged = Array.from(new Set([...prev, ...delData.deletedExamIds]));
+          try { localStorage.setItem('edu10_deleted_exam_ids', JSON.stringify(merged)); } catch (_) {}
+          return merged;
+        });
+      }
+      if (delData.deletedQuestionIds?.length) {
+        setDeletedQuestionIds((prev) => {
+          const merged = Array.from(new Set([...prev, ...delData.deletedQuestionIds]));
+          try { localStorage.setItem('edu10_deleted_question_ids', JSON.stringify(merged)); } catch (_) {}
+          return merged;
+        });
+      }
+    });
+
+    // 2e. Live User Accounts Listener
+    const unsubUsers = subscribeToUsersFromOnlineDB((cloudUsers) => {
+      if (!isSubscribed || !Array.isArray(cloudUsers)) return;
+      setUsersList((prevLocal) => {
+        const merged = mergeUsersList(DEFAULT_USERS, prevLocal, cloudUsers);
+        try { localStorage.setItem('edu10_users', JSON.stringify(merged)); } catch (_) {}
+        return merged;
+      });
+    });
+
+    // 2f. Live Room Data Listener (updates all students' progress in real time for Admin / Guardian)
+    const unsubRoom = subscribeToRoomData((roomStudents) => {
+      if (!isSubscribed || !roomStudents || typeof roomStudents !== 'object') return;
+      Object.entries(roomStudents).forEach(([stuId, payload]: [string, any]) => {
+        if (payload && payload.userData && stuId !== currentUser.id) {
+          try {
+            const localStuData = loadUserData(stuId);
+            const merged = mergeUserScopedData(localStuData, payload.userData);
+            localStorage.setItem(getUserDataKey(stuId), JSON.stringify(merged));
+          } catch (_) {}
+        }
+      });
+      dispatchGlobalSync('STUDENT_DATA_UPDATED');
+    });
+
     return () => {
-      isMounted = false;
+      isSubscribed = false;
+      unsubStudent();
+      unsubExams();
+      unsubQuestions();
+      unsubDeleted();
+      unsubUsers();
+      unsubRoom();
     };
   }, [currentUser.id]);
 
-  const isCloudHydratingRef = useRef(false);
-
-  // Helper to update state from cloud sync payload
-  const updateStatesFromCloud = (uData: any) => {
-    if (!uData) return;
-
-    // Flag to prevent the sync useEffect from writing this data back to cloud
-    isCloudHydratingRef.current = true;
-
-    // Pre-serialize matching payload to update the ref
-    lastSyncedDataRef.current = JSON.stringify({
-      examAttempts: uData.examAttempts || [],
-      practiceSessions: uData.practiceSessions || [],
-      mistakes: uData.mistakes || {},
-      bookmarks: uData.bookmarks || [],
-    });
-
-    if (Array.isArray(uData.examAttempts)) {
-      // Filter out legacy mock data if any
-      const cleanAttempts = uData.examAttempts.filter(
-        (a: any) => a.id && !a.id.startsWith('attempt_demo_')
-      );
-      setExamAttempts(cleanAttempts);
-    }
-    if (Array.isArray(uData.practiceSessions)) {
-      setPracticeSessions(uData.practiceSessions);
-    }
-    if (uData.mistakes && typeof uData.mistakes === 'object') {
-      setMistakes(uData.mistakes);
-    }
-    if (Array.isArray(uData.bookmarks)) {
-      setBookmarks(uData.bookmarks);
-    }
-  };
-
-  // Global Sync Listener for Cross-Tab & Cross-Component Reactivity without page reload
+  // Global Sync Listener for Cross-Tab & Cross-Component Reactivity
   useEffect(() => {
     const unsub = subscribeToGlobalSync((event) => {
       if (event.type === 'EXAMS_UPDATED') {
@@ -597,17 +724,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsub();
   }, [currentUser.id]);
 
-  // Flag to avoid pushing initial empty/stale state over cloud DB right on initial mount
-  const hasMountedRef = useRef(false);
-
-  // Sync user data to localStorage and Online Cloud DB on user changes (Debounced & Loop-Protected)
+  // Sync user data to localStorage and Online Cloud DB (Protected against startup overwrites & debounced)
   useEffect(() => {
     if (!hasMountedRef.current) {
       hasMountedRef.current = true;
       return;
     }
 
-    // If state update came from cloud hydration, skip writing back to cloud
+    // Do NOT push to Cloud DB until initial cloud data has hydrated (prevents wiping remote DB with stale local state)
+    if (!isCloudHydratedRef.current) {
+      return;
+    }
+
+    // If state update originated from cloud hydration, skip writing back to cloud
     if (isCloudHydratingRef.current) {
       isCloudHydratingRef.current = false;
       return;
@@ -637,10 +766,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 1. Instant update in localStorage
     localStorage.setItem(getUserDataKey(currentUser.id), JSON.stringify(userData));
 
-    // 2. Debounced push to Online Cloud DB (avoids burst writes)
+    // 2. Debounced push to Online Cloud DB
     const timer = setTimeout(() => {
       pushUserDataToOnlineDB(currentUser.id, userData, currentUser);
-    }, 1500);
+    }, 1200);
 
     return () => clearTimeout(timer);
   }, [examAttempts, practiceSessions, mistakes, bookmarks, currentUser.id]);
@@ -715,6 +844,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setUsersList((prev) => [newUser, ...prev]);
+    saveUserToOnlineDB(newUser).catch((err) => console.warn('Online DB saveUser error:', err));
     switchUser(newUser.id, newUser);
     return { success: true, message: 'Đăng ký tài khoản mới thành công!' };
   };
@@ -769,6 +899,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('edu10_users', JSON.stringify(next));
       return next;
     });
+    saveUserToOnlineDB(updated).catch((err) => console.warn('Online DB saveUser error:', err));
 
     logAndBroadcastActivity({
       userId: currentUser.id,
@@ -792,6 +923,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('edu10_users', JSON.stringify(next));
       return next;
     });
+    saveUserToOnlineDB(updated).catch((err) => console.warn('Online DB saveUser error:', err));
   };
 
   const toggleUserLock = (userId: string) => {
@@ -807,6 +939,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsersList((prev) => {
       const updated = prev.map((u) => (u.id === userId ? { ...u, ...data } : u));
       localStorage.setItem('edu10_users', JSON.stringify(updated));
+      const target = updated.find((u) => u.id === userId);
+      if (target) {
+        saveUserToOnlineDB(target).catch((err) => console.warn('Online DB saveUser error:', err));
+      }
       return updated;
     });
     // If updating currentUser themselves, also update currentUser state
@@ -844,8 +980,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.removeItem(`edu10_teachernote_${userId}`);
     } catch (_) {}
     // Delete from Firebase
-    deleteStudentFromOnlineDB(userId).catch((err) =>
-      console.warn('DB deleteStudent error:', err)
+    deleteUserFromOnlineDB(userId).catch((err) =>
+      console.warn('DB deleteUser error:', err)
     );
   };
 
