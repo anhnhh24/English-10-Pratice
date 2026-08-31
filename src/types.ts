@@ -8,7 +8,11 @@ export type EnglishTopicId =
   | 'reading'
   | 'sentence_rewrite'
   | 'cloze'
-  | 'error_identification';
+  | 'error_identification'
+  | 'communication'
+  | 'signs_notices'
+  | 'word_form'
+  | 'idioms';
 
 export type MathTopicId =
   | 'math_can_thuc'
@@ -55,7 +59,12 @@ export type EnglishSubTopicId =
   | 'rewrite_too_enough'
   | 'reading_comprehension'
   | 'cloze_test'
-  | 'find_error';
+  | 'find_error'
+  | 'communication_daily'
+  | 'signs_notices_public'
+  | 'word_form_derivation'
+  | 'idioms_collocations';
+
 
 export type MathSubTopicId =
   | 'can_thuc_dkxd'
@@ -422,4 +431,16 @@ export interface SentenceGradingResult {
   standardKey: string;
   correctedFullSentence?: string;
 }
+
+export interface ExamSectionFlexConfig {
+  id: string;
+  title: string;
+  topicId?: TopicId | string;
+  subTopicId?: SubTopicId | string;
+  questionCount: number;
+  difficulty?: 'easy' | 'medium' | 'hard' | 'expert';
+  customRequirement?: string;
+  isCustom?: boolean;
+}
+
 

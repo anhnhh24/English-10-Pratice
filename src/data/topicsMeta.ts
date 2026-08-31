@@ -65,4 +65,37 @@ export const TOPICS_META: TopicMeta[] = [
     description: 'Nhận diện lỗi sai về thì, hòa hợp chủ vị, đại từ quan hệ, dạng từ, cấu trúc song hành.',
     weightInExam: '5% Đề thi',
   },
+  {
+    id: 'communication',
+    nameVi: 'Giao tiếp Xã hội (Communication)',
+    iconName: 'MessageSquare',
+    color: 'cyan',
+    description: 'Hội thoại thường ngày, đáp lại lời khen, cảm ơn, xin lỗi, đề nghị, hỏi ý kiến...',
+    weightInExam: '5% Đề thi',
+  },
+  {
+    id: 'signs_notices',
+    nameVi: 'Biển báo & Thông báo thực tế (Signs & Notices)',
+    iconName: 'MapPin',
+    color: 'emerald',
+    description: 'Đọc hiểu biển báo giao thông, nội quy công cộng, áp phích và thông điệp thực tế.',
+    weightInExam: '5% Đề thi',
+  },
+  {
+    id: 'word_form',
+    nameVi: 'Cấu tạo & Dạng từ (Word Formation)',
+    iconName: 'Cpu',
+    color: 'violet',
+    description: 'Biến đổi từ gốc thành danh từ, tính từ, trạng từ, động từ kèm tiền tố / hậu tố chuẩn.',
+    weightInExam: '5% Đề thi',
+  },
+  {
+    id: 'idioms',
+    nameVi: 'Thành ngữ & Cụm cố định (Idioms & Collocations)',
+    iconName: 'Zap',
+    color: 'amber',
+    description: 'Các cụm từ cố định, collocations và thành ngữ thông dụng phân loại điểm 9-10.',
+    weightInExam: '5% Đề thi',
+  },
 ];
+

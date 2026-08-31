@@ -1,4 +1,4 @@
-import { Question, Exam, TopicId, SubTopicId, DifficultyLevel, SubjectId } from '../types';
+import { Question, Exam, TopicId, SubTopicId, DifficultyLevel, SubjectId, ExamSectionFlexConfig } from '../types';
 
 export interface ExamGenerationConfig {
   subject?: SubjectId; // 'english' | 'math'
@@ -7,9 +7,10 @@ export interface ExamGenerationConfig {
   difficulty: 'standard' | 'advanced' | 'challenge';
   totalQuestions: number;
   timeLimitMinutes: number;
-  focusTopics?: TopicId[];
+  focusTopics?: (TopicId | string)[];
   topicDifficulties?: Record<string, 'easy' | 'medium' | 'hard' | 'expert'>;
   topicQuestionCounts?: Record<string, number>;
+  flexSections?: ExamSectionFlexConfig[];
   customPrompt?: string;
   modelName?: string;
 }
@@ -18,6 +19,7 @@ export interface GeneratedExamResult {
   exam: Exam;
   questions: Question[];
 }
+
 
 export const AVAILABLE_MODELS = [
   { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash (Ưu tiên - Siêu nhanh & Chuẩn xác)' },
@@ -400,30 +402,55 @@ Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
   } else {
     // English prompt
     systemInstruction = `Bạn là một chuyên gia khảo thí và giáo viên luyện thi môn Tiếng Anh vào lớp 10 THPT hàng đầu tại Việt Nam.
-Nhiệm vụ của bạn là biên soạn một đề thi trắc nghiệm Tiếng Anh tuyển sinh vào lớp 10 bám sát tuyệt đối chương trình GDPT hiện hành và ma trận đề thi của các Sở Giáo dục và Đào tạo (Hà Nội, TP.HCM, Đà Nẵng,...).
+Nhiệm vụ của bạn là biên soạn một đề thi Tiếng Anh tuyển sinh vào lớp 10 CHUẨN MA TRẬN KHẢO THÍ SỞ GIÁO DỤC & ĐÀO TẠO (Hà Nội, TP.HCM, Đà Nẵng,...) hoặc THEO ĐÚNG CÁC THẺ DANH MỤC FLEX TÙY BIẾN ĐƯỢC YÊU CẦU.
+
+CÁC DẠNG BÀI CHUẨN TRONG ĐỀ THI TIẾNG ANH VÀO 10:
+1. PHÁT ÂM & TRỌNG ÂM (Pronunciation & Stress):
+   - Phát âm đuôi -s/es, -ed, nguyên âm đơn/đôi, phụ âm (topicId: 'pronunciation').
+     Format: "Choose the word whose underlined part is pronounced differently from that of the others:"
+   - Trọng âm từ 2 và 3 âm tiết (topicId: 'stress').
+     Format: "Choose the word that differs from the other three in the position of primary stress:"
+2. NGỮ PHÁP, TỪ VỰNG & GIAO TIẾP XÃ HỘI (Lexico-Grammar & Social Communication):
+   - Ngữ pháp: 12 thì, câu bị động, gián tiếp, điều kiện, wish, mệnh đề quan hệ, so/such...that, too/enough, used to, gerund/infinitive, tag questions, modal verbs (topicId: 'grammar').
+   - Từ vựng & Cụm từ: Phrasal verbs, collocations, giới từ, từ đồng nghĩa / trái nghĩa theo SGK lớp 9 (topicId: 'vocabulary').
+   - Tình huống giao tiếp hàng ngày: Cảm ơn, xin lỗi, khen ngợi, lời mời, hỏi ý kiến... (topicId: 'communication').
+     Format: "- Nam: '...' - Lan: '...'"
+3. TÌM LỖI SAI (Error Identification):
+   - Nhận diện lỗi sai về thì, hòa hợp chủ ngữ - động từ, đại từ quan hệ, liên từ, dạng từ trong 4 phần gạch chân (topicId: 'error_identification').
+   - Format: "Mark the letter A, B, C, or D to indicate the underlined part that needs correction: ..."
+4. ĐỌC ĐIỀN TỪ (Guided Cloze Test):
+   - Đoạn văn 120-160 từ có các chỗ trống đánh số (1), (2), (3), (4), (5) (topicId: 'cloze').
+5. ĐỌC HIỂU VĂN BẢN (Reading Comprehension):
+   - Đoạn văn 160-250 từ chủ đề SGK lớp 9 với 5 câu hỏi chuẩn: Main idea/Best title, Detailed information, Vocabulary in context, Pronoun reference, Inference (topicId: 'reading').
+6. VIẾT LẠI CÂU & KẾT HỢP CÂU (Sentence Transformation & Combination):
+   - Chuyển đổi câu đồng nghĩa: Unless ↔ If not, In spite of ↔ Although, Because of ↔ Because, So...that ↔ Such...that, Prefer ↔ Would rather, Used to, Wish, Passive, Reported Speech... (topicId: 'sentence_rewrite').
+   - Format: "Mark the letter A, B, C, or D to indicate the sentence that is closest in meaning to the following sentence: ..."
+7. BIỂN BÁO & DẠNG TỪ (Signs & Word Formation - Chuẩn TP.HCM & các tỉnh):
+   - Đọc hiểu biển báo nơi công cộng / hình ảnh thông báo (topicId: 'signs_notices').
+   - Dạng từ / Cấu tạo từ (topicId: 'word_form').
 
 YÊU CẦU DỮ LIỆU ĐẦU RA (JSON FORMAT):
 Bạn PHẢI trả về duy nhất một chuỗi JSON hợp lệ không bọc thêm bất kỳ văn bản giải thích nào ngoài JSON.
 Cấu trúc JSON bắt buộc:
 {
-  "title": "Tên đề thi (ví dụ: Đề Thi Thử Vào 10 - Bứt Phá Ngữ Pháp & Biến Đổi Câu)",
+  "title": "Tên đề thi (ví dụ: Đề Thi Thử Vào Lớp 10 Chuẩn Sở GD&ĐT Hà Nội / TP.HCM)",
   "code": "Mã đề (ví dụ: TS10-AI-${Math.floor(100 + Math.random() * 900)})",
-  "description": "Mô tả ngắn gọn về ma trận và độ khó của đề",
+  "description": "Mô tả chi tiết ma trận đề thi",
   "targetProvince": "Chuẩn Sở GD&ĐT / Mục tiêu điểm",
   "difficulty": "${config.difficulty}",
   "timeLimitMinutes": ${config.timeLimitMinutes},
   "questions": [
     {
-      "topicId": "grammar | vocabulary | pronunciation | stress | reading | sentence_rewrite | cloze | error_identification",
-      "subTopicId": "tenses | passive_voice | reported_speech | conditionals | relative_clauses | comparisons | wish_clauses | gerund_infinitive | tag_questions | modal_verbs | phrasal_verbs | prepositions | pronunciation_s_es | pronunciation_ed | pronunciation_vowels | stress_2_syllables | stress_3_syllables | vocab_environment | vocab_city_life | vocab_teen_stress | vocab_past_life | vocab_wonders | vocab_space | rewrite_conditionals | rewrite_passive | rewrite_reported | rewrite_connectors | rewrite_so_such | rewrite_too_enough | reading_comprehension | cloze_test | find_error",
+      "topicId": "grammar | vocabulary | pronunciation | stress | reading | sentence_rewrite | cloze | error_identification | communication | signs_notices | word_form | idioms",
+      "subTopicId": "tenses | passive_voice | reported_speech | conditionals | relative_clauses | comparisons | wish_clauses | gerund_infinitive | tag_questions | modal_verbs | phrasal_verbs | prepositions | pronunciation_s_es | pronunciation_ed | pronunciation_vowels | stress_2_syllables | stress_3_syllables | vocab_environment | vocab_city_life | vocab_teen_stress | vocab_past_life | vocab_wonders | vocab_space | rewrite_conditionals | rewrite_passive | rewrite_reported | rewrite_connectors | rewrite_so_such | rewrite_too_enough | reading_comprehension | cloze_test | find_error | communication_daily | signs_notices_public | word_form_derivation | idioms_collocations",
       "difficulty": "easy | medium | hard | expert",
       "content": "Nội dung câu hỏi bằng tiếng Anh",
       "passage": "Đoạn văn đọc hiểu hoặc điền từ (nếu có, nếu không thì null)",
       "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
       "correctOption": 0, // Số nguyên từ 0 đến 3 tương ứng với A, B, C, D
-      "explanation": "Giải thích ngắn gọn 1-2 câu vì sao chọn đáp án này",
+      "explanation": "Giải thích ngắn gọn vì sao chọn đáp án này",
       "grammarRule": "Công thức hoặc quy tắc cốt lõi áp dụng",
-      "commonMistakeTip": "Mẹo tránh bẫy ngắn gọn",
+      "commonMistakeTip": "Mẹo tránh bẫy đề thi ngắn gọn",
       "translation": "Dịch câu hỏi và đáp án sang tiếng Việt ngắn gọn"
     }
   ]
@@ -433,10 +460,17 @@ LƯU Ý CỰC KỲ QUAN TRỌNG:
 1. Đảm bảo đúng chính xác ${config.totalQuestions} câu hỏi trong mảng 'questions'.
 2. Các đáp án trong 'options' phải bắt đầu bằng 'A. ', 'B. ', 'C. ', 'D. '.
 3. 'correctOption' phải là số index (0 cho A, 1 cho B, 2 cho C, 3 cho D).
-4. Giữ phần giải thích 'explanation', 'grammarRule', 'translation' súc tích, ngắn gọn (1-2 câu).
-5. TỐI ƯU HÓA BÀI ĐỌC (PASSAGE OPTIMIZATION):
+4. TỐI ƯU HÓA BÀI ĐỌC (PASSAGE OPTIMIZATION):
    - Với các câu hỏi thuộc cùng một bài đọc hiểu hoặc điền từ (Reading Comprehension / Cloze Test), chỉ in toàn bộ nội dung bài đọc vào trường "passage" ở câu hỏi ĐẦU TIÊN của cụm bài đọc đó.
-   - Ở các câu hỏi tiếp theo cùng bài đọc đó, hãy đặt "passage": "ref:prev" (hoặc "ref:same_as_previous"). Tuyệt đối KHÔNG lặp lại toàn bộ bài đọc nhiều lần để tối ưu hóa token output và tăng tốc độ phản hồi.`;
+   - Ở các câu hỏi tiếp theo cùng bài đọc đó, hãy đặt "passage": "ref:prev" (hoặc "ref:same_as_previous"). Tuyệt đối KHÔNG lặp lại toàn bộ bài đọc nhiều lần.`;
+
+    let flexSectionGuide = '';
+    if (config.flexSections && config.flexSections.length > 0) {
+      const secLines = config.flexSections.map((sec, sIdx) => {
+        return `  ${sIdx + 1}. [THẺ FLEX]: "${sec.title}" - Số lượng: ${sec.questionCount} câu - Độ khó: ${sec.difficulty || config.difficulty}${sec.customRequirement ? ` - Yêu cầu riêng: "${sec.customRequirement}"` : ''} (Gán topicId: "${sec.topicId || 'grammar'}")`;
+      });
+      flexSectionGuide = `\n- BẮT BUỘC TẠO ĐỀ THEO CÁC THẺ FLEX & DANH MỤC TÙY BIẾN SAU ĐÂY:\n${secLines.join('\n')}\n* QUY TẮC: Tạo đúng số lượng câu hỏi và chủ đề yêu cầu cho từng thẻ Flex trên!`;
+    }
 
     let engTopicDiffSection = '';
     if (config.topicDifficulties && Object.keys(config.topicDifficulties).length > 0) {
@@ -456,17 +490,19 @@ LƯU Ý CỰC KỲ QUAN TRỌNG:
     }
 
     userPrompt = `Hãy tạo một đề thi Tiếng Anh vào lớp 10 với các thông số sau:
-- Tên đề (gợi ý): ${config.title || 'Đề Thi Thử Tiếng Anh Vào 10 - Tạo bởi AI'}
+- Tên đề: ${config.title || 'Đề Thi Thử Tiếng Anh Vào 10 Chuẩn Sở GD&ĐT'}
 - Độ khó tổng thể: ${config.difficulty === 'challenge' ? 'Nâng cao / Chuyên Anh (Mục tiêu 9-10đ)' : config.difficulty === 'advanced' ? 'Khá - Giỏi (Mục tiêu 8-8.5đ)' : 'Cơ bản - Chuẩn đề chung (Mục tiêu 7-8đ)'}
-- Số lượng câu hỏi: ${config.totalQuestions} câu
+- Tổng số lượng câu hỏi: ${config.totalQuestions} câu
 - Thời gian làm bài: ${config.timeLimitMinutes} phút
-${config.focusTopics && config.focusTopics.length > 0 ? `- Các chủ đề trọng tâm: ${config.focusTopics.join(', ')}` : ''}
+${config.focusTopics && config.focusTopics.length > 0 ? `- Các danh mục / chuyên đề trọng tâm: ${config.focusTopics.join(', ')}` : ''}
+${flexSectionGuide}
 ${engTopicDiffSection}
 ${config.targetProvince ? `- Định dạng / Tỉnh thành hướng tới: ${config.targetProvince}` : ''}
-${config.customPrompt ? `- Yêu cầu đặc biệt bổ sung từ người dùng: "${config.customPrompt}"` : ''}
+${config.customPrompt ? `- Yêu cầu đặc biệt bổ sung: "${config.customPrompt}"` : ''}
 
 Hãy trả về DUY NHẤT mã JSON theo cấu trúc quy định.`;
   }
+
 
   onProgressUpdate?.('Đang gửi yêu cầu đến Gemini AI và khởi tạo câu hỏi...');
 
